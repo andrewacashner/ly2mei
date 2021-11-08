@@ -1,0 +1,22 @@
+@shorttitle ly2mei
+@title A converter from Lilypond to MEI-XML
+@author Andrew Cashner, <andrewacashner@gmail.com>
+
+This is a converter from Lilypond to MEI-XML.
+It specifies a dialect of Lilypond which I have used for my editions of
+seventeenth-century music.
+
+@section(2 changelog History)
+
+@table(
+  @row( @cell(2021/10/07) @cell(Began) )
+  @row( @cell(2021/10/12) @cell(Macro-substitution program complete) )
+  @row( @cell(2021/10/13) @cell(Header conversion program complete) )
+  @row( @cell(2021/10/18) @cell(Macro-substitution functions revised and
+   integrated) )
+  @row( @cell(2021/11/05) @cell(Score-tree program complete) )
+  @row( @cell(2021/11/08) @cell(Restructured into units and documentation
+    revised for PasDoc) )
+)
+
+

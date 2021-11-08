@@ -1,0 +1,58 @@
+@* Introduction.
+
+This is \.{lymacro}, a basic macro-substitution program targeting Lilypond
+code, by Andrew Cashner, 2021/10/07.
+
+The goal of this program is to test a basic macro-substitution process, as
+part of a larger project of an MEI compiler for Lilypond files.  
+Lilypond allows users to store different types of data in commands, for
+example:
+
+% \verbatim~
+% MusicSoprano = { c'4 d'4 es'4 }
+% LyricsSoprano = \lyricmode { ly -- ric text }
+% ~
+
+Lilypond processes the contents of these statements and stores them in a
+certain type of variable (with different types for a music expression, or
+something in \.{\\lyricmode}). The user can then call these commands and the
+contents will be placed there:
+
+% \verbatim~
+% \new Staff = "S"
+% <<
+%     \new Voice = "Soprano" { \MusicSoprano}
+%     \new Lyrics \lyricsto "Soprano" { \LyricsSoprano }
+% >>
+% ~
+
+Our goal here is to replace Lilypond's processor with just a simple
+text-substition macro system, where we do not process the contents of the
+macro but just transfer the text.
+
+@p
+@={$mode objfpc}{$H+}{$J-}@>
+program lymacro(input, output);
+
+uses SysUtils, Classes, Generics.Collections;
+@< types @>;
+@< main @>;
+
+@ Let's try to make a dictionary of key-value pairs.
+@< types @>=
+type
+    TMacroDict = specialize TObjectDictionary<String, String>
+
+@ Let's try putting some data in them.
+@< main @>=
+var
+    macros: TMacroDict;
+begin
+    macros := TMacroDict.Create();
+    macros.add('MusicSoprano', '{ c''4 d''4 es''4 }');
+    FreeAndNil(macros);
+end.
+
+    
+
+
