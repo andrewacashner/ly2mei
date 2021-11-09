@@ -55,17 +55,26 @@ type
     { Return a string with a DIY XMl representation of the object tree, for
       testing/debugging. }
     function ToString: String; override;
+
+    { Add an MEI scoreDef element to a given stringlist, drawing the
+    information from this tree. }
+    function ToScoreDef(OutputLines: TStringList): TStringList;
   end;
 
 { Build an LCRS tree of Lilypond @code(\new) objects.
   
   We look for two kinds of objects:
     @orderedlist(
-      @item(@code(\new) expressions followed by an expression enclosed in double angle brackets (@code(<<...>>)))
-      @item(Expressions that conclude with an expression in matched curly braces)
+      @item(@code(\new) expressions followed by an expression enclosed in
+        double angle brackets (@code(<<...>>))) 
+      @item(Expressions that conclude with an expression in matched curly
+        braces)
     )
-  For the first kind, we store the value and ID, if there is one; then we continue to look recursively for child elements within the angle-bracket expression.
-  For the second kind, we store value, ID, and contents (everything from the ID up to the end of the matched-brace expression) as a sibling of the previous item.
+  For the first kind, we store the value and ID, if there is one; then we
+  continue to look recursively for child elements within the angle-bracket
+  expression. For the second kind, we store value, ID, and contents
+  (everything from the ID up to the end of the matched-brace expression) as a
+  sibling of the previous item.
 }
 function FindLyNewTree(Source: String; Tree: TLyObject): TLyObject;
 
@@ -230,6 +239,115 @@ begin
     FreeAndNil(Outline);
     result := Tree;
   end;
+end;
+
+
+function TLyObject.ToScoreDef(OutputLines: TStringList): TStringList;
+
+type
+  ClefKind = (ckTreble, ckBass);
+  KeyKind = (kkDurus, kkMollis);
+  MeterKind = (mkDuple, mkTriple);
+
+const StaffGrpAttributes = ' bar.thru="false" symbol="bracket"';
+
+function StaffDefAttributes(Clef: ClefKind; Key: KeyKind; Meter: MeterKind): String;
+var
+  ClefStr, KeyStr, MeterStr, OutputStr: String;
+begin
+  OutputStr := ' lines="5" ';
+  case Clef of
+    ckTreble: ClefStr := 'clef.line="2" clef.shape="G" ';
+    ckBass  : ClefStr := 'clef.line="4" clef.shape="F" ';
+  end;
+  case Key of 
+    kkDurus : KeyStr := 'key.sig="0" ';
+    kkMollis: KeyStr := 'key.sig="1f" ';
+  end;
+  case Meter of
+    mkDuple : MeterStr := 'mensur.sign="C" mensur.tempus="2"';
+    mkTriple: MeterStr := 'mensur.sign="C" mensur.tempus="2" proport.num="3"';
+  end;
+  result := OutputStr + ClefStr + KeyStr + MeterStr;
+end;
+
+function InnerScoreDef(Node: TLyObject; InnerLines: TStringList; N: Integer): TStringList;
+var 
+  ThisTag, SearchStr: String;
+  TempLines: TStringList;
+  ElementNum, ElementID, Attributes: String;
+  Clef: ClefKind;
+  Key: KeyKind;
+  Meter: MeterKind;
+begin
+  assert(InnerLines <> nil);
+  TempLines := TStringList.Create;
+  ThisTag := '';
+  try
+    if (Node.FType = 'ChoirStaff') or (Node.FType = 'StaffGroup') then
+      ThisTag := 'staffGrp'
+    else if Node.FType = 'Staff' then
+      ThisTag := 'staffDef';
+
+    if ThisTag <> '' then
+    begin
+      { Create attributes }
+      Inc(N);
+      ElementNum := 'n="' + IntToStr(N) + '"';
+      if Node.FID <> '' then
+        ElementID := ' xml:id="' + Node.FID + '"';
+      Attributes := ElementNum + ElementID;
+
+      if ThisTag = 'staffGrp' then
+        Attributes := Attributes + StaffGrpAttributes
+      else if ThisTag = 'staffDef' then
+      begin
+        { Extract staffDef info from the first music expression in the first
+        child Voice }
+        if (Node.FChild <> nil) and (Node.FChild.FType = 'Voice') then
+        begin
+          SearchStr := Node.FChild.FContents.Substring(0, 800); { c. first 10 lines }
+
+          if SearchStr.Contains('\clef "treble"') then 
+            Clef := ckTreble
+          else if SearchStr.Contains('\clef "bass"') then 
+            Clef := ckBass
+          else 
+            Clef := ckTreble;
+
+          if SearchStr.Contains('\CantusMollis') then
+            Key := kkMollis
+          else
+            Key := kkDurus;
+
+          if SearchStr.Contains('\MeterDuple') then
+            Meter := mkDuple
+          else if SearchStr.Contains('\MeterTriple') then
+            Meter := mkTriple;
+        end;
+        Attributes := Attributes + StaffDefAttributes(Clef, Key, Meter);
+      end;
+
+      { Create this element and its children }
+      if Node.FChild <> nil then
+        TempLines.AddStrings(InnerScoreDef(Node.FChild, InnerLines, 0));
+      TempLines := XMLElementLines(TempLines, ThisTag, Attributes);
+
+      { Create its siblings }
+      if Node.FSibling <> nil then
+        TempLines.AddStrings(InnerScoreDef(Node.FSibling, InnerLines, N));
+    end;
+    InnerLines.Assign(TempLines);
+  finally
+    FreeAndNil(TempLines);
+    result := InnerLines;
+  end;
+end;
+
+begin
+  OutputLines := InnerScoreDef(Self, OutputLines, 0);
+  OutputLines := XMLElementLines(OutputLines, 'scoreDef');
+  result := OutputLines;
 end;
 
 end.

@@ -40,17 +40,11 @@ whitespace. }
 function RemoveBlankLines(InputLines: TStringList): TStringList;
 
 
-{ Enclose the contents of a given @code(TStringList) inside a given XML tag
-  and optional attributes; put the result into the secong given stringlist. 
-
-  TODO Can we do this (and other similar functions) without needing to create
-  a new stringlist and pass it as an argument? 
-}
+{ Modify a given stringlist: enclose the list contents 
+  inside a given XML tag and optional attributes }
 function XMLElementLines(
   { Text to be enclosed in XML element }
   InputLines: TStringList;
-  { List to store new text }
-  OutputLines: TStringList; 
   { Text of XML tag }
   Tag: String;
   { @bold(Optional): Attributes to be included in opening tag }
@@ -144,25 +138,31 @@ begin
   end;
 end;
 
-function XMLElementLines(InputLines: TStringList; OutputLines: TStringList;
-  Tag: String; Attributes: String = ''): TStringList; 
+function XMLElementLines(InputLines: TStringList; Tag: String; 
+  Attributes: String = ''): TStringList;
 var
   HeadTag: String;
   ThisLine: String;
+  OutputLines: TStringList;
 begin
   assert(InputLines <> nil);
-  assert(OutputLines <> nil);
-  if Attributes = '' then
-    HeadTag := Tag
-  else 
-    HeadTag := Tag + ' ' + Attributes;
+  OutputLines := TStringList.Create;
+  try
+    if Attributes = '' then
+      HeadTag := Tag
+    else 
+      HeadTag := Tag + ' ' + Attributes;
 
-  OutputLines.Clear;
-  OutputLines.Add('<' + HeadTag + '>');
-  for ThisLine in InputLines do
-    OutputLines.Add(IndentStr + ThisLine);
-  OutputLines.Add('</' + Tag + '>');
-  result := OutputLines;
+    OutputLines.Add('<' + HeadTag + '>');
+    for ThisLine in InputLines do
+      OutputLines.Add(IndentStr + ThisLine);
+    OutputLines.Add('</' + Tag + '>');
+
+    InputLines.Assign(OutputLines);
+  finally
+    FreeAndNil(OutputLines);
+    result := InputLines;
+  end;
 end;
 
 end.

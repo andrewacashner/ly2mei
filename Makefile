@@ -21,17 +21,28 @@ doc_html  = $(addprefix $(doc_dir)/,$(doc_intro:%.txt=%.html) index.html)
 doc_tex	  = $(build_dir)/$(app_name).tex
 doc_pdf   = $(doc_dir)/$(app_name).pdf
 
-.PHONY : all app units docs pdfdoc view view-pdf clean 
+FPCflagsDebug = $(FPCflagsTest) -dDEBUG
+FPCflagsTest = -vwhine -glh
+FPCflags = ''
+ifeq ($(DEBUG), 1)
+	FPCflags = $(FPCflagsDebug)
+endif
+ifeq ($(TEST), 1)
+	FPCflags = $(FPCflagsTest)
+endif
 
-all : app docs
+.PHONY : all full app units docs pdfdoc view view-pdf clean 
 
-app : $(app_out)
+
+all : $(app_out)
 
 units : $(objects) 
 
 docs : $(doc_html) 
 
 pdfdoc : $(doc_pdf)
+
+full : app docs
 
 $(dirs) :
 	mkdir -p $(dirs)
@@ -40,10 +51,10 @@ $(exec_dir)/% : $(build_dir)/%
 	cp -u $< $@
 
 $(build_dir)/% : app/%.lpr $(objects) | $(dirs)
-	fpc -FE$(build_dir) -Fu$(build_dir) $<
+	fpc -FE$(build_dir) -Fu$(build_dir) $(FPCflags) $<
 
 $(build_dir)/%.o : src/%.pas | $(dirs)
-	fpc -FU$(build_dir) $<
+	fpc -FU$(build_dir) $(FPCflags) $<
 
 $(doc_html) : $(doc_intro) $(units_in) | $(dirs) 
 	pasdoc --output=$(doc_dir) --introduction=$(doc_intro) $(units_in)

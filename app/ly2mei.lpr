@@ -12,14 +12,13 @@ const
   XMLversion = '<?xml version="1.0" encoding="UTF-8"?>';
   MeiNamespace = 'xmlns="http://www.music-encoding.org/ns/mei"';
 var
-  InputText, TempText, OutputText, MEIHeaderLines, MEIScoreLines: TStringList;
+  InputText, OutputText, MEIHeaderLines, MEIScoreLines: TStringList;
   ScoreInput: String;
   HeaderValues: THeader;
   CommandArg: TCommandArg;
   LyObjectTree: TLyObject;
 begin
   InputText      := TStringList.Create;
-  TempText       := TStringList.Create;
   OutputText     := TStringList.Create;
   MEIHeaderLines := TStringList.Create;
   MEIScoreLines  := TStringList.Create;
@@ -46,23 +45,25 @@ begin
     MEIHeaderLines := HeaderValues.ToMEI(MEIHeaderLines);
 
     { Process score, convert to MEI. }
-    { TODO for now, convert to DIY XML. }
     ScoreInput := LyArg(InputText.Text, '\score');
-    OutputText.Clear;
     if not ScoreInput.IsEmpty then
     begin
       LyObjectTree := FindLyNewTree(ScoreInput, LyObjectTree);
       if LyObjectTree <> nil then
-        TempText := Lines(LyObjectTree.ToString, TempText);
+        MEIScoreLines := LyObjectTree.ToScoreDef(MEIScoreLines);
     end;
-    MEIScoreLines := XMLElementLines(TempText, MEIScoreLines, 'score');
+    MEIScoreLines := XMLElementLines(MEIScoreLines, 'score');
+    MEIScoreLines := XMLElementLines(MEIScoreLines, 'mdiv');
+    MEIScoreLines := XMLElementLines(MEIScoreLines, 'body');
+    MEIScoreLines := XMLElementLines(MEIScoreLines, 'music');
+
 
     { Write output. }
-    TempText.Clear;
-    TempText.Assign(MEIHeaderLines);
-    TempText.AddStrings(MEIScoreLines);
+    OutputText.Clear;
+    OutputText.Assign(MEIHeaderLines);
+    OutputText.AddStrings(MEIScoreLines);
 
-    OutputText := XMLElementLines(TempText, OutputText, 'mei', MEINamespace);
+    OutputText := XMLElementLines(OutputText, 'mei', MEINamespace);
     OutputText.Insert(0, XMLversion);
 
     WriteLn(OutputText.Text);
@@ -73,7 +74,6 @@ begin
     FreeAndNil(HeaderValues);
     FreeAndNil(MEIHeaderLines);
     FreeAndNil(MEIScoreLines);
-    FreeAndNil(TempText);
     FreeAndNil(OutputText);
     FreeAndNil(InputText);
   end;
