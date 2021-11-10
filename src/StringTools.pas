@@ -6,7 +6,7 @@ unit StringTools;
 
 interface
 
-uses SysUtils, StrUtils, Classes;
+uses SysUtils, Classes;
 
 { Write notes to standard error if compiled with @code(-dDEBUG) }
 procedure DebugLn(Msg: String);

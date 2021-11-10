@@ -7,138 +7,254 @@ unit MusicNotes;
 
 interface
 
-uses SysUtils, StrUtils, Classes, StringTools;
-
-
-implementation
+uses SysUtils, StrUtils, Classes, Generics.Collections, StringTools;
 
 type 
-
-  PitchKind = (pkC, pkD, pkE, pkF, pkG, pkA, pkB, pkRest);
-  AccidentalKind = (akNatural, akFlat, akSharp);
-  DurationKind = (dkBreve, dkSemibreve, dkMinim, dkSemiminim, dkFusa, dkSemifusa, 
+  TPitchName = (pkC, pkD, pkE, pkF, pkG, pkA, pkB, pkRest);
+  TAccidental = (akNatural, akFlat, akSharp);
+  TDuration = (dkBreve, dkSemibreve, dkMinim, dkSemiminim, dkFusa, dkSemifusa, 
     dkBreveDotted, dkSemibreveDotted, dkMinimDotted, dkSemiminimDotted, dkFusaDotted);
 
+type
   TPitch = class
   public
     var
-      FPitchName: PitchKind;
-      FAccid: AccidentalKind;
+      FPitchName: TPitchName;
+      FAccid: TAccidental;
       FOct: Integer;
-      FDur: DurationKind;
-    function ToMEI: String; 
+      FDur: TDuration;
+    constructor CreateFromLy(Source: String);
+    function ToMEI: String;
   end;
 
-function LyToPitches(Source: String): String;
+  TPitchList = class(specialize TObjectList<TPitch>)
+  public
+    constructor CreateFromLy(Source: String);
+    function ToMEI(OutputLines: TStringList): TStringList;
+  end;
+
+type 
+  TMeasureList = specialize TObjectList<TPitchList>;
+
+function LyMeasureToMEI(LyInput: String): TPitchList;
+
+function LyMeasureListToMEI(LyInput: TStringList; MeasureList: TMeasureList):
+  TMeasureList;
+
+function LyMeasuresToMEI(LyInput, MEIOutput: TStringList): TStringList;
+
+implementation
+
+constructor TPitch.CreateFromLy(Source: String);
 var
-  MEI, ThisNote, NoteTemp: String;
-  PitchNameLy, OctLy, DurLy, EtcLy: String;
-  PitchNameMEI, OctMEI, DurMEI, EtcMEI, AccidMEI: String;
-  Notes: Array of String;
+  NoteStr, PitchNameLy, OctLy, DurLy, EtcLy: String;
+begin
+  inherited Create;
+  NoteStr := Source;
+  PitchNameLy := ExtractWord(1, NoteStr, [',', '''', '1', '2', '4', '8', '\']);
+  NoteStr := StringDropBefore(NoteStr, PitchNameLy);
+  
+  OctLy := ExtractWord(1, NoteStr, ['1', '2', '4', '8', '\']);
+  if OctLy <> '' then
+    NoteStr := StringDropBefore(NoteStr, OctLy);
+ 
+  DurLy := ExtractWord(1, NoteStr, ['(', ')', '~', '\']);
+
+  if DurLy <> '' then
+  begin
+    NoteStr := StringDropBefore(NoteStr, DurLy);
+    EtcLy := NoteStr;
+  end;
+
+  if PitchNameLy.EndsWith('is') then
+    FAccid := akSharp
+  else if PitchNameLy.EndsWith('es') then
+    FAccid := akFlat
+  else
+    FAccid := akNatural;
+  
+  case PitchNameLy.Substring(0, 1) of
+    'c': FPitchName := pkC;
+    'd': FPitchName := pkD;
+    'e': FPitchName := pkE;
+    'f': FPitchName := pkF;
+    'g': FPitchName := pkG;
+    'a': FPitchName := pkA;
+    'b': FPitchName := pkB;
+    'r': FPitchName := pkRest;
+  else
+    WriteLn(Stderr, 'Could not extract pitch from input "' + PitchNameLy + '"');
+  end;
+
+  case OctLy of
+    ',,,'     : FOct := 0;
+    ',,'      : FOct := 1;
+    ','       : FOct := 2;
+    ''        : FOct := 3;
+    ''''      : FOct := 4; { '' }
+    ''''''    : FOct := 5; { ''' }
+    ''''''''  : FOct := 6; { '''' }
+  else
+    WriteLn(Stderr, 'Could not extract octave from input "' + OctLy + '"');
+  end;
+
+  case DurLy of
+    '\breve'  : FDur := dkBreve;
+    '1'       : FDur := dkSemibreve;
+    '2'       : FDur := dkMinim;
+    '4'       : FDur := dkSemiminim;
+    '8'       : FDur := dkFusa;
+    '16'      : FDur := dkSemifusa;
+    '\breve.' : FDur := dkBreveDotted;
+    '1.'      : FDur := dkSemibreveDotted;
+    '2.'      : FDur := dkMinimDotted;
+    '4.'      : FDur := dkSemiminimDotted;
+    '8.'      : FDur := dkFusaDotted;
+  else
+    WriteLn(Stderr, 'Could not extract duration from input "' + DurLy + '"');
+  end;
+end;
+
+function TPitch.ToMEI: String;
+var
+  Pnum, Oct, Accid, DurBase, Dur: String;
+  Dots: Boolean;
+begin
+  case FDur of 
+    dkBreve           : DurBase := 'breve';
+    dkSemibreve       : DurBase := '1';
+    dkMinim           : DurBase := '2';
+    dkSemiminim       : DurBase := '4';
+    dkFusa            : DurBase := '8';
+    dkSemifusa        : DurBase := '16';
+    dkBreveDotted     : DurBase := 'breve';
+    dkSemibreveDotted : DurBase := '1';
+    dkMinimDotted     : DurBase := '2';
+    dkSemiminimDotted : DurBase := '4';
+    dkFusaDotted      : DurBase := '8';
+  end;
+  case FDur of
+    dkBreve .. dkSemifusa         : Dots := False;
+    dkBreveDotted .. dkFusaDotted : Dots := True;
+  end;
+  Dur := 'dur="' + DurBase + '"';
+  if Dots then
+    Dur := Dur + ' dots="1"';
+
+  if FPitchName = pkRest then
+    result := '<rest dur="' + Dur + '"/>'
+  else
+  begin
+    case FPitchName of
+      pkC : Pnum := 'c';
+      pkD : Pnum := 'd';
+      pkE : Pnum := 'e';
+      pkF : Pnum := 'f';
+      pkG : Pnum := 'g';
+      pkA : Pnum := 'a';
+      pkB : Pnum := 'b';
+    end;
+    case FAccid of
+      akNatural : Accid := 'n';
+      akFlat    : Accid := 'f';
+      akSharp   : Accid := 's';
+    end;
+    Oct := IntToStr(FOct);
+    result := '<note pname="' + Pnum + '" accid="' + Accid 
+              + '" oct="' + Oct + '" ' + Dur + '></note>';
+  end;
+end;
+
+constructor TPitchList.CreateFromLy(Source: String);
+var
+  MEI, ThisNote: String;
+  Notes: Array of String = ('');
   NewPitch: TPitch;
 begin
-  SetLength(Notes, 0);
-  SetLength(NoteParts, 0);
+  inherited Create;
   MEI := StringDropBefore(Source.TrimLeft, '| ');
   Notes := MEI.Split([' ']);
   for ThisNote in Notes do
   begin
-    NoteTemp := ThisNote;
-    PitchNameLy := ExtractWord(1, NoteTemp, [',', '''', '1', '2', '4', '8', '\']);
-    NoteTemp := StringDropBefore(ThisNote, PitchNameLy);
-    
-    OctLy := ExtractWord(1, NoteTemp, ['1', '2', '4', '8', '\']);
-    if OctLy <> '' then
-      NoteTemp := StringDropBefore(NoteTemp, OctLy);
-   
-    DurLy := ExtractWord(1, NoteTemp, '(', ')', '~', '\');
-
-    if DurLy <> '' then
-    begin
-      NoteTemp := StringDropBefore(NoteTemp, DurLy);
-      EtcLy := NoteTemp;
-    end;
-
-    NewPitch := TPitch.CreateFromLy(PitchNameLy, OctLy, DurLy);
-    { TODO EtcLy? }
-
-    { START add to list of pitches}
-
-    { Move below to TPitch.CreateFromLy }
-    { In separate function convert pitches to MEI, TPitch.ToMei }
-    if PitchNameLy.EndsWith('is') then
-      NewPitch.Accid := akSharp
-    else if PitchNameLy.EndsWith('es') then
-      NewPitch.Accid := akFlat
-    else
-      NewPitch.Accid := akNatural;
-    
-    case PitchNameLy[0] of
-      'c': NewPitch.PitchName := pkC;
-      'd': NewPitch.PitchName := pkD;
-      'e': NewPitch.PitchName := pkE;
-      'f': NewPitch.PitchName := pkF;
-      'g': NewPitch.PitchName := pkG;
-      'a': NewPitch.PitchName := pkA;
-      'b': NewPitch.PitchName := pkB;
-      'r': NewPitch.PitchName := pkRest;
-    else
-      WriteLn(Stderr, 'Could not extract pitch from input "' + PitchNameLy + '"');
-    end;
-
-    case OctLy of
-      ',,,'     : NewPitch.Oct := 0;
-      ',,'      : NewPitch.Oct := 1;
-      ','       : NewPitch.Oct := 2;
-      ''        : NewPitch.Oct := 3;
-      ''''      : NewPitch.Oct := 4; { '' }
-      ''''''    : NewPitch.Oct := 5; { ''' }
-      ''''''''  : NewPitch.Oct := 6; { '''' }
-    else
-      WriteLn(Stderr, 'Could not extract octave from input "' + OctLy + '"');
-    end;
-
-    case DurLy of
-      '\breve'  : NewPitch.Dur := dkBreve;
-      '1'       : NewPitch.Dur := dkSemibreve;
-      '2'       : NewPitch.Dur := dkMinim;
-      '4'       : NewPitch.Dur := dkSemiminim;
-      '8'       : NewPitch.Dur := dkFusa;
-      '16'      : NewPitch.Dur := dkSemifusa;
-      '\breve.' : NewPitch.Dur := dkBreveDotted;
-      '1.'      : NewPitch.Dur := dkSemibreveDotted;
-      '2.'      : NewPitch.Dur := dkMinimDotted;
-      '4.'      : NewPitch.Dur := dkSemiminimDotted;
-      '8.'      : NewPitch.Dur := dkFusaDotted;
-    else
-      WriteLn(Stderr, 'Could not extract duration from input "' + DurLy + '"');
-    end;
-
+    NewPitch := TPitch.CreateFromLy(ThisNote);
+    Self.Add(NewPitch);
   end;
-  
-  result := MEI;
 end;
 
-function LyCmdToMEI(LyInput, MEIOutput: TStringList): TStringList;
+function TPitchList.ToMEI(OutputLines: TStringList): TStringList;
 var
-  ThisString, MEIString: String;
+  ThisPitch: TPitch;
+  TempLines: TStringList;
+begin
+  assert(OutputLines <> nil);
+  TempLines := TStringList.Create;
+  try
+    for ThisPitch in Self do
+      TempLines.Add(ThisPitch.ToMEI);
+    OutputLines.Assign(TempLines)
+  finally
+    FreeAndNil(TempLines);
+    result := OutputLines;
+  end;
+end;
+
+function LyMeasureToMEI(LyInput: String): TPitchList;
+var
+  PitchList: TPitchList;
+begin
+  if LyInput.TrimLeft.StartsWith('|') and (LyInput.CountChar('|') = 1) then
+    PitchList := TPitchList.CreateFromLy(LyInput);
+  result := PitchList;
+end;
+
+function LyMeasureListToMEI(LyInput: TStringList; MeasureList: TMeasureList):
+  TMeasureList; 
+var
+  ThisString: String;
+begin
+  assert(LyInput <> nil);
+  assert(MeasureList <> nil);
+  for ThisString in LyInput do
+    MeasureList.Add(LyMeasureToMEI(ThisString));
+  result := MeasureList;
+end;
+
+function LyMeasuresToMEI(LyInput, MEIOutput: TStringList): TStringList;
+var
+  ThisString: String;
+  PitchList: TPitchList;
+  TempLines: TStringList;
+  N: Integer;
 begin
   assert(LyInput <> nil);
   assert(MEIOutput <> nil);
-  MEIOutput.Clear;
-
-  for ThisString in LyInput do
-  begin
-    if ThisString.TrimLeft.StartsWith('|') and (ThisString.CountChar('|') = 1) then
-      MEIString := LyToPitches(ThisString);
-    { TODO make pitch list, then convert to MEI }
-
-    MEIOutput.Add(MEIString);
+  TempLines := TStringList.Create;
+  try
+    MEIOutput.Clear;
+    N := 0;
+    for ThisString in LyInput do
+    begin
+      TempLines.Clear;
+      if ThisString.TrimLeft.StartsWith('|') and (ThisString.CountChar('|') = 1) then
+      begin
+        PitchList := TPitchList.CreateFromLy(ThisString);
+        try
+          TempLines := PitchList.ToMEI(TempLines);
+          Inc(N);
+          TempLines := XMLElementLines(TempLines, 'measure', 'n="' + IntToStr(N) + '"');
+        finally
+          MEIOutput.AddStrings(TempLines);
+          FreeAndNil(PitchList);
+        end;
+      end;
+    end;
+  finally
+    FreeAndNil(TempLines);
+    result := MEIOutput;
   end;
-
-  result := MEIOutput;
 end;
 
+{ TODO find and replace all the commands that have a simple one-to-one match }
 {
 function ReplaceCommand(Source: String): String;
 var

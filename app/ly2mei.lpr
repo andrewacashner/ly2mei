@@ -10,9 +10,9 @@ uses SysUtils, Classes, StringTools, Outline, Macro, Header, ScoreTree;
 { MAIN }
 const
   XMLversion = '<?xml version="1.0" encoding="UTF-8"?>';
-  MeiNamespace = 'xmlns="http://www.music-encoding.org/ns/mei"';
+  MeiNamespace = 'xmlns="http://www.music-encoding.org/ns/mei" meiVersion="4.0.0"';
 var
-  InputText, OutputText, MEIHeaderLines, MEIScoreLines: TStringList;
+  InputText, OutputText, MEIHeaderLines, MEIScoreLines, MEIMusicLines: TStringList;
   ScoreInput: String;
   HeaderValues: THeader;
   CommandArg: TCommandArg;
@@ -22,6 +22,7 @@ begin
   OutputText     := TStringList.Create;
   MEIHeaderLines := TStringList.Create;
   MEIScoreLines  := TStringList.Create;
+  MEIMusicLines  := TStringList.Create;
   HeaderValues   := THeader.Create;
   CommandArg     := TCommandArg.Create;
   LyObjectTree   := nil;
@@ -50,7 +51,11 @@ begin
     begin
       LyObjectTree := FindLyNewTree(ScoreInput, LyObjectTree);
       if LyObjectTree <> nil then
+      begin
         MEIScoreLines := LyObjectTree.ToScoreDef(MEIScoreLines);
+        MEIMusicLines := LyObjectTree.ToMusic(MEIMusicLines);
+        MEIScoreLines.AddStrings(MEIMusicLines);
+      end;
     end;
     MEIScoreLines := XMLElementLines(MEIScoreLines, 'score');
     MEIScoreLines := XMLElementLines(MEIScoreLines, 'mdiv');
@@ -72,8 +77,9 @@ begin
     FreeAndNil(LyObjectTree);
     FreeAndNil(CommandArg);
     FreeAndNil(HeaderValues);
-    FreeAndNil(MEIHeaderLines);
+    FreeAndNil(MEIMusicLines);
     FreeAndNil(MEIScoreLines);
+    FreeAndNil(MEIHeaderLines);
     FreeAndNil(OutputText);
     FreeAndNil(InputText);
   end;

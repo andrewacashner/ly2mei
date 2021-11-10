@@ -21,14 +21,14 @@ doc_html  = $(addprefix $(doc_dir)/,$(doc_intro:%.txt=%.html) index.html)
 doc_tex	  = $(build_dir)/$(app_name).tex
 doc_pdf   = $(doc_dir)/$(app_name).pdf
 
-FPCflagsDebug = $(FPCflagsTest) -dDEBUG
 FPCflagsTest = -vwhine -glh
-FPCflags = ''
-ifeq ($(DEBUG), 1)
-	FPCflags = $(FPCflagsDebug)
-endif
-ifeq ($(TEST), 1)
+FPCflagsDebug = $(FPCflagsTest) -dDEBUG
+FPCflags = $(empty)
+ifeq ($(TEST),1)
 	FPCflags = $(FPCflagsTest)
+endif
+ifeq ($(DEBUG),1)
+	FPCflags = $(FPCflagsDebug)
 endif
 
 .PHONY : all full app units docs pdfdoc view view-pdf clean 
