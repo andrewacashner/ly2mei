@@ -50,6 +50,7 @@ begin
     if not ScoreInput.IsEmpty then
     begin
       LyObjectTree := FindLyNewTree(ScoreInput, LyObjectTree);
+      LyObjectTree := SetStaffNums(LyObjectTree);
       if LyObjectTree <> nil then
       begin
         MEIScoreLines := LyObjectTree.ToScoreDef(MEIScoreLines);

@@ -30,6 +30,10 @@ type
       { ID string, as in @code(\new Voice = "Soprano"); blank if omitted in
         Lilypond source }
       FID: String;
+      { In-order position of elements of the same type: Staff elements are
+      numbered consecutively regardless of whether they are enclosed in a
+      StaffGroup. }
+      FNum: Integer;
       { Contents: If the command is followed by section delimited by double
       angle brackets, then the contents will be blank; otherwise, everything
       up to the end of a curly-brace-delimited argument }
@@ -39,9 +43,8 @@ type
       { Right sibling node (tree) }
       FSibling: TLyObject;
     constructor Create();
-    constructor Create(TypeStr, IDStr, ContentsStr: String);
-    constructor Create(TypeStr, IDStr, ContentsStr: String; 
-      Child, Sibling: TLyObject);
+    constructor Create(TypeStr, IDStr: String; ContentsStr: String = ''; 
+      Num: Integer = 0; Child: TLyObject = nil; Sibling: TLyObject = nil); 
 
     { Destroy the whole tree. }
     destructor Destroy; override;
@@ -79,7 +82,10 @@ type
   (everything from the ID up to the end of the matched-brace expression) as a
   sibling of the previous item.
 }
+
 function FindLyNewTree(Source: String; Tree: TLyObject): TLyObject;
+
+function SetStaffNums(Tree: TLyObject; StaffNum: Integer = 0): TLyObject;
 
 
 implementation
@@ -89,23 +95,13 @@ begin
   inherited Create;
 end;
 
-constructor TLyObject.Create(TypeStr, IDStr, ContentsStr: String);
+constructor TLyObject.Create(TypeStr, IDStr: String; ContentsStr: String = '';
+  Num: Integer = 0; Child: TLyObject = nil; Sibling: TLyObject = nil); 
 begin
   inherited Create;
   FType     := TypeStr;
   FID       := IDStr;
-  FContents := ContentsStr;
-  FChild    := nil;
-  FSibling  := nil;
-
-end;
-
-constructor TLyObject.Create(TypeStr, IDStr, ContentsStr: String;
-  Child, Sibling: TLyObject);
-begin
-  inherited Create;
-  FType     := TypeStr;
-  FID       := IDStr;
+  FNum      := Num;
   FContents := ContentsStr;
   FChild    := Child;
   FSibling  := Sibling;
@@ -216,9 +212,9 @@ begin
       Outline := BalancedDelimiterSubstring(SearchStr, '<', '>', Outline);
       ThisContents := CopyStringRange(SearchStr, Outline, rkInclusive);
       if Tree = nil then
-        Tree := TLyObject.Create(ThisType, ThisID, '')
+        Tree := TLyObject.Create(ThisType, ThisID)
       else
-        Tree.LastChild.FChild := TLyObject.Create(ThisType, ThisID, '');
+        Tree.LastChild.FChild := TLyObject.Create(ThisType, ThisID);
     
       Tree.LastChild.FChild := FindLyNewTree(ThisContents, nil);
       Source := StringDropBefore(Source.Substring(SearchIndex), ThisContents);
@@ -245,8 +241,27 @@ begin
   end;
 end;
 
+function SetStaffNums(Tree: TLyObject; StaffNum: Integer = 0): TLyObject;
+function InnerStaffNums(Node: TLyObject): TLyObject;
+begin
+  if Node <> nil then
+  begin
+    if Node.FType = 'Staff' then
+    begin
+      Inc(StaffNum);
+      Node.FNum := StaffNum;
+    end;
+    if Node.FChild <> nil then
+      Node.FChild := InnerStaffNums(Node.FChild);
+    if Node.FSibling <> nil then
+      Node.FSibling := InnerStaffNums(Node.FSibling);
+  end;
+  result := Node;
+end;
 
-function TLyObject.ToScoreDef(OutputLines: TStringList): TStringList;
+begin
+  result := InnerStaffNums(Tree);
+end;
 
 type
   ClefKind = (ckTreble, ckBass);
@@ -275,11 +290,27 @@ begin
   result := OutputStr + ClefStr + KeyStr + MeterStr;
 end;
 
-function InnerScoreDef(Node: TLyObject; InnerLines: TStringList; N: Integer): TStringList;
+function XMLAttribute(Tag, Value: String): String;
+begin
+  result := Tag + '="' + Value + '"';
+end;
+
+function ElementNumID(Node: TLyObject; N: Integer): String;
+begin
+  result := XMLAttribute('n', IntToStr(N)) + XMLAttribute(' xml:id', Node.FID);
+end;
+
+function StaffNumID(Node: TLyObject): String;
+begin
+  result := XMLAttribute('n', IntToStr(Node.FNum)) 
+            + XMLAttribute(' def', '#' + Node.FID);
+end;
+
+function TLyObject.ToScoreDef(OutputLines: TStringList): TStringList;
+function InnerScoreDef(Node: TLyObject; InnerLines: TStringList): TStringList;
 var 
-  ThisTag, SearchStr: String;
+  ThisTag, SearchStr, Attributes: String;
   TempLines: TStringList;
-  ElementNum, ElementID, Attributes: String;
   Clef: ClefKind;
   Key: KeyKind;
   Meter: MeterKind;
@@ -288,59 +319,51 @@ begin
   TempLines := TStringList.Create;
   ThisTag := '';
   try
-    if (Node.FType = 'ChoirStaff') or (Node.FType = 'StaffGroup') then
-      ThisTag := 'staffGrp'
-    else if Node.FType = 'Staff' then
-      ThisTag := 'staffDef';
-
-    if ThisTag <> '' then
-    begin
-      { Create attributes }
-      Inc(N);
-      ElementNum := 'n="' + IntToStr(N) + '"';
-      if Node.FID <> '' then
-        ElementID := ' xml:id="' + Node.FID + '"';
-      Attributes := ElementNum + ElementID;
-
-      if ThisTag = 'staffGrp' then
-        Attributes := Attributes + StaffGrpAttributes
-      else if ThisTag = 'staffDef' then
+    case Node.FType of
+      'ChoirStaff', 'StaffGroup' : 
       begin
+        ThisTag := 'staffGrp';
+        Attributes := XMLAttribute('xml:id', Node.FID) + StaffGrpAttributes;
+      end;
+
+      'Staff' : 
+      begin
+        ThisTag := 'staffDef';
+        Attributes := XMLAttribute('n', IntToStr(Node.FNum)) 
+                      + XMLAttribute(' xml:id', Node.FID);
+        
         { Extract staffDef info from the first music expression in the first
         child Voice }
         if (Node.FChild <> nil) and (Node.FChild.FType = 'Voice') then
         begin
-          SearchStr := Node.FChild.FContents.Substring(0, 800); { c. first 10 lines }
+          { Search c. first 10 lines }
+          SearchStr := Node.FChild.FContents.Substring(0, 800); 
+          Clef := ckTreble;
+          if SearchStr.Contains('\clef "bass"') then 
+            Clef := ckBass;
 
-          if SearchStr.Contains('\clef "treble"') then 
-            Clef := ckTreble
-          else if SearchStr.Contains('\clef "bass"') then 
-            Clef := ckBass
-          else 
-            Clef := ckTreble;
-
+          Key := kkDurus;
           if SearchStr.Contains('\CantusMollis') then
-            Key := kkMollis
-          else
-            Key := kkDurus;
+            Key := kkMollis;
 
-          if SearchStr.Contains('\MeterDuple') then
-            Meter := mkDuple
-          else if SearchStr.Contains('\MeterTriple') then
+          Meter := mkDuple;
+          if SearchStr.Contains('\MeterTriple') then
             Meter := mkTriple;
         end;
         Attributes := Attributes + StaffDefAttributes(Clef, Key, Meter);
       end;
-
-      { Create this element and its children }
-      if Node.FChild <> nil then
-        TempLines.AddStrings(InnerScoreDef(Node.FChild, InnerLines, 0));
-      TempLines := XMLElementLines(TempLines, ThisTag, Attributes);
-
-      { Create its siblings }
-      if Node.FSibling <> nil then
-        TempLines.AddStrings(InnerScoreDef(Node.FSibling, InnerLines, N));
     end;
+
+    { Create this element and its children }
+    if (ThisTag <> '') and (Node.FChild <> nil) then
+    begin
+      TempLines.AddStrings(InnerScoreDef(Node.FChild, InnerLines));
+      TempLines := XMLElementLines(TempLines, ThisTag, Attributes);
+    end;
+
+    { Create its siblings }
+    if Node.FSibling <> nil then
+      TempLines.AddStrings(InnerScoreDef(Node.FSibling, InnerLines));
     InnerLines.Assign(TempLines);
   finally
     FreeAndNil(TempLines);
@@ -349,18 +372,12 @@ begin
 end;
 
 begin
-  OutputLines := InnerScoreDef(Self, OutputLines, 0);
+  OutputLines := InnerScoreDef(Self, OutputLines);
   OutputLines := XMLElementLines(OutputLines, 'scoreDef');
   result := OutputLines;
 end;
 
 function TLyObject.ToMusic(MEILines: TStringList): TStringList;
-
-function ElementNumID(Node: TLyObject; N: Integer): String;
-begin
-  result := 'n="' + IntToStr(N) + '" corresp="' + Node.FID + '"';
-end;
-
 function InnerToMusic(Tree: TLyObject; OutputLines: TStringList; 
   N: Integer): TStringList;
 var
@@ -375,11 +392,12 @@ begin
     begin
       if Tree.FType = 'Staff' then
       begin
-        DebugLn('Staff found, N=' + IntToStr(N));
+        DebugLn('Staff found, N=' + IntToStr(Tree.FNum));
         if Tree.FChild <> nil then
         begin
           MEIMusicLines := InnerToMusic(Tree.FChild, MEIMusicLines, 1);
-          MEIMusicLines := XMLElementLines(MEIMusicLines, 'staff', ElementNumID(Tree, N));
+          MEIMusicLines := XMLElementLines(MEIMusicLines, 'staff',
+            StaffNumID(Tree)); 
         end;
       end
       else if Tree.FType = 'Voice' then
@@ -387,7 +405,8 @@ begin
         DebugLn('Voice found, N=' + IntToStr(N));
         LyMusicLines := Lines(Tree.FContents, LyMusicLines);
         MEIMusicLines := LyMeasuresToMEI(LyMusicLines, MEIMusicLines);
-        MEIMusicLines := XMLElementLines(MEIMusicLines, 'layer', ElementNumID(Tree, N));
+        MEIMusicLines := XMLElementLines(MEIMusicLines, 'layer',
+          ElementNumID(Tree, N)); 
       end
       else
       begin
