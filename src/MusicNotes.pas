@@ -7,7 +7,7 @@ unit MusicNotes;
 
 interface
 
-uses SysUtils, StrUtils, Classes, Generics.Collections, StringTools;
+uses SysUtils, StrUtils, Classes, Generics.Collections, StringTools, ScoreTree;
 
 type 
   TPitchName = (pkC, pkD, pkE, pkF, pkG, pkA, pkB, pkRest);
@@ -30,7 +30,7 @@ type
   TPitchList = class(specialize TObjectList<TPitch>)
   public
     constructor CreateFromLy(Source: String);
-    function ToMEI(OutputLines: TStringList): TStringList;
+    function ToMEI(OutputLines: TStringListAAC): TStringListAAC;
   end;
 
   TLyMeasure  = TPitchList;
@@ -64,15 +64,15 @@ type
           <note> : TPitch
 }
 
-function MakeLyStaff(ObjectTree: TLyObject): TLyStaff;
-function MakeLyMusic(ObjectTree: TLyObject): TLyMusic;
 function LyMeasureToMEI(LyInput: String): TPitchList;
-function LyMusicTextToVoice(LyInput: TStringList): TLyVoice;
+function LyMusicTextToVoice(LyInput: TStringListAAC): TLyVoice;
 
-function LyMeasureListToMEI(LyInput: TStringList; MeasureList: TLyVoice):
+{
+function LyMeasureListToMEI(LyInput: TStringListAAC; MeasureList: TLyVoice):
   TLyVoice;
 
-function LyMeasuresToMEI(LyInput, MEIOutput: TStringList): TStringList;
+function LyMeasuresToMEI(LyInput, MEIOutput: TStringListAAC): TStringListAAC;
+}
 
 implementation
 
@@ -212,21 +212,15 @@ begin
   end;
 end;
 
-function TPitchList.ToMEI(OutputLines: TStringList): TStringList;
+function TPitchList.ToMEI(OutputLines: TStringListAAC): TStringListAAC;
 var
   ThisPitch: TPitch;
-  TempLines: TStringList;
 begin
   assert(OutputLines <> nil);
-  TempLines := TStringList.Create;
-  try
-    for ThisPitch in Self do
-      TempLines.Add(ThisPitch.ToMEI);
-    OutputLines.Assign(TempLines)
-  finally
-    FreeAndNil(TempLines);
-    result := OutputLines;
-  end;
+  OutputLines.Clear;
+  for ThisPitch in Self do
+    OutputLines.Add(ThisPitch.ToMEI);
+  result := OutputLines;
 end;
 
 function LyMeasureToPitchList(LyInput: String): TPitchList;
@@ -238,7 +232,7 @@ begin
   result := PitchList;
 end;
 
-function LyMusicTextToVoice(LyInput: TStringList): TLyVoice;
+function LyMusicTextToVoice(LyInput: TStringListAAC): TLyVoice;
 var
   LyVoice: TLyVoice;
   ThisString: String;
@@ -261,8 +255,8 @@ begin
 end;
 
 
-
-function LyMeasureListToMEI(LyInput: TStringList; MeasureList: TMeasureList):
+{
+function LyMeasureListToMEI(LyInput: TStringListAAC; MeasureList: TMeasureList):
   TMeasureList; 
 var
   ThisString: String;
@@ -274,16 +268,16 @@ begin
   result := MeasureList;
 end;
 
-function LyMeasuresToMEI(LyInput, MEIOutput: TStringList): TStringList;
+function LyMeasuresToMEI(LyInput, MEIOutput: TStringListAAC): TStringListAAC;
 var
   ThisString: String;
   PitchList: TPitchList;
-  TempLines: TStringList;
+  TempLines: TStringListAAC;
   N: Integer;
 begin
   assert(LyInput <> nil);
   assert(MEIOutput <> nil);
-  TempLines := TStringList.Create;
+  TempLines := TStringListAAC.Create;
   try
     MEIOutput.Clear;
     N := 0;
@@ -308,6 +302,7 @@ begin
     result := MEIOutput;
   end;
 end;
+}
 
 { TODO find and replace all the commands that have a simple one-to-one match }
 {
@@ -339,27 +334,21 @@ end;
 constructor TLyStaff.Create(ObjectTree: TLyObject);
 var
   Node: TLyObject;
-  LyInputLines: TStringList;
 begin
   assert(ObjectTree <> nil);
   inherited Create;
-  LyInputLines := TStringList.Create;
   Node := ObjectTree.FChild;
-  while Node <> nil then
+  while Node <> nil do
   begin
     if Node.FType = 'Voice' then
     begin
-      { TODO rewrite lines and its invocations throughout to use custom class
-      constructor (see computing/pascal/lines.pas) }
-      LyInputLines := Lines(Node.FContents, LyInputLines);
-      Self.Add(LyMusicTextToVoice(LyInputLines));
+      Self.Add(LyMusicTextToVoice(TStringListAAC.Create(Node.FContents)));
     end;
     Node := Node.FSibling;
   end;
-  FreeAndNil(LyInputLines);
 end;
 
-function TLyMusic.Create(ObjectTree: TLyObject);
+constructor TLyMusic.Create(ObjectTree: TLyObject);
 begin
   assert(ObjectTree <> nil);
   inherited Create;
@@ -367,8 +356,12 @@ begin
   possibly an inner function to create staves? }
   if ObjectTree.FType = 'Staff' then
     Self.Add(TLyStaff.Create(ObjectTree.FChild));
+  {  
   if (ObjectTree.FChild <> nil) then
     LyMusic(ObjectTree.FChild));
   if (ObjectTree.FSibling <> nil) then
     Self.Add(MakeLyMusic(ObjectTree.FSibling));
+  }
+end;
+
 end.

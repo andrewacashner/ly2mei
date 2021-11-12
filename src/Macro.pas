@@ -21,19 +21,19 @@ type
     testing/debugging purposes. }
     function ToString: String; override;
     
-    { Find, parse, and save macro definitions in a stringlist. Return a macro
-      dictionary; if no valid macros are found, it will be empty. Values may
-      contain unexpanded macros.
-
-      @bold(Side effect:) The function also stores a copy of the input text
-      minus macro definitions in the second argument, another stringlist.
-
-      A macro must have the form @code(label = < arg >) or 
-      @code(label = \command < arg >) where @code(<>) are curly braces. We
-      don't accept @code(label = "string") or other formats. The label must be
-      at the beginning of a line. }
-    function ExtractMacros(InputText, OutputText: TStringList): TMacroDict;
   end;
+
+{ Find, parse, and save macro definitions in a stringlist. Return a macro
+  dictionary; if no valid macros are found, it will be empty. Values may
+  contain unexpanded macros.
+
+  The function also modifies the given stringlist to remove macro definitions.
+
+  A macro must have the form @code(label = < arg >) or 
+  @code(label = \command < arg >) where @code(<>) are curly braces. We
+  don't accept @code(label = "string") or other formats. The label must be
+  at the beginning of a line. }
+procedure ExtractMacros(SourceLines: TStringListAAC; Dict: TMacroDict);
 
 type
   { A single key-value pair used in the dictionary. }
@@ -50,7 +50,7 @@ function FindReplaceMacros(Source: String; Dict: TMacroDict): String;
 
 { Process macros in the source text and return a stringlist with all macros
   expanded, including nested ones. }
-function ExpandMacros(InputText: TStringList): TStringList;
+function ExpandMacros(SourceLines: TStringListAAC): TStringListAAC;
 
 
 implementation
@@ -97,7 +97,7 @@ begin
   result := OutputStr;
 end;
 
-function TMacroDict.ExtractMacros(InputText, OutputText: TStringList): TMacroDict;
+procedure ExtractMacros(SourceLines: TStringListAAC; Dict: TMacroDict);
 var
   InputStr, BufferStr, ThisString, NextStr, Key, Value, TestStr: String;
   LineIndex: Integer;
@@ -105,9 +105,7 @@ var
   CommandArg: TCommandArg;
   Found: Boolean;
 begin
-  assert(InputText <> nil);
-  assert(OutputText <> nil);
-
+  assert(SourceLines <> nil);
   FindOutline := TIndexPair.Create;
   CopyOutline := TIndexPair.Create;
   CommandArg := TCommandArg.Create;
@@ -116,14 +114,14 @@ begin
     CopyOutline.FStart := 0;
     CopyOutline.FValid := True;
     BufferStr := '';
-    InputStr := InputText.Text;
+    InputStr := SourceLines.Text;
     { Look for a @code(key = value) pair at the start of each line }
-    for ThisString in InputText do
+    for ThisString in SourceLines do
     begin
       Found := False;
       if ThisString.Contains('=') and not ThisString.StartsWith(' ') then
       begin
-        InputText.GetNameValue(LineIndex, Key, Value);
+        SourceLines.GetNameValue(LineIndex, Key, Value);
         if Key.IsEmpty or Value.IsEmpty then
           continue;
         
@@ -137,7 +135,7 @@ begin
         '{':
           { Value is a brace-delimited argument }
           begin
-            TestStr := ListToStringFromIndex(InputText, LineIndex);
+            TestStr := SourceLines.ToStringFromIndex(LineIndex);
             FindOutline := FindMatchedBraces(TestStr, FindOutline);
             if FindOutline.IsValid then
             begin
@@ -149,7 +147,7 @@ begin
         '\':
           { Value is a command, possibly followed by argument }
           begin
-            TestStr := ListToStringFromIndex(InputText, LineIndex);
+            TestStr := SourceLines.ToStringFromIndex(LineIndex);
             CommandArg := CommandArg.ExtractFromString(TestStr, '\', '{', '}');
             case CommandArg.FStatus of
             { Found only a command }
@@ -171,7 +169,7 @@ begin
         position to next start position to output; mark new start position }
         if Found then
         begin
-          Self.Add('\' + Key, Value);
+          Dict.Add('\' + Key, Value);
           NextStr := InputStr.Substring(CopyOutline.FStart, CopyOutline.Span);
           if not NextStr.IsNullOrWhitespace(NextStr) then
           begin
@@ -185,33 +183,31 @@ begin
     end;
     { Add remaining text after last macro definition to output }
     BufferStr := BufferStr + InputStr.Substring(CopyOutline.FStart);
-    OutputText := Lines(BufferStr, OutputText);
+    FreeAndNil(SourceLines);
+    SourceLines := TStringListAAC.Create(BufferStr);
 
   finally
     FreeAndNil(CommandArg);
     FreeAndNil(CopyOutline);
     FreeAndNil(FindOutline);
-    result := Self;
   end;
 end;
 
-function ExpandMacros(InputText: TStringList): TStringList;
+function ExpandMacros(SourceLines: TStringListAAC): TStringListAAC;
 var
   Macros: TMacroDict;
-  TempLines: TStringList;
   TempStr: String;
 begin
   Macros := TMacroDict.Create;
-  TempLines := TStringList.Create;
   try
-    Macros := Macros.ExtractMacros(InputText, TempLines);
-    TempStr := FindReplaceMacros(TempLines.Text, Macros);
-    TempLines := RemoveBlankLines(Lines(TempStr, TempLines));
-    InputText.Assign(TempLines);
+    ExtractMacros(SourceLines, Macros);
+    TempStr := FindReplaceMacros(SourceLines.Text, Macros);
+    FreeAndNil(SourceLines);
+    SourceLines := TStringListAAC.Create(TempStr);
+    SourceLines.RemoveBlankLines;
   finally
     FreeAndNil(Macros);
-    FreeAndNil(TempLines);
-    result := InputText;
+    result := SourceLines;
   end;
 end;
 

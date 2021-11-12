@@ -17,7 +17,7 @@ unit ScoreTree;
 
 interface
 
-uses SysUtils, StrUtils, Classes, StringTools, Outline, MusicNotes;
+uses SysUtils, StrUtils, Classes, StringTools, Outline;
 
 type
   { One node in a tree of Lilypond code objects that were
@@ -61,10 +61,10 @@ type
 
     { Add an MEI scoreDef element to a given stringlist, drawing the
     information from this tree. }
-    function ToScoreDef(OutputLines: TStringList): TStringList;
+    function ToScoreDef(OutputLines: TStringListAAC): TStringListAAC;
    
-    { Convert a Lilypond music expression to MEI in a stringlist }
-    function ToMusic(MEILines: TStringList): TStringList;
+//    { Convert a Lilypond music expression to MEI in a stringlist }
+//    function ToMusic(MEILines: TStringListAAC): TStringListAAC;
   end;
 
 { Build an LCRS tree of Lilypond @code(\new) objects.
@@ -306,17 +306,17 @@ begin
             + XMLAttribute(' def', '#' + Node.FID);
 end;
 
-function TLyObject.ToScoreDef(OutputLines: TStringList): TStringList;
-function InnerScoreDef(Node: TLyObject; InnerLines: TStringList): TStringList;
+function TLyObject.ToScoreDef(OutputLines: TStringListAAC): TStringListAAC;
+function InnerScoreDef(Node: TLyObject; InnerLines: TStringListAAC): TStringListAAC;
 var 
   ThisTag, SearchStr, Attributes: String;
-  TempLines: TStringList;
+  TempLines: TStringListAAC;
   Clef: ClefKind;
   Key: KeyKind;
   Meter: MeterKind;
 begin
   assert(InnerLines <> nil);
-  TempLines := TStringList.Create;
+  TempLines := TStringListAAC.Create;
   ThisTag := '';
   try
     case Node.FType of
@@ -358,7 +358,7 @@ begin
     if (ThisTag <> '') and (Node.FChild <> nil) then
     begin
       TempLines.AddStrings(InnerScoreDef(Node.FChild, InnerLines));
-      TempLines := XMLElementLines(TempLines, ThisTag, Attributes);
+      TempLines.EncloseInXML(ThisTag, Attributes);
     end;
 
     { Create its siblings }
@@ -373,20 +373,19 @@ end;
 
 begin
   OutputLines := InnerScoreDef(Self, OutputLines);
-  OutputLines := XMLElementLines(OutputLines, 'scoreDef');
+  OutputLines.EncloseInXML('scoreDef');
   result := OutputLines;
 end;
-
-function TLyObject.ToMusic(MEILines: TStringList): TStringList;
-function InnerToMusic(Tree: TLyObject; OutputLines: TStringList; 
-  N: Integer): TStringList;
+{
+function TLyObject.ToMusic(MEILines: TStringListAAC): TStringListAAC;
+function InnerToMusic(Tree: TLyObject; OutputLines: TStringListAAC; 
+  N: Integer): TStringListAAC;
 var
-  LyMusicLines, MEIMusicLines: TStringList;
+  MEIMusicLines: TStringListAAC;
 begin
   assert(OutputLines <> nil);
   DebugLn('Start InnerToMusic');
-  LyMusicLines := TStringList.Create;
-  MEIMusicLInes := TStringList.Create;
+  MEIMusicLInes := TStringListAAC.Create;
   try
     if Tree <> nil then
     begin
@@ -396,17 +395,14 @@ begin
         if Tree.FChild <> nil then
         begin
           MEIMusicLines := InnerToMusic(Tree.FChild, MEIMusicLines, 1);
-          MEIMusicLines := XMLElementLines(MEIMusicLines, 'staff',
-            StaffNumID(Tree)); 
+          MEIMusicLines.EncloseInXML('staff', StaffNumID(Tree)); 
         end;
       end
       else if Tree.FType = 'Voice' then
       begin
         DebugLn('Voice found, N=' + IntToStr(N));
-        LyMusicLines := Lines(Tree.FContents, LyMusicLines);
-        MEIMusicLines := LyMeasuresToMEI(LyMusicLines, MEIMusicLines);
-        MEIMusicLines := XMLElementLines(MEIMusicLines, 'layer',
-          ElementNumID(Tree, N)); 
+        MEIMusicLines := LyMeasuresToMei(TStringListAAC.Create(Tree.FContents));
+        MEIMusicLines.EncloseInXML('layer', ElementNumID(Tree, N)); 
       end
       else
       begin
@@ -422,17 +418,16 @@ begin
     end;
   finally
     FreeAndNil(MEIMusicLines);
-    FreeAndNil(LyMusicLines);
     result := OutputLines;
   end;
 end;
 
 begin
   MEILines := InnerToMusic(Self, MEILines, 0);
-  MEILines := XMLElementLines(MEILines, 'section');
-  result := MEILines
+  MEILines.EncloseInXML('section');
+  result := MEILines;
 end;
-
+}
 end.
 
 { START

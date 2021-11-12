@@ -23,10 +23,10 @@ type
     function IsValid: Boolean;
     
     { Read a Lilypond header and extract specific values. }
-    function FromLily(LyHeader: TStringList): THeader; 
+    function FromLily(LyHeader: TStringListAAC): THeader; 
 
     { Return a string list containing the MEI expression of the header data. }
-    function ToMEI(MEI: TStringList): TStringList;
+    function ToMEI(MEI: TStringListAAC): TStringListAAC;
   end;
 
 { Find all the quoted portions of a given string and return them as a single
@@ -34,7 +34,7 @@ type
 function ExtractQuotedStrings(Source: String): String;
 
 { Find a header definition and parse it into a @link(THeader) object. }
-function ParseHeader(InputText: TStringList; HeaderValues: THeader): THeader;
+function ParseHeader(InputText: TStringListAAC; HeaderValues: THeader): THeader;
 
 
 implementation
@@ -44,7 +44,7 @@ begin
   result := FValid;
 end;
 
-function THeader.FromLily(LyHeader: TStringList): THeader; 
+function THeader.FromLily(LyHeader: TStringListAAC): THeader; 
 var 
   ThisString, Key, Value, MarkupStr: String;
   Outline: TIndexPair;
@@ -101,7 +101,7 @@ begin
   end;
 end;
 
-function THeader.ToMEI(MEI: TStringList): TStringList;
+function THeader.ToMEI(MEI: TStringListAAC): TStringListAAC;
 begin
   assert(MEI <> nil);
   MEI.Clear;
@@ -168,11 +168,11 @@ end;
 
 function ExtractQuotedStrings(Source: String): String;
 var
-  MarkupStrings: TStringList;
+  MarkupStrings: TStringListAAC;
   Markup: String;
   Outline: TIndexPair;
 begin
-  MarkupStrings := TStringList.Create;
+  MarkupStrings := TStringListAAC.Create;
   Outline := TIndexPair.Create;
   try
     while Source.CountChar('"') > 1 do
@@ -198,25 +198,24 @@ begin
   end;
 end;
 
-function ParseHeader(InputText: TStringList; HeaderValues: THeader): THeader;
+function ParseHeader(InputText: TStringListAAC; HeaderValues: THeader): THeader;
 var
-  LyHeader: TStringList;
   SearchStr: String;
   Outline: TIndexPair;
+  LyInputLines: TStringListAAC;
 begin
-  LyHeader := TStringList.Create;
   Outline := TIndexPair.Create;
   HeaderValues.FValid := False;
   try
     SearchStr := LyArg(InputText.Text, '\header');
     if not SearchStr.IsEmpty then
     begin
-      LyHeader := Lines(SearchStr, LyHeader);
-      HeaderValues := HeaderValues.FromLily(LyHeader);
+      LyInputLines := TStringListAAC.Create(SearchStr);
+        HeaderValues := HeaderValues.FromLily(LyInputLines);
     end;
   finally
+    FreeAndNil(LyInputLines);
     FreeAndNil(Outline);
-    FreeAndNil(LyHeader);
     result := HeaderValues;
   end;
 end;

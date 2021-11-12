@@ -12,17 +12,17 @@ const
   XMLversion = '<?xml version="1.0" encoding="UTF-8"?>';
   MeiNamespace = 'xmlns="http://www.music-encoding.org/ns/mei" meiVersion="4.0.0"';
 var
-  InputText, OutputText, MEIHeaderLines, MEIScoreLines, MEIMusicLines: TStringList;
+  InputLines, OutputLines, MEIHeaderLines, MEIScoreLines, MEIMusicLines: TStringListAAC;
   ScoreInput: String;
   HeaderValues: THeader;
   CommandArg: TCommandArg;
   LyObjectTree: TLyObject;
 begin
-  InputText      := TStringList.Create;
-  OutputText     := TStringList.Create;
-  MEIHeaderLines := TStringList.Create;
-  MEIScoreLines  := TStringList.Create;
-  MEIMusicLines  := TStringList.Create;
+  InputLines     := TStringListAAC.Create;
+  OutputLines    := TStringListAAC.Create;
+  MEIHeaderLines := TStringListAAC.Create;
+  MEIScoreLines  := TStringListAAC.Create;
+  MEIMusicLines  := TStringListAAC.Create;
   HeaderValues   := THeader.Create;
   CommandArg     := TCommandArg.Create;
   LyObjectTree   := nil;
@@ -34,19 +34,19 @@ begin
       exit;
     end
     else
-      InputText.LoadFromFile(ParamStr(1));
+      InputLines.LoadFromFile(ParamStr(1));
 
     { Process macros: Find and cut defs, expand macro commands. }
-    InputText := RemoveComments(InputText);
-    InputText := RemoveBlankLines(InputText);
-    InputText := ExpandMacros(InputText);
+    InputLines.RemoveComments;
+    InputLines.RemoveBlankLines;
+    InputLines := ExpandMacros(InputLines);
 
     { Process header, convert to MEI. }
-    HeaderValues := ParseHeader(InputText, HeaderValues);
+    HeaderValues := ParseHeader(InputLines, HeaderValues);
     MEIHeaderLines := HeaderValues.ToMEI(MEIHeaderLines);
 
     { Process score, convert to MEI. }
-    ScoreInput := LyArg(InputText.Text, '\score');
+    ScoreInput := LyArg(InputLines.Text, '\score');
     if not ScoreInput.IsEmpty then
     begin
       LyObjectTree := FindLyNewTree(ScoreInput, LyObjectTree);
@@ -54,25 +54,25 @@ begin
       if LyObjectTree <> nil then
       begin
         MEIScoreLines := LyObjectTree.ToScoreDef(MEIScoreLines);
-        MEIMusicLines := LyObjectTree.ToMusic(MEIMusicLines);
+        // MEIMusicLines := LyObjectTree.ToMusic(MEIMusicLines);
         MEIScoreLines.AddStrings(MEIMusicLines);
       end;
     end;
-    MEIScoreLines := XMLElementLines(MEIScoreLines, 'score');
-    MEIScoreLines := XMLElementLines(MEIScoreLines, 'mdiv');
-    MEIScoreLines := XMLElementLines(MEIScoreLines, 'body');
-    MEIScoreLines := XMLElementLines(MEIScoreLines, 'music');
+    MEIScoreLines.EncloseInXML('score');
+    MEIScoreLines.EncloseInXML('mdiv');
+    MEIScoreLines.EncloseInXML('body');
+    MEIScoreLines.EncloseInXML('music');
 
 
     { Write output. }
-    OutputText.Clear;
-    OutputText.Assign(MEIHeaderLines);
-    OutputText.AddStrings(MEIScoreLines);
+    OutputLines.Clear;
+    OutputLines.Assign(MEIHeaderLines);
+    OutputLines.AddStrings(MEIScoreLines);
 
-    OutputText := XMLElementLines(OutputText, 'mei', MEINamespace);
-    OutputText.Insert(0, XMLversion);
+    OutputLines.EncloseInXML('mei', MEINamespace);
+    OutputLines.Insert(0, XMLversion);
 
-    WriteLn(OutputText.Text);
+    WriteLn(OutputLines.Text);
 
   finally
     FreeAndNil(LyObjectTree);
@@ -81,8 +81,8 @@ begin
     FreeAndNil(MEIMusicLines);
     FreeAndNil(MEIScoreLines);
     FreeAndNil(MEIHeaderLines);
-    FreeAndNil(OutputText);
-    FreeAndNil(InputText);
+    FreeAndNil(OutputLines);
+    FreeAndNil(InputLines);
   end;
 end.
 

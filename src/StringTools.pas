@@ -24,31 +24,36 @@ function IsASingleQuotedString(Source: String): Boolean;
 indentation. }
 function IndentStr(Degree: Integer = 1): String;
 
-{ Split a string at newlines to make a @code(TStringList) }
-function Lines(InputStr: String; OutputList: TStringList): TStringList;
+type 
+  { Custom string list }
+  TStringListAAC = class(TStringList)
+  public
+    constructor Create;
 
-{ Return a string consisting of the text of a stringlist starting at a given
-  index. }
-function ListToStringFromIndex(List: TStringList; Index: Integer): String;
+    { Create a string list from a string by splitting at newlines }
+    constructor Create(InputStr: String);
 
-{ Modify a stringlist to strip out everything between a comment char and the
-next newline. }
-function RemoveComments(InputLines: TStringList): TStringList;
+    { Return a string consisting of the text of a stringlist starting at a
+      given index. }
+    function ToStringFromIndex(Index: Integer): String;
+    
+    { Modify a stringlist to strip out everything between a comment char and
+      the next newline. }
+    procedure RemoveComments;
+    
+    { Modify a stringlist to delete lines that are empty or contain only
+      whitespace. }
+    procedure RemoveBlankLines;
 
-{ Modify a stringlist to delete lines that are empty or contain only
-whitespace. }
-function RemoveBlankLines(InputLines: TStringList): TStringList;
+    { Enclose list contents inside a given XML tag and optional attributes }
+    procedure EncloseInXML(
+      { Text of XML tag }
+      Tag: String;
+      { @bold(Optional): Attributes to be included in opening tag }
+      Attributes: String = '');
+  end;
 
 
-{ Modify a given stringlist: enclose the list contents 
-  inside a given XML tag and optional attributes }
-function XMLElementLines(
-  { Text to be enclosed in XML element }
-  InputLines: TStringList;
-  { Text of XML tag }
-  Tag: String;
-  { @bold(Optional): Attributes to be included in opening tag }
-  Attributes: String = ''): TStringList; 
 
 
 implementation
@@ -84,85 +89,59 @@ begin
   result := StringOfChar(' ', 2 * Degree);
 end;
 
-function Lines(InputStr: String; OutputList: TStringList): TStringList;
+constructor TStringListAAC.Create;
 begin
-  OutputList.Clear;
-  OutputList.Delimiter := LineEnding;
-  OutputList.StrictDelimiter := True;
-  OutputList.DelimitedText := InputStr;
-  result := OutputList;
+  inherited Create;
 end;
 
-function ListToStringFromIndex(List: TStringList; Index: Integer): String;
+constructor TStringListAAC.Create(InputStr: String);
 begin
-    result := List.Text.Substring(List.Text.IndexOf(List[Index]));
+  Delimiter := LineEnding;
+  StrictDelimiter := True;
+  DelimitedText := InputStr;
 end;
 
-function RemoveComments(InputLines: TStringList): TStringList;
+function TStringListAAC.ToStringFromIndex(Index: Integer): String;
+begin
+  result := Self.Text.Substring(Self.Text.IndexOf(Self[Index]));
+end;
+
+procedure TStringListAAC.RemoveComments;
 var
   ThisString: String;
-  TempLines: TStringList;
+  Index: Integer;
 begin
-  assert(InputLines <> nil);
-  TempLines := TStringList.Create;
-  try
-    for ThisString in InputLines do
-    begin
-      if not ThisString.StartsWith('%') then
-        TempLines.Add(StringDropAfter(ThisString, '%'));
-    end;
-    InputLines.Assign(TempLines);
-  finally
-    FreeAndNil(TempLines);
-    result := InputLines;
+  for Index := 0 to Count - 1 do 
+  begin
+    ThisString := Self[Index];
+    if not ThisString.StartsWith('%') then
+      Self[Index] := ThisString.Remove(ThisString.IndexOf('%'));
   end;
 end;
 
-function RemoveBlankLines(InputLines: TStringList): TStringList;
+procedure TStringListAAC.RemoveBlankLines;
 var 
-  ThisString: String;
-  TempLines: TStringList;
+  Index: Integer;
 begin
-  assert(InputLines <> nil);
-  TempLines := TStringList.Create;
-  try
-    for ThisString in InputLines do
-    begin
-      if not ThisString.Trim.IsEmpty then
-        TempLines.Add(ThisString);
-    end;
-    InputLines.Assign(TempLines);
-  finally
-    FreeAndNil(TempLines);
-    result := InputLines;
-  end;
+  for Index := Count - 1 downto 0 do
+    if Self[Index].Trim.IsEmpty then
+      Self.Delete(Index);
 end;
 
-function XMLElementLines(InputLines: TStringList; Tag: String; 
-  Attributes: String = ''): TStringList;
+procedure TStringListAAC.EncloseInXML(Tag: String; Attributes: String = '');
 var
   HeadTag: String;
-  ThisLine: String;
-  OutputLines: TStringList;
+  Index: Integer;
 begin
-  assert(InputLines <> nil);
-  OutputLines := TStringList.Create;
-  try
-    if Attributes = '' then
-      HeadTag := Tag
-    else 
-      HeadTag := Tag + ' ' + Attributes;
-
-    OutputLines.Add('<' + HeadTag + '>');
-    for ThisLine in InputLines do
-      OutputLines.Add(IndentStr + ThisLine);
-    OutputLines.Add('</' + Tag + '>');
-
-    InputLines.Assign(OutputLines);
-  finally
-    FreeAndNil(OutputLines);
-    result := InputLines;
-  end;
+  HeadTag := Tag;
+  if Attributes <> '' then
+    HeadTag := Tag + ' ' + Attributes;
+  
+  for Index := Count -1 downto 0 do
+    Self[Index] := IndentStr + Self[Index];
+ 
+  Self.Insert(0, '<' + HeadTag + '>');
+  Self.Add('</' + Tag + '>');
 end;
 
 end.
