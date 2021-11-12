@@ -436,74 +436,9 @@ end;
 end.
 
 { START
-TODO this is a copy of the above function,
-which generates XML output directly from the whole LyObject tree.
-Instead we need to create a list (dictionary?) of TMeasureList objects,
-one for each voice, and then we need to pivot (see computing/pascal/pivot.pas) to get a list of voices-per-measure instead of measures-per-voice.
-Then we need to render to XML, somehow capturing the staff and layer information.
-
-Also TODO
-We are starting over staff numbering at each new parent, but I think MEI wants consecutive staff numbers regardless of staff groups. ?
+TODO we need to create a list (dictionary?) of TMeasureList objects, one for
+each voice, and then we need to pivot (see computing/pascal/pivot.pas) to get
+a list of voices-per-measure instead of measures-per-voice.  Then we need to
+render to XML, somehow capturing the staff and layer information.
 }
-{
 
-function TLyObject.ToMeasureList(MEILines: TStringList; Measures:
-  TMeasureList): TMeasureList;
-
-function ElementNumID(Node: TLyObject; N: Integer): String;
-begin
-  result := 'n="' + IntToStr(N) + '" corresp="' + Node.FID + '"';
-end;
-function InnerToMusic(Tree: TLyObject; OutputLines: TStringList; 
-  N: Integer): TStringList;
-var
-  LyMusicLines, MEIMusicLines: TStringList;
-begin
-  assert(OutputLines <> nil);
-  DebugLn('Start InnerToMusic');
-  LyMusicLines := TStringList.Create;
-  MEIMusicLInes := TStringList.Create;
-  try
-    if Tree <> nil then
-    begin
-      if Tree.FType = 'Staff' then
-      begin
-        DebugLn('Staff found, N=' + IntToStr(N));
-        if Tree.FChild <> nil then
-        begin
-          MEIMusicLines := InnerToMusic(Tree.FChild, MEIMusicLines, 1);
-          MEIMusicLines := XMLElementLines(MEIMusicLines, 'staff', ElementNumID(Tree, N));
-        end;
-      end
-      else if Tree.FType = 'Voice' then
-      begin
-        DebugLn('Voice found, N=' + IntToStr(N));
-        LyMusicLines := Lines(Tree.FContents, LyMusicLines);
-        MEIMusicLines := LyMeasuresToMEI(LyMusicLines, MEIMusicLines);
-        MEIMusicLines := XMLElementLines(MEIMusicLines, 'layer', ElementNumID(Tree, N));
-      end
-      else
-      begin
-        DebugLn('Something else found, FType="' + Tree.FType + '"');
-        if Tree.FChild <> nil then
-          MEIMusicLines := InnerToMusic(Tree.FChild, MEIMusicLines, 1);
-      end;
-
-      if Tree.FSibling <> nil then
-        MEIMusicLines := InnerToMusic(Tree.FSibling, MEIMusicLines, N + 1);
-
-      OutputLines.AddStrings(MEIMusicLines);
-    end;
-  finally
-    FreeAndNil(MEIMusicLines);
-    FreeAndNil(LyMusicLines);
-    result := OutputLines;
-  end;
-end;
-
-begin
-  MEILines := InnerToMusic(Self, MEILines, 0);
-  MEILines := XMLElementLines(MEILines, 'section');
-  result := MEILines
-end;
-}

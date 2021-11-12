@@ -33,13 +33,44 @@ type
     function ToMEI(OutputLines: TStringList): TStringList;
   end;
 
-type 
-  TMeasureList = specialize TObjectList<TPitchList>;
+  TLyMeasure  = TPitchList;
+  TLyVoice    = specialize TObjectList<TPitchList>;
+  
+  TLyStaff    = class(specialize TObjectList<TLyVoice>)
+  public
+    constructor Create(ObjectTree: TLyObject);
+  end;
 
+  TLyMusic    = class(specialize TObjectList<TLyStaff>)
+  public
+    constructor Create(ObjectTree: TLyObject);
+  end;
+
+  TMEILayer   = specialize TObjectList<TPitchList>;
+  TMEIStaff   = specialize TObjectList<TMEILayer>;
+  TMEIMeasure = specialize TObjectList<TMEIStaff>;
+  TMEIMusic   = specialize TObjectList<TMEIMeasure>;
+
+{
+  ly start:
+    Staff     : TVoiceList
+    Voice     : TMeasureList
+    | ... \n  : TPitchList
+    c'4       : TPitch
+  mei end:
+    <measure> : TStaffList
+      <staff> : TVoiceList
+        <layer> : TPitchList
+          <note> : TPitch
+}
+
+function MakeLyStaff(ObjectTree: TLyObject): TLyStaff;
+function MakeLyMusic(ObjectTree: TLyObject): TLyMusic;
 function LyMeasureToMEI(LyInput: String): TPitchList;
+function LyMusicTextToVoice(LyInput: TStringList): TLyVoice;
 
-function LyMeasureListToMEI(LyInput: TStringList; MeasureList: TMeasureList):
-  TMeasureList;
+function LyMeasureListToMEI(LyInput: TStringList; MeasureList: TLyVoice):
+  TLyVoice;
 
 function LyMeasuresToMEI(LyInput, MEIOutput: TStringList): TStringList;
 
@@ -198,6 +229,28 @@ begin
   end;
 end;
 
+function LyMeasureToPitchList(LyInput: String): TPitchList;
+var
+  PitchList: TPitchList;
+begin
+  if LyInput.TrimLeft.StartsWith('|') and (LyInput.CountChar('|') = 1) then
+    PitchList := TPitchList.CreateFromLy(LyInput);
+  result := PitchList;
+end;
+
+function LyMusicTextToVoice(LyInput: TStringList): TLyVoice;
+var
+  LyVoice: TLyVoice;
+  ThisString: String;
+begin
+  assert(LyInput <> nil);
+  LyVoice := TLyVoice.Create;
+  for ThisString in LyInput do
+    LyVoice.Add(LyMeasureToPitchList(ThisString));
+  result := LyVoice;
+end;
+
+
 function LyMeasureToMEI(LyInput: String): TPitchList;
 var
   PitchList: TPitchList;
@@ -206,6 +259,8 @@ begin
     PitchList := TPitchList.CreateFromLy(LyInput);
   result := PitchList;
 end;
+
+
 
 function LyMeasureListToMEI(LyInput: TStringList; MeasureList: TMeasureList):
   TMeasureList; 
@@ -281,5 +336,39 @@ begin
 end;
 }
 
+constructor TLyStaff.Create(ObjectTree: TLyObject);
+var
+  Node: TLyObject;
+  LyInputLines: TStringList;
+begin
+  assert(ObjectTree <> nil);
+  inherited Create;
+  LyInputLines := TStringList.Create;
+  Node := ObjectTree.FChild;
+  while Node <> nil then
+  begin
+    if Node.FType = 'Voice' then
+    begin
+      { TODO rewrite lines and its invocations throughout to use custom class
+      constructor (see computing/pascal/lines.pas) }
+      LyInputLines := Lines(Node.FContents, LyInputLines);
+      Self.Add(LyMusicTextToVoice(LyInputLines));
+    end;
+    Node := Node.FSibling;
+  end;
+  FreeAndNil(LyInputLines);
+end;
 
+function TLyMusic.Create(ObjectTree: TLyObject);
+begin
+  assert(ObjectTree <> nil);
+  inherited Create;
+  { TODO this doesn't work as recursive any more:
+  possibly an inner function to create staves? }
+  if ObjectTree.FType = 'Staff' then
+    Self.Add(TLyStaff.Create(ObjectTree.FChild));
+  if (ObjectTree.FChild <> nil) then
+    LyMusic(ObjectTree.FChild));
+  if (ObjectTree.FSibling <> nil) then
+    Self.Add(MakeLyMusic(ObjectTree.FSibling));
 end.
