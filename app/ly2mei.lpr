@@ -5,19 +5,14 @@
 }
 program ly2mei(input, output, stderr);
 
-uses SysUtils, Classes, StringTools, Outline, Macro, Header, ScoreTree;
+uses SysUtils, Classes, StringTools, Macro, Header, ScoreTree;
 
 { MAIN }
-const
-  XMLversion = '<?xml version="1.0" encoding="UTF-8"?>';
-  MeiNamespace = 'xmlns="http://www.music-encoding.org/ns/mei" meiVersion="4.0.0"';
 var
-  InputLines, OutputLines, MEIScoreLines: TStringListAAC;
-  ScoreInput: String;
-  HeaderValues: THeader;
-  LyObjectTree: TLyObject = nil;
+  InputLines, HeaderLines, ScoreLines, OutputLines: TStringListAAC;
 begin
-  InputLines     := TStringListAAC.Create;
+  InputLines  := TStringListAAC.Create;
+  OutputLines := TStringListAAC.Create;
   try
     if ParamCount <> 1 then
     begin
@@ -27,44 +22,17 @@ begin
     else
       InputLines.LoadFromFile(ParamStr(1));
 
-    { Process macros: Find and cut defs, expand macro commands. }
-    InputLines.RemoveComments;
-    InputLines.RemoveBlankLines;
-    InputLines := ExpandMacros(InputLines);
+    InputLines  := ExpandMacros(InputLines);
+    HeaderLines := CreateMEIHeader(InputLines);
+    ScoreLines  := CreateMEIScore(InputLines);
 
-    { Process header, convert to MEI. }
-    HeaderValues := ParseHeader(InputLines);
-    OutputLines := NewMEIFromHeader(HeaderValues);
-
-    { Process score, convert to MEI. }
-    ScoreInput := LyArg(InputLines.Text, '\score');
-    if not ScoreInput.IsEmpty then
-    begin
-      LyObjectTree := FindLyNewTree(ScoreInput, LyObjectTree);
-      LyObjectTree := SetStaffNums(LyObjectTree);
-      if LyObjectTree <> nil then
-      begin
-        MEIScoreLines := LyObjectTree.ToNewMEIScoreDef;
-        // MEIMusicLines := LyObjectTree.ToMusic(MEIMusicLines);
-        // MEIScoreLines.AddStrings(MEIMusicLines);
-      end;
-    end;
-    MEIScoreLines.EncloseInXML('score');
-    MEIScoreLines.EncloseInXML('mdiv');
-    MEIScoreLines.EncloseInXML('body');
-    MEIScoreLines.EncloseInXML('music');
-
-
-    { Write output. }
-    OutputLines.AddStrings(MEIScoreLines);
-    OutputLines.EncloseInXML('mei', MEINamespace);
-    OutputLines.Insert(0, XMLversion);
-
-    WriteLn(OutputLines.Text);
+    OutputLines.AddStrings(HeaderLines);
+    OutputLines.AddStrings(ScoreLines);
+    Write(OutputLines.MEIDocStr);
 
   finally
-    FreeAndNil(LyObjectTree);
-    FreeAndNil(MEIScoreLines);
+    FreeAndNil(ScoreLines);
+    FreeAndNil(HeaderLines);
     FreeAndNil(OutputLines);
     FreeAndNil(InputLines);
   end;

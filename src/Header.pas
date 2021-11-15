@@ -23,8 +23,10 @@ type
 function NewMEIFromHeader(Header: THeader): TStringListAAC;
 
 { Find a header definition and parse it into a @link(THeader) record. }
-function ParseHeader(InputText: TStringListAAC): THeader;
+function ParseHeader(InputLines: TStringListAAC): THeader;
 
+{ All together: Parse Lilypond output to MEI header }
+function CreateMEIHeader(SourceLines: TStringListAAC): TStringListAAC;
 
 implementation
 
@@ -96,7 +98,7 @@ begin
   result := MEI;
 end;
 
-function ParseHeader(InputText: TStringListAAC): THeader;
+function ParseHeader(InputLines: TStringListAAC): THeader;
 var
   Header: THeader;
   LyHeaderLines: TStringListAAC;
@@ -104,7 +106,7 @@ var
   LineIndex: Integer;
   FoundThis, FoundAny: Boolean;
 begin
-  SearchStr := LyArg(InputText.Text, '\header');
+  SearchStr := LyArg(InputLines.Text, '\header');
   if not SearchStr.IsEmpty then
   begin
     LyHeaderLines := TStringListAAC.Create(SearchStr);
@@ -153,6 +155,11 @@ begin
   end;
   FreeAndNil(LyHeaderLines);
   result := Header;
+end;
+
+function CreateMEIHeader(SourceLines: TStringListAAC): TStringListAAC;
+begin
+  result := NewMEIFromHeader(ParseHeader(SourceLines));
 end;
 
 end.

@@ -55,6 +55,10 @@ type
     { Follow the right siblings all the way to the end; return the last one. }
     function LastSibling: TLyObject;
 
+    { Number the Staff objects consecutively, regardless of whether they are
+      children of a StaffGroup or ChoirStaff }
+    procedure SetStaffNums;
+
     { Return a string with a DIY XMl representation of the object tree, for
       testing/debugging. }
     function ToString: String; override;
@@ -85,8 +89,9 @@ type
 
 function FindLyNewTree(Source: String; Tree: TLyObject): TLyObject;
 
-function SetStaffNums(Tree: TLyObject; StaffNum: Integer = 0): TLyObject;
-
+{ All together: Parse a Lilypond \score expression and create an MEI music
+  element including the scoreDef and music notes }
+function CreateMEIScore(SourceLines: TStringListAAC): TStringListAAC;
 
 implementation
 
@@ -236,7 +241,10 @@ begin
   result := Tree;
 end;
 
-function SetStaffNums(Tree: TLyObject; StaffNum: Integer = 0): TLyObject;
+procedure TLyObject.SetStaffNums;
+var
+  StaffNum: Integer = 0;
+
 function InnerStaffNums(Node: TLyObject): TLyObject;
 begin
   if Node <> nil then
@@ -255,7 +263,7 @@ begin
 end;
 
 begin
-  result := InnerStaffNums(Tree);
+  InnerStaffNums(Self);
 end;
 
 type
@@ -373,6 +381,7 @@ begin
   MEI.EncloseInXML('scoreDef');
   result := MEI;
 end;
+
 {
 function TLyObject.ToMusic(MEILines: TStringListAAC): TStringListAAC;
 function InnerToMusic(Tree: TLyObject; OutputLines: TStringListAAC; 
@@ -425,7 +434,6 @@ begin
   result := MEILines;
 end;
 }
-end.
 
 { START
 TODO we need to create a list (dictionary?) of TMeasureList objects, one for
@@ -434,3 +442,37 @@ a list of voices-per-measure instead of measures-per-voice.  Then we need to
 render to XML, somehow capturing the staff and layer information.
 }
 
+function CreateMEIScore(SourceLines: TStringListAAC): TStringListAAC;
+var
+  LyScoreStr: String;
+  LyObjectTree: TLyObject = nil;
+  MEIScoreLines: TStringListAAC = nil;
+begin
+  LyScoreStr := LyArg(SourceLines.Text, '\score');
+  if not LyScoreStr.IsEmpty then
+  begin
+    LyObjectTree := FindLyNewTree(LyScoreStr, LyObjectTree);
+    if LyObjectTree <> nil then
+    begin
+      LyObjectTree.SetStaffNums;
+      MEIScoreLines := LyObjectTree.ToNewMEIScoreDef;
+      { process music }
+      { MEIMusicLines := LyObjectTree.ToMusic(MEIMusicLines);
+        MEIScoreLines.AddStrings(MEIMusicLines);
+      }
+    end;
+  end;
+  
+  if MEIScoreLines = nil then
+    MEIScoreLines := TStringListAAC.Create;
+
+  MEIScoreLines.EncloseInXML('score');
+  MEIScoreLines.EncloseInXML('mdiv');
+  MEIScoreLines.EncloseInXML('body');
+  MEIScoreLines.EncloseInXML('music');
+
+  FreeAndNIl(LyObjectTree);
+  result := MEIScoreLines;
+end;
+
+end.

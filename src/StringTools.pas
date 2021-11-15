@@ -51,9 +51,12 @@ type
       Tag: String;
       { @bold(Optional): Attributes to be included in opening tag }
       Attributes: String = '');
+
+    function XMLDocStr(RootElement: String = 'xml';
+      RootAttributes: String = ''): String;
+
+    function MEIDocStr: String;
   end;
-
-
 
 
 implementation
@@ -143,6 +146,23 @@ begin
  
   Self.Insert(0, '<' + HeadTag + '>');
   Self.Add('</' + Tag + '>');
+end;
+
+function TStringListAAC.XMLDocStr(RootElement: String = 'xml';
+  RootAttributes: String = ''): String;
+const
+  XMLversion = '<?xml version="1.0" encoding="UTF-8"?>';
+begin
+  Self.EncloseInXML(RootElement, RootAttributes);
+  Self.Insert(0, XMLversion);
+  result := Self.Text;
+end;
+
+function TStringListAAC.MEIDocStr: String;
+const
+  MeiNamespace = 'xmlns="http://www.music-encoding.org/ns/mei" meiVersion="4.0.0"';
+begin
+  result := Self.XMLDocStr('mei', MEINamespace);
 end;
 
 end.

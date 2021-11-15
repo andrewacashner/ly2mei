@@ -48,8 +48,8 @@ type
 function FindReplaceMacros(SourceLines: TStringListAAC; Dict: TMacroDict):
   TStringListAAC; 
 
-{ Process macros in the source text and return a stringlist with all macros
-  expanded, including nested ones. }
+{ Process macros in the source text: modify the stringlist by expanding all
+  macros, including nested ones. }
 function ExpandMacros(SourceLines: TStringListAAC): TStringListAAC;
 
 
@@ -198,6 +198,7 @@ begin
   assert(SourceLines <> nil);
   Macros := TMacroDict.Create;
   try
+    SourceLines.RemoveComments;
     ExtractMacros(SourceLines, Macros);
     SourceLines := FindReplaceMacros(SourceLines, Macros);
     SourceLines.RemoveBlankLines;
