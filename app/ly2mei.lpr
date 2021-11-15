@@ -5,7 +5,7 @@
 }
 program ly2mei(input, output, stderr);
 
-uses SysUtils, Classes, StringTools, Macro, Header, ScoreTree;
+uses SysUtils, Classes, StringTools, Macro, Header, MusicNotes;
 
 { MAIN }
 var

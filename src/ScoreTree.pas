@@ -89,9 +89,6 @@ type
 
 function FindLyNewTree(Source: String; Tree: TLyObject): TLyObject;
 
-{ All together: Parse a Lilypond \score expression and create an MEI music
-  element including the scoreDef and music notes }
-function CreateMEIScore(SourceLines: TStringListAAC): TStringListAAC;
 
 implementation
 
@@ -441,38 +438,5 @@ each voice, and then we need to pivot (see computing/pascal/pivot.pas) to get
 a list of voices-per-measure instead of measures-per-voice.  Then we need to
 render to XML, somehow capturing the staff and layer information.
 }
-
-function CreateMEIScore(SourceLines: TStringListAAC): TStringListAAC;
-var
-  LyScoreStr: String;
-  LyObjectTree: TLyObject = nil;
-  MEIScoreLines: TStringListAAC = nil;
-begin
-  LyScoreStr := LyArg(SourceLines.Text, '\score');
-  if not LyScoreStr.IsEmpty then
-  begin
-    LyObjectTree := FindLyNewTree(LyScoreStr, LyObjectTree);
-    if LyObjectTree <> nil then
-    begin
-      LyObjectTree.SetStaffNums;
-      MEIScoreLines := LyObjectTree.ToNewMEIScoreDef;
-      { process music }
-      { MEIMusicLines := LyObjectTree.ToMusic(MEIMusicLines);
-        MEIScoreLines.AddStrings(MEIMusicLines);
-      }
-    end;
-  end;
-  
-  if MEIScoreLines = nil then
-    MEIScoreLines := TStringListAAC.Create;
-
-  MEIScoreLines.EncloseInXML('score');
-  MEIScoreLines.EncloseInXML('mdiv');
-  MEIScoreLines.EncloseInXML('body');
-  MEIScoreLines.EncloseInXML('music');
-
-  FreeAndNIl(LyObjectTree);
-  result := MEIScoreLines;
-end;
 
 end.
