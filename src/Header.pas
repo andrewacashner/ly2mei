@@ -6,61 +6,116 @@ unit Header;
 
 interface
 
-uses SysUtils, StrUtils, Classes, StringTools, Outline;
+uses SysUtils, Classes, StringTools, Outline;
 
-{ This class stores all the fields required in the Lilypond source file and
+const ProgramName: String = 'ly2mei';
+
+{ This record stores all the fields required in the Lilypond source file and
   can write them to MEI.  }
 type
-  THeader = class
-  private
-    const
-      FProgramName: String = 'ly2mei';
-    var
-      FTitle, FSubtitle, FComposer, FDates, 
-      FPoet, FEditor, FCopyright, FSource: String;
-      FValid: Boolean;
-  public
-    function IsValid: Boolean;
-    
-    { Read a Lilypond header and extract specific values. }
-    function FromLily(LyHeader: TStringListAAC): THeader; 
-
-    { Return a string list containing the MEI expression of the header data. }
-    function ToMEI(MEI: TStringListAAC): TStringListAAC;
+  THeader = record
+    FTitle, FSubtitle, FComposer, FDates, 
+    FPoet, FEditor, FCopyright, FSource: String;
+    FValid: Boolean;
   end;
 
-{ Find all the quoted portions of a given string and return them as a single
-  string, delimited by spaces. }
-function ExtractQuotedStrings(Source: String): String;
+{ Return a new string list containing the MEI expression of the header data. }
+function NewMEIFromHeader(Header: THeader): TStringListAAC;
 
-{ Find a header definition and parse it into a @link(THeader) object. }
-function ParseHeader(InputText: TStringListAAC; HeaderValues: THeader): THeader;
+{ Find a header definition and parse it into a @link(THeader) record. }
+function ParseHeader(InputText: TStringListAAC): THeader;
 
 
 implementation
 
-function THeader.IsValid: Boolean;
+function NewMEIFromHeader(Header: THeader): TStringListAAC;
+var
+  MEI: TStringListAAC;
 begin
-  result := FValid;
+  MEI := TStringListAAC.Create;
+  if not Header.FValid then
+  begin
+    MEI.Add('<meiHead>');
+    MEI.Add('</meiHead>');
+    result := MEI;
+    exit;
+  end;
+
+  with Header do
+  begin
+    MEI.Add('<meiHead>');
+    MEI.Add(IndentStr(1) + '<fileDesc>');
+    MEI.Add(IndentStr(2) + '<titleStmt>');
+    MEI.Add(IndentStr(3) + '<title type="main">' + FTitle + '</title>');
+
+    if not FSubtitle.IsEmpty then
+      MEI.Add(IndentStr(3) + '<title type="subtitle">' + FSubtitle + '</title>');
+
+    MEI.Add(IndentStr(3) + '<respStmt>');
+
+    if not FDates.IsEmpty then
+      MEI.Add(IndentStr(4) + '<composer>' + FComposer + ' ' + FDates + '</composer>')
+    else
+      MEI.Add(IndentStr(4) + '<composer>' + FComposer + '</composer>');
+
+    if not FPoet.IsEmpty then
+      MEI.Add(IndentStr(4) + '<lyricist>' + FPoet + '</lyricist>');
+
+    if not FEditor.IsEmpty then
+      MEI.Add(IndentStr(4) + '<editor>' + FEditor + '</editor>');
+
+    MEI.Add(IndentStr(3) + '</respStmt>');
+    MEI.Add(IndentStr(2) + '</titleStmt>');
+    
+    if not FEditor.IsEmpty then
+    begin
+      MEI.Add(IndentStr(2) + '<editionStmt>');
+      MEI.Add(IndentStr(3) + '<respStmt><p>Edited by ' + FEditor + '</p></respStmt>');
+      MEI.Add(IndentStr(2) + '</editionStmt>');
+    end;
+
+    if not FCopyright.IsEmpty then
+    begin
+      MEI.Add(IndentStr(2) + '<pubStmt>');
+      MEI.Add(IndentStr(3) + '<availability><p>' + FCopyright + '</p></availability>');
+      MEI.Add(IndentStr(2) + '</pubStmt>');
+    end;
+
+    MEI.Add(IndentStr(1) + '</fileDesc>');
+    MEI.Add(IndentStr(1) + '<encodingDesc>');
+    MEI.Add(IndentStr(2) + '<appInfo>');
+    MEI.Add(IndentStr(3) + '<application><name>' + ProgramName + '</name></application>');
+    MEI.Add(IndentStr(2) + '</appInfo>');
+    MEI.Add(IndentStr(1) + '</encodingDesc>');
+    
+    if not FSource.IsEmpty then
+      MEI.Add(IndentStr(1) + '<sourceDesc><source>' + FSource + '</source></sourceDesc>');
+
+    MEI.Add('</meiHead>'); 
+  end;
+  result := MEI;
 end;
 
-function THeader.FromLily(LyHeader: TStringListAAC): THeader; 
-var 
-  ThisString, Key, Value, MarkupStr: String;
-  Outline: TIndexPair;
+function ParseHeader(InputText: TStringListAAC): THeader;
+var
+  Header: THeader;
+  LyHeaderLines: TStringListAAC;
+  SearchStr, ThisString, Key, Value, MarkupStr: String;
   LineIndex: Integer;
   FoundThis, FoundAny: Boolean;
 begin
-  Outline := TIndexPair.Create;
-  try
+  SearchStr := LyArg(InputText.Text, '\header');
+  if not SearchStr.IsEmpty then
+  begin
+    LyHeaderLines := TStringListAAC.Create(SearchStr);
     LineIndex := 0;
     FoundAny := False;
-    for ThisString in LyHeader do
+    for ThisString in LyHeaderLines do
     begin
       FoundThis := False;
       if ThisString.Contains('=') then
       begin
-        LyHeader.GetNameValue(LineIndex, Key, Value);
+        LyHeaderLines.GetNameValue(LineIndex, Key, Value);
         Key := Key.Trim;
         Value := Value.Trim;
        
@@ -78,146 +133,26 @@ begin
       end; { if contains @code('=') }
 
       if FoundThis then
+      with Header do
       begin
         case Key of
-        'title':     FTitle := Value;
-        'subtitle':  FSubtitle := Value;
-        'composer':  FComposer := Value;
-        'dates':     FDates := Value;
-        'poet':      FPoet := Value;
-        'editor':    FEditor := Value;
-        'copyright': FCopyright := Value;
-        'source':    FSource := Value;
+          'title':     FTitle := Value;
+          'subtitle':  FSubtitle := Value;
+          'composer':  FComposer := Value;
+          'dates':     FDates := Value;
+          'poet':      FPoet := Value;
+          'editor':    FEditor := Value;
+          'copyright': FCopyright := Value;
+          'source':    FSource := Value;
+        end;
+        FoundAny := True;
       end;
-      FoundAny := True;
+      Inc(LineIndex);
     end;
-    Inc(LineIndex);
+    Header.FValid := FoundAny;
   end;
-
-  Self.FValid := FoundAny;
-  finally
-    FreeAndNil(Outline);
-    result := Self;
-  end;
-end;
-
-function THeader.ToMEI(MEI: TStringListAAC): TStringListAAC;
-begin
-  assert(MEI <> nil);
-  MEI.Clear;
-  if not Self.IsValid then
-  begin
-    MEI.Add('<meiHead>');
-    MEI.Add('</meiHead>');
-    result := MEI;
-    exit;
-  end;
-
-  MEI.Add('<meiHead>');
-  MEI.Add(IndentStr(1) + '<fileDesc>');
-  MEI.Add(IndentStr(2) + '<titleStmt>');
-  MEI.Add(IndentStr(3) + '<title type="main">' + FTitle + '</title>');
-
-  if not FSubtitle.IsEmpty then
-    MEI.Add(IndentStr(3) + '<title type="subtitle">' + FSubtitle + '</title>');
-
-  MEI.Add(IndentStr(3) + '<respStmt>');
-
-  if not FDates.IsEmpty then
-    MEI.Add(IndentStr(4) + '<composer>' + FComposer + ' ' + FDates + '</composer>')
-  else
-    MEI.Add(IndentStr(4) + '<composer>' + FComposer + '</composer>');
-
-  if not FPoet.IsEmpty then
-    MEI.Add(IndentStr(4) + '<lyricist>' + FPoet + '</lyricist>');
-
-  if not FEditor.IsEmpty then
-    MEI.Add(IndentStr(4) + '<editor>' + FEditor + '</editor>');
-
-  MEI.Add(IndentStr(3) + '</respStmt>');
-  MEI.Add(IndentStr(2) + '</titleStmt>');
-  
-  if not FEditor.IsEmpty then
-  begin
-    MEI.Add(IndentStr(2) + '<editionStmt>');
-    MEI.Add(IndentStr(3) + '<respStmt><p>Edited by ' + FEditor + '</p></respStmt>');
-    MEI.Add(IndentStr(2) + '</editionStmt>');
-  end;
-
-  if not FCopyright.IsEmpty then
-  begin
-    MEI.Add(IndentStr(2) + '<pubStmt>');
-    MEI.Add(IndentStr(3) + '<availability><p>' + FCopyright + '</p></availability>');
-    MEI.Add(IndentStr(2) + '</pubStmt>');
-  end;
-
-  MEI.Add(IndentStr(1) + '</fileDesc>');
-  MEI.Add(IndentStr(1) + '<encodingDesc>');
-  MEI.Add(IndentStr(2) + '<appInfo>');
-  MEI.Add(IndentStr(3) + '<application><name>' + FProgramName + '</name></application>');
-  MEI.Add(IndentStr(2) + '</appInfo>');
-  MEI.Add(IndentStr(1) + '</encodingDesc>');
-  
-  if not FSource.IsEmpty then
-    MEI.Add(IndentStr(1) + '<sourceDesc><source>' + FSource + '</source></sourceDesc>');
-
-  MEI.Add('</meiHead>'); 
-
-  result := MEI;
-end;
-
-function ExtractQuotedStrings(Source: String): String;
-var
-  MarkupStrings: TStringListAAC;
-  Markup: String;
-  Outline: TIndexPair;
-begin
-  MarkupStrings := TStringListAAC.Create;
-  Outline := TIndexPair.Create;
-  try
-    while Source.CountChar('"') > 1 do
-    begin
-      Outline := Outline.FindRangeInString(Source, '"', '"');
-      if Outline.IsValid then
-      begin
-        Markup := CopyStringRange(Source, Outline, rkExclusive);
-        MarkupStrings.Add(Markup);
-        Source := Source.Substring(Outline.FEnd + 2);
-      end
-      else
-        break;
-    end;
-    MarkupStrings.StrictDelimiter := True;
-    MarkupStrings.Delimiter := ' ';
-    Source := DelChars(MarkupStrings.DelimitedText, '"');
-
-  finally
-    FreeAndNil(MarkupStrings);
-    FreeAndNil(Outline);
-    result := Source;
-  end;
-end;
-
-function ParseHeader(InputText: TStringListAAC; HeaderValues: THeader): THeader;
-var
-  SearchStr: String;
-  Outline: TIndexPair;
-  LyInputLines: TStringListAAC;
-begin
-  Outline := TIndexPair.Create;
-  HeaderValues.FValid := False;
-  try
-    SearchStr := LyArg(InputText.Text, '\header');
-    if not SearchStr.IsEmpty then
-    begin
-      LyInputLines := TStringListAAC.Create(SearchStr);
-        HeaderValues := HeaderValues.FromLily(LyInputLines);
-    end;
-  finally
-    FreeAndNil(LyInputLines);
-    FreeAndNil(Outline);
-    result := HeaderValues;
-  end;
+  FreeAndNil(LyHeaderLines);
+  result := Header;
 end;
 
 end.

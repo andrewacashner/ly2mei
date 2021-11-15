@@ -12,21 +12,12 @@ const
   XMLversion = '<?xml version="1.0" encoding="UTF-8"?>';
   MeiNamespace = 'xmlns="http://www.music-encoding.org/ns/mei" meiVersion="4.0.0"';
 var
-  InputLines, OutputLines, MEIHeaderLines, MEIScoreLines, MEIMusicLines: TStringListAAC;
+  InputLines, OutputLines, MEIScoreLines: TStringListAAC;
   ScoreInput: String;
   HeaderValues: THeader;
-  CommandArg: TCommandArg;
-  LyObjectTree: TLyObject;
+  LyObjectTree: TLyObject = nil;
 begin
   InputLines     := TStringListAAC.Create;
-  OutputLines    := TStringListAAC.Create;
-  MEIHeaderLines := TStringListAAC.Create;
-  MEIScoreLines  := TStringListAAC.Create;
-  MEIMusicLines  := TStringListAAC.Create;
-  HeaderValues   := THeader.Create;
-  CommandArg     := TCommandArg.Create;
-  LyObjectTree   := nil;
-
   try
     if ParamCount <> 1 then
     begin
@@ -42,8 +33,8 @@ begin
     InputLines := ExpandMacros(InputLines);
 
     { Process header, convert to MEI. }
-    HeaderValues := ParseHeader(InputLines, HeaderValues);
-    MEIHeaderLines := HeaderValues.ToMEI(MEIHeaderLines);
+    HeaderValues := ParseHeader(InputLines);
+    OutputLines := NewMEIFromHeader(HeaderValues);
 
     { Process score, convert to MEI. }
     ScoreInput := LyArg(InputLines.Text, '\score');
@@ -53,9 +44,9 @@ begin
       LyObjectTree := SetStaffNums(LyObjectTree);
       if LyObjectTree <> nil then
       begin
-        MEIScoreLines := LyObjectTree.ToScoreDef(MEIScoreLines);
+        MEIScoreLines := LyObjectTree.ToNewMEIScoreDef;
         // MEIMusicLines := LyObjectTree.ToMusic(MEIMusicLines);
-        MEIScoreLines.AddStrings(MEIMusicLines);
+        // MEIScoreLines.AddStrings(MEIMusicLines);
       end;
     end;
     MEIScoreLines.EncloseInXML('score');
@@ -65,10 +56,7 @@ begin
 
 
     { Write output. }
-    OutputLines.Clear;
-    OutputLines.Assign(MEIHeaderLines);
     OutputLines.AddStrings(MEIScoreLines);
-
     OutputLines.EncloseInXML('mei', MEINamespace);
     OutputLines.Insert(0, XMLversion);
 
@@ -76,11 +64,7 @@ begin
 
   finally
     FreeAndNil(LyObjectTree);
-    FreeAndNil(CommandArg);
-    FreeAndNil(HeaderValues);
-    FreeAndNil(MEIMusicLines);
     FreeAndNil(MEIScoreLines);
-    FreeAndNil(MEIHeaderLines);
     FreeAndNil(OutputLines);
     FreeAndNil(InputLines);
   end;

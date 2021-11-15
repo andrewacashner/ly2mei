@@ -59,9 +59,9 @@ type
       testing/debugging. }
     function ToString: String; override;
 
-    { Add an MEI scoreDef element to a given stringlist, drawing the
+    { Create a new stringlist containing an MEI scoreDef element, drawing the
     information from this tree. }
-    function ToScoreDef(OutputLines: TStringListAAC): TStringListAAC;
+    function ToNewMEIScoreDef: TStringListAAC;
    
 //    { Convert a Lilypond music expression to MEI in a stringlist }
 //    function ToMusic(MEILines: TStringListAAC): TStringListAAC;
@@ -170,75 +170,70 @@ var
   SearchStr, ThisType, ThisID, ThisContents: String;
   Outline: TIndexPair;
 begin
-  Outline := TIndexPair.Create;
   SearchStr := Source;
-  try
-    SearchIndex := 0;
-    if (Length(Source) = 0) then
-    begin
-      result := Tree;
-      exit;
-    end;
-   
-    SearchIndex := SearchStr.IndexOf('\new ');
-    if SearchIndex = -1 then 
-    begin
-      result := Tree;
-      exit;
-    end;
-     
-    { Find Type }
-    SearchStr := SearchStr.Substring(SearchIndex);
-    ThisType := ExtractWord(2, SearchStr, StdWordDelims);
-    SearchStr := StringDropBefore(SearchStr, ThisType);
- 
-    { Find ID }
-    if SearchStr.StartsWith(' = "') then
-    begin 
-      SearchStr := StringDropBefore(SearchStr, ' = "');
-      ThisID := SearchStr.Substring(0, SearchStr.IndexOf('"'));
-      SearchStr := StringDropBefore(SearchStr, ThisID + '"');
-    end
-    else
-      ThisID := '';
- 
-    { Find Contents: Either an expression within double angle brackets or
-    one within curly braces. If angle brackets, recursively look for nested
-    @code(\new) expressions. }
-    if SearchStr.TrimLeft.StartsWith('<<') then
-    begin
-      { Search within group for nested @code(\new) expressions and save them
-      as children; then move on after this group. Omit content string. }
-      Outline := BalancedDelimiterSubstring(SearchStr, '<', '>', Outline);
-      ThisContents := CopyStringRange(SearchStr, Outline, rkInclusive);
-      if Tree = nil then
-        Tree := TLyObject.Create(ThisType, ThisID)
-      else
-        Tree.LastChild.FChild := TLyObject.Create(ThisType, ThisID);
-    
-      Tree.LastChild.FChild := FindLyNewTree(ThisContents, nil);
-      Source := StringDropBefore(Source.Substring(SearchIndex), ThisContents);
-    end
-    else
-    begin
-      { Add this expression as a sibling, then move on to next }
-      ThisContents := SearchStr.Substring(0, SearchStr.IndexOf('{'));
-      ThisContents := ThisContents + CopyBraceExpr(SearchStr);
-      ThisContents := ThisContents.Trim;
-      if Tree = nil then
-        Tree := TLyObject.Create(ThisType, ThisID, ThisContents)
-      else
-        Tree.LastSibling.FSibling := TLyObject.Create(ThisType, ThisID, ThisContents);
-      
-      Source := Source.Substring(SearchIndex + 1); 
-    end;
-  
-    { Look for the next sibling where you left off from the last search }
-    Tree.LastSibling.FSibling := FindLyNewTree(Source, nil);
-  finally
-    FreeAndNil(Outline);
+  SearchIndex := 0;
+  if (Length(Source) = 0) then
+  begin
     result := Tree;
+    exit;
   end;
+ 
+  SearchIndex := SearchStr.IndexOf('\new ');
+  if SearchIndex = -1 then 
+  begin
+    result := Tree;
+    exit;
+  end;
+   
+  { Find Type }
+  SearchStr := SearchStr.Substring(SearchIndex);
+  ThisType := ExtractWord(2, SearchStr, StdWordDelims);
+  SearchStr := StringDropBefore(SearchStr, ThisType);
+
+  { Find ID }
+  if SearchStr.StartsWith(' = "') then
+  begin 
+    SearchStr := StringDropBefore(SearchStr, ' = "');
+    ThisID := SearchStr.Substring(0, SearchStr.IndexOf('"'));
+    SearchStr := StringDropBefore(SearchStr, ThisID + '"');
+  end
+  else
+    ThisID := '';
+
+  { Find Contents: Either an expression within double angle brackets or
+  one within curly braces. If angle brackets, recursively look for nested
+  @code(\new) expressions. }
+  if SearchStr.TrimLeft.StartsWith('<<') then
+  begin
+    { Search within group for nested @code(\new) expressions and save them
+    as children; then move on after this group. Omit content string. }
+    Outline := BalancedDelimiterSubstring(SearchStr, '<', '>');
+    ThisContents := CopyStringRange(SearchStr, Outline, rkInclusive);
+    if Tree = nil then
+      Tree := TLyObject.Create(ThisType, ThisID)
+    else
+      Tree.LastChild.FChild := TLyObject.Create(ThisType, ThisID);
+  
+    Tree.LastChild.FChild := FindLyNewTree(ThisContents, nil);
+    Source := StringDropBefore(Source.Substring(SearchIndex), ThisContents);
+  end
+  else
+  begin
+    { Add this expression as a sibling, then move on to next }
+    ThisContents := SearchStr.Substring(0, SearchStr.IndexOf('{'));
+    ThisContents := ThisContents + CopyBraceExpr(SearchStr);
+    ThisContents := ThisContents.Trim;
+    if Tree = nil then
+      Tree := TLyObject.Create(ThisType, ThisID, ThisContents)
+    else
+      Tree.LastSibling.FSibling := TLyObject.Create(ThisType, ThisID, ThisContents);
+    
+    Source := Source.Substring(SearchIndex + 1); 
+  end;
+
+  { Look for the next sibling where you left off from the last search }
+  Tree.LastSibling.FSibling := FindLyNewTree(Source, nil);
+  result := Tree;
 end;
 
 function SetStaffNums(Tree: TLyObject; StaffNum: Integer = 0): TLyObject;
@@ -306,7 +301,7 @@ begin
             + XMLAttribute(' def', '#' + Node.FID);
 end;
 
-function TLyObject.ToScoreDef(OutputLines: TStringListAAC): TStringListAAC;
+function TLyObject.ToNewMEIScoreDef: TStringListAAC;
 function InnerScoreDef(Node: TLyObject; InnerLines: TStringListAAC): TStringListAAC;
 var 
   ThisTag, SearchStr, Attributes: String;
@@ -370,11 +365,13 @@ begin
     result := InnerLines;
   end;
 end;
-
+var
+  MEI: TStringListAAC;
 begin
-  OutputLines := InnerScoreDef(Self, OutputLines);
-  OutputLines.EncloseInXML('scoreDef');
-  result := OutputLines;
+  MEI := TStringListAAC.Create;
+  MEI := InnerScoreDef(Self, MEI);
+  MEI.EncloseInXML('scoreDef');
+  result := MEI;
 end;
 {
 function TLyObject.ToMusic(MEILines: TStringListAAC): TStringListAAC;

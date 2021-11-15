@@ -39,14 +39,14 @@ type
   { A single key-value pair used in the dictionary. }
   TMacroKeyValue = TMacroDict.TDictionaryPair;
 
-
-{ In a given string (not a list), replace all macro commands (@code(\command))
+{ In a given stringlist, replace all macro commands (@code(\command))
   with the corresponding definition in a macro dictionary. Repeat as necessary
   until all known macros are expanded.
 
   A macro call must be followed by a space or newline. Otherwise we could not
   have commands like @code(\SopranoI) and @code(\SopranoII). }
-function FindReplaceMacros(Source: String; Dict: TMacroDict): String;
+function FindReplaceMacros(SourceLines: TStringListAAC; Dict: TMacroDict):
+  TStringListAAC; 
 
 { Process macros in the source text and return a stringlist with all macros
   expanded, including nested ones. }
@@ -72,13 +72,15 @@ begin
   result := OutputStr;
 end;
     
-function FindReplaceMacros(Source: String; Dict: TMacroDict): String;
+function FindReplaceMacros(SourceLines: TStringListAAC; Dict: TMacroDict):
+  TStringListAAC; 
 var
   OutputStr: String;
   Macro: TMacroKeyValue;
   HasMacros: Boolean;
+  OutputLines: TStringList;
 begin
-  OutputStr := Source;
+  OutputStr := SourceLines.Text;
   HasMacros := True;
   while HasMacros do
   begin
@@ -94,116 +96,110 @@ begin
       if OutputStr.Contains(Macro.Key) then
         HasMacros := True;
   end;
-  result := OutputStr;
+  OutputLines := TStringListAAC.Create(OutputStr);
+  SourceLines.Assign(OutputLines);
+  FreeAndNil(OutputLines);
+  result := SourceLines;
 end;
 
 procedure ExtractMacros(SourceLines: TStringListAAC; Dict: TMacroDict);
 var
-  InputStr, BufferStr, ThisString, NextStr, Key, Value, TestStr: String;
-  LineIndex: Integer;
   FindOutline, CopyOutline: TIndexPair;
   CommandArg: TCommandArg;
+  InputStr, ThisString, NextStr, Key, Value, TestStr: String;
+  BufferStr: String = '';
+  LineIndex: Integer = 0;
   Found: Boolean;
+  OutputLines: TStringListAAC;
 begin
   assert(SourceLines <> nil);
-  FindOutline := TIndexPair.Create;
-  CopyOutline := TIndexPair.Create;
-  CommandArg := TCommandArg.Create;
-  try
-    LineIndex := 0;
-    CopyOutline.FStart := 0;
-    CopyOutline.FValid := True;
-    BufferStr := '';
-    InputStr := SourceLines.Text;
-    { Look for a @code(key = value) pair at the start of each line }
-    for ThisString in SourceLines do
+  assert(Dict <> nil);
+  CopyOutline.FStart := 0;
+  CopyOutline.FValid := True;
+  InputStr := SourceLines.Text;
+  { Look for a @code(key = value) pair at the start of each line }
+  for ThisString in SourceLines do
+  begin
+    Found := False;
+    if ThisString.Contains('=') and not ThisString.StartsWith(' ') then
     begin
-      Found := False;
-      if ThisString.Contains('=') and not ThisString.StartsWith(' ') then
-      begin
-        SourceLines.GetNameValue(LineIndex, Key, Value);
-        if Key.IsEmpty or Value.IsEmpty then
-          continue;
-        
-        { Found key, mark start location }
-        Key := Key.Trim;
-        CopyOutline.FEnd := InputStr.IndexOf(Key + ' ');
+      SourceLines.GetNameValue(LineIndex, Key, Value);
+      if Key.IsEmpty or Value.IsEmpty then
+        continue;
+      
+      { Found key, mark start location }
+      Key := Key.Trim;
+      CopyOutline.FEnd := InputStr.IndexOf(Key + ' ');
+      CopyOutline.FSpan := CopyOutline.FEnd - CopyOutline.FStart;
 
-        { Parse value }
-        Value := Value.Trim;
-        case Value.Substring(0, 1) of
-        '{':
-          { Value is a brace-delimited argument }
+      { Parse value }
+      Value := Value.Trim;
+      case Value.Substring(0, 1) of
+      '{':
+        { Value is a brace-delimited argument }
+        begin
+          TestStr := SourceLines.ToStringFromIndex(LineIndex);
+          FindOutline := FindMatchedBraces(TestStr);
+          if FindOutline.FValid then
           begin
-            TestStr := SourceLines.ToStringFromIndex(LineIndex);
-            FindOutline := FindMatchedBraces(TestStr, FindOutline);
-            if FindOutline.IsValid then
+            Value := CopyStringRange(TestStr, FindOutline, rkInclusive);
+            Found := True;
+          end;
+        end;
+
+      '\':
+        { Value is a command, possibly followed by argument }
+        begin
+          TestStr := SourceLines.ToStringFromIndex(LineIndex);
+          CommandArg := FindCommandArg(TestStr, '\', '{', '}');
+          case CommandArg.FStatus of
+          { Found only a command }
+          skCommand:
             begin
-              Value := CopyStringRange(TestStr, FindOutline, rkInclusive);
+              Value := CommandArg.FCommand;
+              Found := True;
+            end;
+          { Found a command and a brace-delimited argument }
+          skCommandArg:
+            begin
+              Value := CommandArg.FCommand + ' ' + CommandArg.FArg;
               Found := True;
             end;
           end;
-
-        '\':
-          { Value is a command, possibly followed by argument }
-          begin
-            TestStr := SourceLines.ToStringFromIndex(LineIndex);
-            CommandArg := CommandArg.ExtractFromString(TestStr, '\', '{', '}');
-            case CommandArg.FStatus of
-            { Found only a command }
-            skCommand:
-              begin
-                Value := CommandArg.FCommand;
-                Found := True;
-              end;
-            { Found a command and a brace-delimited argument }
-            skCommandArg:
-              begin
-                Value := CommandArg.ToString;
-                Found := True;
-              end;
-            end;
-          end;
-        end;
-        { Add found key/value pair to dictionary; copy text from last ending
-        position to next start position to output; mark new start position }
-        if Found then
-        begin
-          Dict.Add('\' + Key, Value);
-          NextStr := InputStr.Substring(CopyOutline.FStart, CopyOutline.Span);
-          if not NextStr.IsNullOrWhitespace(NextStr) then
-          begin
-            BufferStr := BufferStr + InputStr.Substring(CopyOutline.FStart,
-              CopyOutline.Span);
-          end;
-          CopyOutline.FStart := InputStr.IndexOf(Value) + Length(Value);
         end;
       end;
-      Inc(LineIndex);
+      { Add found key/value pair to dictionary; copy text from last ending
+      position to next start position to output; mark new start position }
+      if Found then
+      begin
+        Dict.Add('\' + Key, Value);
+        NextStr := InputStr.Substring(CopyOutline.FStart, CopyOutline.FSpan);
+        if not AnsiString.IsNullOrWhitespace(NextStr) then
+        begin
+          BufferStr := BufferStr + InputStr.Substring(CopyOutline.FStart,
+            CopyOutline.FSpan);
+        end;
+        CopyOutline.FStart := InputStr.IndexOf(Value) + Length(Value);
+      end;
     end;
-    { Add remaining text after last macro definition to output }
-    BufferStr := BufferStr + InputStr.Substring(CopyOutline.FStart);
-    FreeAndNil(SourceLines);
-    SourceLines := TStringListAAC.Create(BufferStr);
-
-  finally
-    FreeAndNil(CommandArg);
-    FreeAndNil(CopyOutline);
-    FreeAndNil(FindOutline);
+    Inc(LineIndex);
   end;
+  { Add remaining text after last macro definition to output }
+  BufferStr := BufferStr + InputStr.Substring(CopyOutline.FStart);
+  OutputLines := TStringListAAC.Create(BufferStr);
+  SourceLines.Assign(OutputLines);
+  FreeAndNil(OutputLines);
 end;
 
 function ExpandMacros(SourceLines: TStringListAAC): TStringListAAC;
 var
   Macros: TMacroDict;
-  TempStr: String;
 begin
+  assert(SourceLines <> nil);
   Macros := TMacroDict.Create;
   try
     ExtractMacros(SourceLines, Macros);
-    TempStr := FindReplaceMacros(SourceLines.Text, Macros);
-    FreeAndNil(SourceLines);
-    SourceLines := TStringListAAC.Create(TempStr);
+    SourceLines := FindReplaceMacros(SourceLines, Macros);
     SourceLines.RemoveBlankLines;
   finally
     FreeAndNil(Macros);

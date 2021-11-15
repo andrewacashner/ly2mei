@@ -8,25 +8,25 @@ unit Outline;
 
 interface
 
-uses SysUtils, Classes, StrUtils;
+uses SysUtils, Classes, StrUtils, StringTools;
 
 type 
-  { This class stores start and end positions in a string or other sequence. }
-  TIndexPair = class
-  public
-    var
-      FStart, FEnd: Integer;
-      FValid: Boolean;
-    procedure Clear;
-    function IsValid: Boolean;
-    function Span: Integer;
-
-    { Given a string, return a new instance containing the start and end
-      indices of the range between the given delimiters. If not found, mark as
-      invalid.  }
-    function FindRangeInString(Source, StartDelim, EndDelim: String):
-      TIndexPair; 
+  { This record typestores start and end positions in a string or other sequence. }
+  TIndexPair = record
+    { Start index }
+    FStart: Integer;
+    { End index }
+    FEnd: Integer;
+    { Distance from start to end }
+    FSpan: Integer;
+    { Was a valid pair found? }
+    FValid: Boolean;
   end;
+
+{ Given a string, return a new instance containing the start and end
+  indices of the range between the given delimiters. If not found, mark as
+  invalid.  }
+function FindDelimitedRange(Source, StartDelim, EndDelim: String): TIndexPair; 
 
 { Mode flags for marking delimited substrings }
 type
@@ -48,11 +48,11 @@ function CopyStringRange(Source: String; Outline: TIndexPair; ModeFlag:
   delimiters in between. The delimiters must not be identical, otherwise it is
   impossible to determine nesting. }
 function BalancedDelimiterSubstring(Source: String; StartDelim, EndDelim:
-  Char; Outline: TIndexPair): TIndexPair; 
+  Char): TIndexPair; 
 
 { Mark the outline (@link(TIndexPair)) of a substring delimited by matched
 curly braces. }
-function FindMatchedBraces(Source: String; Outline: TIndexPair): TIndexPair;
+function FindMatchedBraces(Source: String): TIndexPair;
 
 { Return a substring that is a complete matched-brace expression,
 including the braces. }
@@ -70,86 +70,68 @@ type
     skInvalid);
  
 type
-  { This class holds a command and its argument. }
-  TCommandArg = class
-  public
-    var
-      FCommand, FArg: String;
-      FStatus: TStatusCommandArg;
-    procedure Clear;
-    function IsValid: Boolean;
-    function ToString: String; override;
-    
-    { In a string, find the first instance of command that starts with a given
-      control character (e.g., backslash). If it is followed by an argument
-      delimited by given strings (e.g., curly braces), return an object with
-      both the command and the argument. If not return the object marked
-      invalid. The delimiters are included in the string. }
-    function ExtractFromString(Source: String; ControlChar, ArgStartDelim,
-      ArgEndDelim: Char): TCommandArg;
+  { This record holds a command and its argument. A flag indicates whether it
+  actually holds both command and argument, just one or the other, or neither. }
+  TCommandArg = record
+    FCommand, FArg: String;
+    FStatus: TStatusCommandArg;
   end;
+    
+{ In a string, find the first instance of command that starts with a given
+  control character (e.g., backslash). If it is followed by an argument
+  delimited by given strings (e.g., curly braces), return an object with
+  both the command and the argument. If not return the object marked
+  invalid. The delimiters are included in the string. }
+function FindCommandArg(Source: String; ControlChar, ArgStartDelim,
+  ArgEndDelim: Char): TCommandArg;
 
 { Find the first occurence of a given Lilypond command in a string and return
   its brace-delimited argument. Return an empty string if not found. }
 function LyArg(Source, Command: String): String;
 
+{ Find all the quoted portions of a given string and return them as a single
+  string, delimited by spaces. }
+function ExtractQuotedStrings(Source: String): String;
 
 implementation
 
-procedure TIndexPair.Clear;
+function FindDelimitedRange(Source, StartDelim, EndDelim: String): TIndexPair;
+var 
+  Pair: TIndexPair;
 begin
-  FStart := 0;
-  FEnd   := 0;
-  FValid := False;
-end;
-
-function TIndexPair.IsValid: Boolean;
-begin
-  result := FValid;
-end;
-
-function TIndexPair.Span: Integer;
-begin
-  if FValid then
-    result := FEnd - FStart
-  else
-    result := -1;
-end;
-
-function TIndexPair.FindRangeInString(Source, StartDelim, 
-                                          EndDelim: String): TIndexPair;
-begin
-  FStart := Source.IndexOf(StartDelim);
-  FEnd   := Source.Substring(FStart + 1).IndexOf(EndDelim);
-  FValid := not ((FStart = -1) or (FEnd = -1));
-  FEnd   := FStart + FEnd;
-  result := Self;
+  with Pair do
+  begin
+    FStart := Source.IndexOf(StartDelim);
+    FSpan  := Source.Substring(FStart + 1).IndexOf(EndDelim);
+    FEnd   := FStart + FSpan;
+    FValid := not ((FStart = -1) or (FSpan = -1));
+  end;
+  result := Pair;
 end;
 
 function CopyStringRange(Source: String; Outline: TIndexPair; 
                               ModeFlag: TRangeMode): String;
 begin
-  assert(Outline <> nil);
-  if not Outline.IsValid then
-    result := Source
-  else
+  with Outline do
   begin
-    case ModeFlag of
-      rkInclusive: result := Source.Substring(Outline.FStart, Outline.Span);
-      rkExclusive: result := Source.Substring(Outline.FStart + 1, 
-                                Outline.Span - 2);
-    end;
+    if not FValid then
+      result := Source
+    else
+      case ModeFlag of
+        rkInclusive: result := Source.Substring(FStart, FSpan);
+        rkExclusive: result := Source.Substring(FStart + 1, FSpan - 2);
+      end;
   end;
 end;
 
 function BalancedDelimiterSubstring(Source: String; StartDelim, EndDelim:
-  Char; Outline: TIndexPair): TIndexPair; 
+  Char): TIndexPair; 
 var
   BraceLevel, SIndex: Integer;
   ThisChar: Char;
+  Outline: TIndexPair;
 begin
   assert(StartDelim <> EndDelim);
-  Outline.Clear;
   BraceLevel := 0;
   SIndex := 0;
   for ThisChar in Source do
@@ -170,24 +152,24 @@ begin
         begin
           Dec(BraceLevel);
           if BraceLevel = 0 then
-          begin
-            Outline.FEnd := SIndex + 1; { include closing brace }
-            Outline.FValid := True;
-            break;
-          end;
+            with Outline do
+            begin
+              FEnd := SIndex + 1; { include closing brace }
+              FSpan := FEnd - FStart;
+              FValid := True;
+              break;
+            end;
         end;
       end;
     end;
     Inc(SIndex);
   end; { for }
-
   result := Outline;
 end;
 
-function FindMatchedBraces(Source: String; Outline: TIndexPair): TIndexPair;
+function FindMatchedBraces(Source: String): TIndexPair;
 begin
-  assert(Outline <> nil);
-  result := BalancedDelimiterSubstring(Source, '{', '}', Outline);
+  result := BalancedDelimiterSubstring(Source, '{', '}');
 end;
 
 function CopyBraceExpr(Source: String): String;
@@ -195,73 +177,44 @@ var
   Outline: TIndexPair;
   TempStr: String;
 begin
-  Outline := TIndexPair.Create;
-  try
-    Outline := FindMatchedBraces(Source, Outline);
-    if Outline.IsValid then
-      TempStr := CopyStringRange(Source, Outline, rkInclusive)
-    else 
-      TempStr := '';
-  finally
-    FreeAndNil(Outline);
-    result := TempStr;
-  end;
+  Outline := FindMatchedBraces(Source);
+  if Outline.FValid then
+    TempStr := CopyStringRange(Source, Outline, rkInclusive)
+  else 
+    TempStr := '';
+  result := TempStr;
 end;
 
-procedure TCommandArg.Clear;
-begin
-  FCommand := '';
-  FArg := '';
-  FStatus := skInvalid;
-end;
 
-function TCommandArg.IsValid: Boolean;
-begin
-  result := not (FStatus = skInvalid);
-end;
-
-function TCommandArg.ToString: String;
-begin
-  if Self.IsValid then
-    result := FCommand + ' ' + FArg
-  else
-    result := '';
-end;
-
-function TCommandArg.ExtractFromString(Source: String; ControlChar, ArgStartDelim,
+function FindCommandArg(Source: String; ControlChar, ArgStartDelim,
   ArgEndDelim: Char): TCommandArg;
 var
   TestStr, Command: String;
   Outline: TIndexPair;
+  CommandArg: TCommandArg;
 begin
-  Outline := TIndexPair.Create;
-  try
-    Self.Clear;
-    { Find command }
-    TestStr := Source.Substring(Source.IndexOf(ControlChar));
-    Command := ExtractWord(1, TestStr, [' ', LineEnding, ArgStartDelim]);
-    if not Command.IsEmpty then
-    begin
-      FCommand := Command;
-      FStatus := skCommand;
+  { Find command }
+  TestStr := Source.Substring(Source.IndexOf(ControlChar));
+  Command := ExtractWord(1, TestStr, [' ', LineEnding, ArgStartDelim]);
+  if not Command.IsEmpty then
+  begin
+    CommandArg.FCommand := Command;
+    CommandArg.FStatus := skCommand;
 
-      { Find arg within delimiters }
-      TestStr := TestStr.Substring(Length(FCommand));
-      if TestStr.TrimLeft.StartsWith(ArgStartDelim) then
+    { Find arg within delimiters }
+    TestStr := TestStr.Substring(Length(Command));
+    if TestStr.TrimLeft.StartsWith(ArgStartDelim) then
+    begin
+      Outline := BalancedDelimiterSubstring(TestStr, ArgStartDelim,
+                  ArgEndDelim); 
+      if Outline.FValid then
       begin
-        Outline := BalancedDelimiterSubstring(TestStr, ArgStartDelim,
-                    ArgEndDelim, Outline); 
-        if Outline.IsValid then
-        begin
-          FArg := CopyStringRange(TestStr, Outline, rkInclusive);
-          FStatus := skCommandArg;
-        end;
+        CommandArg.FArg := CopyStringRange(TestStr, Outline, rkInclusive);
+        CommandArg.FStatus := skCommandArg;
       end;
     end;
-  finally
-    FreeAndNil(Outline);
-    result := Self;
   end;
+  result := CommandArg;
 end;
 
 function LyArg(Source, Command: String): String;
@@ -269,18 +222,44 @@ var
   CommandArg: TCommandArg;
   Arg: String;
 begin
-  CommandArg := TCommandArg.Create;
+  if Source.Contains(Command) then
+  begin
+    Source := Source.Substring(Source.IndexOf(Command));
+    CommandArg := FindCommandArg(Source, '\', '{', '}');
+    if (CommandArg.FStatus = skCommandArg) 
+      and (CommandArg.FCommand = Command) then 
+      Arg := CommandArg.FArg;
+  end;
+  result := Arg;
+end;
+
+function ExtractQuotedStrings(Source: String): String;
+var
+  MarkupStrings: TStringListAAC;
+  Markup: String;
+  Outline: TIndexPair;
+begin
+  MarkupStrings := TStringListAAC.Create;
   try
-    if Source.Contains(Command) then
+    while Source.CountChar('"') > 1 do
     begin
-      Source := Source.Substring(Source.IndexOf(Command));
-      CommandArg := CommandArg.ExtractFromString(Source, '\', '{', '}');
-      if CommandArg.IsValid and (CommandArg.FCommand = Command) then
-        Arg := CommandArg.FArg;
+      Outline := FindDelimitedRange(Source, '"', '"');
+      if Outline.FValid then
+      begin
+        Markup := CopyStringRange(Source, Outline, rkExclusive);
+        MarkupStrings.Add(Markup);
+        Source := Source.Substring(Outline.FEnd + 2);
+      end
+      else
+        break;
     end;
+    MarkupStrings.StrictDelimiter := True;
+    MarkupStrings.Delimiter := ' ';
+    Source := DelChars(MarkupStrings.DelimitedText, '"');
+
   finally
-    FreeAndNil(CommandArg);
-    result := Arg;
+    FreeAndNil(MarkupStrings);
+    result := Source;
   end;
 end;
 

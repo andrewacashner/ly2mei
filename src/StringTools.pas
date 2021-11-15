@@ -84,6 +84,7 @@ begin
             and Source.EndsWith('"');
 end;
 
+
 function IndentStr(Degree: Integer = 1): String;
 begin
   result := StringOfChar(' ', 2 * Degree);
