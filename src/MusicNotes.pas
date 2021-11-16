@@ -57,6 +57,26 @@ type
     function ToMEI(OutputLines: TStringListAAC): TStringListAAC;
   end;
 
+  TMeasureList = specialize TObjectList<TPitchList>;
+
+  TMeasureListPath = class
+  private
+    var
+      FParentStaff: TLyObject;
+      FParentVoice: TLyObject;
+      FMeasures: TMeasureList;
+  public
+    constructor Create(Staff, Voice: TLyObject; Measures: TMeasureList);
+    destructor Destroy; override;
+  end;
+
+  TMusicList = class(specialize TObjectList<TMeasureListPath>)
+  public
+    constructor Create(Tree: TLyObject);
+  end;
+
+function ParsePitchesInScoreTree(Tree: TLyObject): TLyObject;
+
 { Parse a Lilypond \score expression and create an MEI music
   element including the scoreDef and music notes }
 function CreateMEIScore(SourceLines: TStringListAAC): TStringListAAC;
@@ -261,8 +281,65 @@ begin
   result := OutputLines;
 end;
 
+constructor TMeasureListPath.Create(Staff, Voice: TLyObject; Measures:
+  TMeasureList);
+begin
+  inherited Create;
+  FParentStaff := TLyObject.Create(Staff.FType, Staff.FID, Staff.FNum);
+  FParentVoice := TLyObject.Create(Voice.FType, Voice.FID, Voice.FNum);
+  FMeasures := Measures;
+end;
+
+destructor TMeasureListPath.Destroy;
+begin
+  FreeAndNil(FParentStaff);
+  FreeAndNil(FParentVoice);
+  FreeAndNil(FMeasures);
+  inherited Destroy;
+end;
+
+constructor TMusicList.Create(Tree: TLyObject);
+function TraverseBuildList(Node: TLyObject; MusicList: TMusicList): TLyObject;
+var
+  LyLines: TStringListAAC;
+  MeasureList: TMeasureList;
+  Contents, MusicLine: String;
+begin
+  if Node <> nil then
+  begin
+    if Node.FType = 'Staff' then
+    begin
+      if (Node.FChild <> nil) and (Node.FChild = 'Voice') then
+      begin
+        Contents := Tree.FContents;
+        if Contents.TrimLeft.StartsWith('|') 
+          and (Contents.CountChar('|') = 1) then 
+        begin
+          LyLines := TStringListAAC.Create(ContentsStr);
+          MeasureList := TMeasureList.Create;
+          for MusicLine in LyLines do
+          begin
+            MeasureList.Add(TPitchList.CreateFromLyMeasure(MusicLine));
+          end;
+          MusicList.Add(TMeasureListPath.Create(Node, Node.FChild, MeasureList);
+          FreeAndNil(LyLines);
+        end;
+      end;
+    end;
+    if Node.FChild <> nil then
+      Node.FChild := Traverse(Node.FChild, MusicList);
+    if Node.FSibling <> nil then
+      Node.FSibling := Traverse(Node.FSibling, MusicList);
+  end;
+  result := Node;
+end;
+begin
+  inherited Create;
+  Node := TraverseBuildList(Node, Self);
+end;
+
 { TODO START work through TLyObject tree to make PitchLists for each measure, then
-make new tree with rearragned MEI hierarchy, then convert to MEI strings }
+make new tree with rearranged MEI hierarchy, then convert to MEI strings }
 
 {
 constructor TLyVoice.CreateFromLy(LyInput: TStringListAAC);
@@ -391,8 +468,7 @@ var
   LyScoreStr: String;
   LyObjectTree: TLyObject = nil;
   MEIScoreLines: TStringListAAC = nil;
-//  LyMusic: TLyMusic;
-//  MEIMusic: TMEIMusic;
+  MusicList: TMusicList;
 begin
   LyScoreStr := LyArg(SourceLines.Text, '\score');
   if not LyScoreStr.IsEmpty then
@@ -403,15 +479,7 @@ begin
       LyObjectTree.SetStaffNums;
       MEIScoreLines := LyObjectTree.ToNewMEIScoreDef;
       { process music }
-//      LyMusic := TLyMusic.Create(LyObjectTree);
-
-//      MEIMusic := MakeMEIMusic(LyMusic);
-//      DebugLn(MEIMusic.ToString);
-
-
-      { MEIMusicLines := LyObjectTree.ToMusic(MEIMusicLines);
-        MEIScoreLines.AddStrings(MEIMusicLines);
-      }
+      MusicList := TMusicList.Create(LyObjectTree);
     end;
   end;
   
@@ -423,8 +491,7 @@ begin
   MEIScoreLines.EncloseInXML('body');
   MEIScoreLines.EncloseInXML('music');
 
-//  FreeAndNil(MEIMusic);
-//  FreeAndNil(LyMusic);
+  FreeAndNil(MusicList);
   FreeAndNIl(LyObjectTree);
   result := MEIScoreLines;
 end;
