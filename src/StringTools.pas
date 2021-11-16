@@ -30,6 +30,9 @@ function XMLAttribute(Tag, Value: String): String;
 { Create an XML element string, with optional attributes }
 function XMLElement(Tag, Contents: String; Attributes: String = ''): String;
 
+{ Create XML attributes @@xml:id and @@n }
+function XMLAttributeIDNum(ID: String; Num: Integer): String;
+
 type 
   { Custom string list }
   TStringListAAC = class(TStringList)
@@ -106,9 +109,13 @@ end;
 
 function XMLElement(Tag, Contents: String; Attributes: String = ''): String;
 begin
-  result := '<' + Tag + Attributes + '>' + Contents + '</' + Tag + '>';
+  result := '<' + Tag + ' ' + Attributes + '>' + Contents + '</' + Tag + '>';
 end;
 
+function XMLAttributeIDNum(ID: String; Num: Integer): String;
+begin
+  result := XMLAttribute('xml:id', ID) + ' ' + XMLAttribute('n', IntToStr(Num));
+end;
 
 constructor TStringListAAC.Create;
 begin

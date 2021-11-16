@@ -24,7 +24,7 @@ begin
 
     InputLines  := ExpandMacros(InputLines);
     HeaderLines := CreateMEIHeader(InputLines);
-    ScoreLines  := CreateMEIScore(InputLines);
+    ScoreLines  := CreateMEIMusic(InputLines);
 
     OutputLines.AddStrings(HeaderLines);
     OutputLines.AddStrings(ScoreLines);

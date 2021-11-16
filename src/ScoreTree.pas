@@ -55,9 +55,12 @@ type
     { Follow the right siblings all the way to the end; return the last one. }
     function LastSibling: TLyObject;
 
-    { Number the Staff objects consecutively, regardless of whether they are
-      children of a StaffGroup or ChoirStaff }
-    procedure SetStaffNums;
+    { Number the objects with a given FType label consecutively in an in-order
+    traversal, regardless of relation to other elements of the tree hierarchy }
+    procedure NumberElementsInOrder(Name: String);
+
+    { Number ChoirStaff, StaffGroup, Staff, and Voice elements in order }
+    procedure SetNumbers;
 
     { Return a string with a DIY XMl representation of the object tree, for
       testing/debugging. }
@@ -238,29 +241,35 @@ begin
   result := Tree;
 end;
 
-procedure TLyObject.SetStaffNums;
+procedure TLyObject.NumberElementsInOrder(Name: String);
 var
-  StaffNum: Integer = 0;
-
-function InnerStaffNums(Node: TLyObject): TLyObject;
+  N: Integer = 0;
+function InnerNums(Node: TLyObject): TLyObject;
 begin
   if Node <> nil then
   begin
-    if Node.FType = 'Staff' then
+    if Node.FType = Name then
     begin
-      Inc(StaffNum);
-      Node.FNum := StaffNum;
+      Inc(N);
+      Node.FNum := N;
     end;
     if Node.FChild <> nil then
-      Node.FChild := InnerStaffNums(Node.FChild);
+      Node.FChild := InnerNums(Node.FChild);
     if Node.FSibling <> nil then
-      Node.FSibling := InnerStaffNums(Node.FSibling);
+      Node.FSibling := InnerNums(Node.FSibling);
   end;
   result := Node;
 end;
-
 begin
-  InnerStaffNums(Self);
+  InnerNums(Self);
+end;
+
+procedure TLyObject.SetNumbers;
+begin
+  NumberElementsInOrder('ChoirStaff');
+  NumberElementsInOrder('StaffGroup');
+  NumberElementsInOrder('Staff');
+  NumberElementsInOrder('Voice');
 end;
 
 type
@@ -373,65 +382,5 @@ begin
   MEI.EncloseInXML('scoreDef');
   result := MEI;
 end;
-
-{
-function TLyObject.ToMusic(MEILines: TStringListAAC): TStringListAAC;
-function InnerToMusic(Tree: TLyObject; OutputLines: TStringListAAC; 
-  N: Integer): TStringListAAC;
-var
-  MEIMusicLines: TStringListAAC;
-begin
-  assert(OutputLines <> nil);
-  DebugLn('Start InnerToMusic');
-  MEIMusicLInes := TStringListAAC.Create;
-  try
-    if Tree <> nil then
-    begin
-      if Tree.FType = 'Staff' then
-      begin
-        DebugLn('Staff found, N=' + IntToStr(Tree.FNum));
-        if Tree.FChild <> nil then
-        begin
-          MEIMusicLines := InnerToMusic(Tree.FChild, MEIMusicLines, 1);
-          MEIMusicLines.EncloseInXML('staff', StaffNumID(Tree)); 
-        end;
-      end
-      else if Tree.FType = 'Voice' then
-      begin
-        DebugLn('Voice found, N=' + IntToStr(N));
-        MEIMusicLines := LyMeasuresToMei(TStringListAAC.Create(Tree.FContents));
-        MEIMusicLines.EncloseInXML('layer', ElementNumID(Tree, N)); 
-      end
-      else
-      begin
-        DebugLn('Something else found, FType="' + Tree.FType + '"');
-        if Tree.FChild <> nil then
-          MEIMusicLines := InnerToMusic(Tree.FChild, MEIMusicLines, 1);
-      end;
-
-      if Tree.FSibling <> nil then
-        MEIMusicLines := InnerToMusic(Tree.FSibling, MEIMusicLines, N + 1);
-
-      OutputLines.AddStrings(MEIMusicLines);
-    end;
-  finally
-    FreeAndNil(MEIMusicLines);
-    result := OutputLines;
-  end;
-end;
-
-begin
-  MEILines := InnerToMusic(Self, MEILines, 0);
-  MEILines.EncloseInXML('section');
-  result := MEILines;
-end;
-}
-
-{ START
-TODO we need to create a list (dictionary?) of TMeasureList objects, one for
-each voice, and then we need to pivot (see computing/pascal/pivot.pas) to get
-a list of voices-per-measure instead of measures-per-voice.  Then we need to
-render to XML, somehow capturing the staff and layer information.
-}
 
 end.
