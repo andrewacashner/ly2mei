@@ -24,6 +24,12 @@ function IsASingleQuotedString(Source: String): Boolean;
 indentation. }
 function IndentStr(Degree: Integer = 1): String;
 
+{ Create an XML attribute string: @code(key = "value") }
+function XMLAttribute(Tag, Value: String): String;
+
+{ Create an XML element string, with optional attributes }
+function XMLElement(Tag, Contents: String; Attributes: String = ''): String;
+
 type 
   { Custom string list }
   TStringListAAC = class(TStringList)
@@ -92,6 +98,17 @@ function IndentStr(Degree: Integer = 1): String;
 begin
   result := StringOfChar(' ', 2 * Degree);
 end;
+
+function XMLAttribute(Tag, Value: String): String;
+begin
+  result := Tag + '="' + Value + '"';
+end;
+
+function XMLElement(Tag, Contents: String; Attributes: String = ''): String;
+begin
+  result := '<' + Tag + Attributes + '>' + Contents + '</' + Tag + '>';
+end;
+
 
 constructor TStringListAAC.Create;
 begin

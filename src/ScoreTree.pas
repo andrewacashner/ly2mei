@@ -290,11 +290,6 @@ begin
   result := OutputStr + ClefStr + KeyStr + MeterStr;
 end;
 
-function XMLAttribute(Tag, Value: String): String;
-begin
-  result := Tag + '="' + Value + '"';
-end;
-
 function ElementNumID(Node: TLyObject; N: Integer): String;
 begin
   result := XMLAttribute('n', IntToStr(N)) + XMLAttribute(' xml:id', Node.FID);

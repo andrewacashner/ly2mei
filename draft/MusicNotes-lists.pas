@@ -5,6 +5,57 @@
 }
 unit MusicNotes;
 
+interface
+
+uses SysUtils, StrUtils, Classes, Generics.Collections, StringTools, Outline,
+ScoreTree;
+
+type 
+  TPitchName = (pkC, pkD, pkE, pkF, pkG, pkA, pkB, pkRest);
+  TAccidental = (akNatural, akFlat, akSharp);
+  TDuration = (dkBreve, dkSemibreve, dkMinim, dkSemiminim, dkFusa, dkSemifusa,
+    dkBreveDotted, dkSemibreveDotted, dkMinimDotted, dkSemiminimDotted,
+    dkFusaDotted);
+
+type
+  TPitch = class
+  public
+    var
+      FPitchName: TPitchName;
+      FAccid: TAccidental;
+      FOct: Integer;
+      FDur: TDuration;
+    constructor CreateFromLy(Source: String);
+    function ToMEI: String;
+  end;
+  
+  TPitchList = class(specialize TObjectList<TPitch>)
+  public
+    constructor CreateFromLyMeasure(Source: String);
+    function ToMEI(OutputLines: TStringListAAC): TStringListAAC;
+  end;
+
+  TLyVoice    = class(specialize TObjectList<TPitchList>)
+  public
+    constructor CreateFromLy(LyInput: TStringListAAC);
+  end;
+  
+  TLyStaff    = class(specialize TObjectList<TLyVoice>)
+  public
+    constructor Create(ObjectTree: TLyObject);
+  end;
+
+  TLyMusic    = class(specialize TObjectList<TLyStaff>)
+  public
+    constructor Create(ObjectTree: TLyObject);
+    function ToString: String; override;
+  end;
+
+  TMEILayer   = specialize TObjectList<TPitchList>;
+  TMEIStaff   = specialize TObjectList<TMEILayer>;
+  TMEIMeasure = specialize TObjectList<TMEIStaff>;
+  TMEIMusic   = specialize TObjectList<TMEIMeasure>;
+
 {
   ly start:
     Staff     : TVoiceList
@@ -18,122 +69,12 @@ unit MusicNotes;
           <note> : TPitch
 }
 
-interface
-
-uses SysUtils, StrUtils, Classes, Generics.Collections, StringTools, Outline,
-ScoreTree;
-
-type 
-  TPitchName = (pkC, pkD, pkE, pkF, pkG, pkA, pkB, pkRest);
-  TAccidental = (akNatural, akFlat, akSharp);
-  TDuration = (dkBreve, dkSemibreve, dkMinim, dkSemiminim, dkFusa, dkSemifusa,
-    dkBreveDotted, dkSemibreveDotted, dkMinimDotted, dkSemiminimDotted,
-    dkFusaDotted);
-
-function GetPitchKind(LyName: String): TPitchName;
-function GetOctave(OctLy: String): Integer;
-function GetDurationKind(DurLy: String): TDuration;
-function GetAccidKind(LyName: String): TAccidental;
-
-type
-  TPitch = class
-  public
-    var
-      FPitchName: TPitchName;
-      FAccid: TAccidental;
-      FOct: Integer;
-      FDur: TDuration;
-    constructor CreateFromLy(Source: String);
-    function MEIPName: String;
-    function MEIAccid: String;
-    function MEIOct: String;
-    function MEIDurDots: String;
-    function ToMEI: String;
-  end;
-  
-  TPitchList = class(specialize TObjectList<TPitch>)
-  public
-    constructor CreateFromLyMeasure(Source: String);
-    function ToMEI(OutputLines: TStringListAAC): TStringListAAC;
-  end;
-
 { Parse a Lilypond \score expression and create an MEI music
   element including the scoreDef and music notes }
 function CreateMEIScore(SourceLines: TStringListAAC): TStringListAAC;
 
 
 implementation
-
-function GetPitchKind(LyName: String): TPitchName;
-var PitchName: TPitchName;
-begin
-  case LyName.Substring(0, 1) of 
-    'c': PitchName := pkC;
-    'd': PitchName := pkD;
-    'e': PitchName := pkE;
-    'f': PitchName := pkF;
-    'g': PitchName := pkG;
-    'a': PitchName := pkA;
-    'b': PitchName := pkB;
-    'r': PitchName := pkRest;
-  else
-    WriteLn(Stderr, 'Could not extract pitch from input "' + LyName + '"');
-  end;
-  result := PitchName;
-end;
-
-function GetOctave(OctLy: String): Integer;
-var
-  Oct: Integer;
-begin
-  case OctLy of 
-    ',,,'     : Oct := 0;
-    ',,'      : Oct := 1;
-    ','       : Oct := 2;
-    ''        : Oct := 3;
-    ''''      : Oct := 4; { '' }
-    ''''''    : Oct := 5; { ''' }
-    ''''''''  : Oct := 6; { '''' }
-  else
-    WriteLn(Stderr, 'Could not extract octave from input "' + OctLy + '"');
-  end;
-  result := Oct;
-end;
-
-function GetDurationKind(DurLy: String): TDuration;
-var
-  Dur: TDuration;
-begin
-  case DurLy of
-    '\breve'  : Dur := dkBreve;
-    '1'       : Dur := dkSemibreve;
-    '2'       : Dur := dkMinim;
-    '4'       : Dur := dkSemiminim;
-    '8'       : Dur := dkFusa;
-    '16'      : Dur := dkSemifusa;
-    '\breve.' : Dur := dkBreveDotted;
-    '1.'      : Dur := dkSemibreveDotted;
-    '2.'      : Dur := dkMinimDotted;
-    '4.'      : Dur := dkSemiminimDotted;
-    '8.'      : Dur := dkFusaDotted;
-  else
-    WriteLn(Stderr, 'Could not extract duration from input "' + DurLy + '"');
-  end;
-  result := Dur;
-end;
-
-function GetAccidKind(LyName: String): TAccidental;
-var
-  Accid: TAccidental;
-begin
-  if LyName.EndsWith('is') then
-    Accid := akSharp
-  else if LyName.EndsWith('es') then
-    Accid := akFlat
-  else
-    Accid := akNatural;
-  result := Accid;
-end;
 
 constructor TPitch.CreateFromLy(Source: String);
 var
@@ -149,54 +90,65 @@ begin
     NoteStr := StringDropBefore(NoteStr, OctLy);
  
   DurLy := ExtractWord(1, NoteStr, ['(', ')', '~', '\']);
+
   if DurLy <> '' then
   begin
     NoteStr := StringDropBefore(NoteStr, DurLy);
-    EtcLy := NoteStr; { TODO }
+    EtcLy := NoteStr;
   end;
 
-  FPitchName := GetPitchKind(PitchNameLy);
-  FAccid     := GetAccidKind(PitchNameLy);
-  FOct       := GetOctave(OctLy);
-  FDur       := GetDurationKind(DurLy);
-end;
-
-function TPitch.MEIPname: String;
-var
-  Pname: String;
-begin
-  case FPitchName of
-    pkC : Pname := 'c';
-    pkD : Pname := 'd';
-    pkE : Pname := 'e';
-    pkF : Pname := 'f';
-    pkG : Pname := 'g';
-    pkA : Pname := 'a';
-    pkB : Pname := 'b';
+  if PitchNameLy.EndsWith('is') then
+    FAccid := akSharp
+  else if PitchNameLy.EndsWith('es') then
+    FAccid := akFlat
+  else
+    FAccid := akNatural;
+  
+  case PitchNameLy.Substring(0, 1) of
+    'c': FPitchName := pkC;
+    'd': FPitchName := pkD;
+    'e': FPitchName := pkE;
+    'f': FPitchName := pkF;
+    'g': FPitchName := pkG;
+    'a': FPitchName := pkA;
+    'b': FPitchName := pkB;
+    'r': FPitchName := pkRest;
+  else
+    WriteLn(Stderr, 'Could not extract pitch from input "' + PitchNameLy + '"');
   end;
-  result := XMLAttribute('pname', Pname);
-end;
 
-function TPitch.MEIAccid: String;
-var
-  Accid: String;
-begin
-  case FAccid of
-    akNatural : Accid := 'n';
-    akFlat    : Accid := 'f';
-    akSharp   : Accid := 's';
+  case OctLy of
+    ',,,'     : FOct := 0;
+    ',,'      : FOct := 1;
+    ','       : FOct := 2;
+    ''        : FOct := 3;
+    ''''      : FOct := 4; { '' }
+    ''''''    : FOct := 5; { ''' }
+    ''''''''  : FOct := 6; { '''' }
+  else
+    WriteLn(Stderr, 'Could not extract octave from input "' + OctLy + '"');
   end;
-  result := XMLAttribute('accid', Accid);
+
+  case DurLy of
+    '\breve'  : FDur := dkBreve;
+    '1'       : FDur := dkSemibreve;
+    '2'       : FDur := dkMinim;
+    '4'       : FDur := dkSemiminim;
+    '8'       : FDur := dkFusa;
+    '16'      : FDur := dkSemifusa;
+    '\breve.' : FDur := dkBreveDotted;
+    '1.'      : FDur := dkSemibreveDotted;
+    '2.'      : FDur := dkMinimDotted;
+    '4.'      : FDur := dkSemiminimDotted;
+    '8.'      : FDur := dkFusaDotted;
+  else
+    WriteLn(Stderr, 'Could not extract duration from input "' + DurLy + '"');
+  end;
 end;
 
-function TPitch.MEIOct: String;
-begin
-  result := XMLAttribute('oct', IntToStr(FOct));
-end;
-
-function TPitch.MEIDurDots: String;
+function TPitch.ToMEI: String;
 var
-  DurBase, Dur: String;
+  Pnum, Oct, Accid, DurBase, Dur: String;
   Dots: Boolean;
 begin
   case FDur of 
@@ -216,21 +168,32 @@ begin
     dkBreve .. dkSemifusa         : Dots := False;
     dkBreveDotted .. dkFusaDotted : Dots := True;
   end;
-  Dur := XMLAttribute('dur', DurBase);
+  Dur := 'dur="' + DurBase + '"';
   if Dots then
-    Dur := Dur + ' ' + XMLAttribute('dots', '1');
-  result := Dur;
-end;
+    Dur := Dur + ' dots="1"';
 
-function TPitch.ToMEI: String;
-var
-  Dur: String;
-begin
-  Dur := MEIDurDots;
   if FPitchName = pkRest then
-    result := XMLElement('rest', '', Dur)
+    result := '<rest dur="' + Dur + '"/>'
   else
-    result := XMLElement('note', '', MEIPname + MEIAccid + MEIOct + Dur);
+  begin
+    case FPitchName of
+      pkC : Pnum := 'c';
+      pkD : Pnum := 'd';
+      pkE : Pnum := 'e';
+      pkF : Pnum := 'f';
+      pkG : Pnum := 'g';
+      pkA : Pnum := 'a';
+      pkB : Pnum := 'b';
+    end;
+    case FAccid of
+      akNatural : Accid := 'n';
+      akFlat    : Accid := 'f';
+      akSharp   : Accid := 's';
+    end;
+    Oct := IntToStr(FOct);
+    result := '<note pname="' + Pnum + '" accid="' + Accid 
+              + '" oct="' + Oct + '" ' + Dur + '></note>';
+  end;
 end;
 
 constructor TPitchList.CreateFromLyMeasure(Source: String);
@@ -261,10 +224,6 @@ begin
   result := OutputLines;
 end;
 
-{ TODO START work through TLyObject tree to make PitchLists for each measure, then
-make new tree with rearragned MEI hierarchy, then convert to MEI strings }
-
-{
 constructor TLyVoice.CreateFromLy(LyInput: TStringListAAC);
 var
   ThisString: String;
@@ -384,15 +343,14 @@ begin
   end;
   result := MEIMusic;
 end;
-}
 
 function CreateMEIScore(SourceLines: TStringListAAC): TStringListAAC;
 var
   LyScoreStr: String;
   LyObjectTree: TLyObject = nil;
   MEIScoreLines: TStringListAAC = nil;
-//  LyMusic: TLyMusic;
-//  MEIMusic: TMEIMusic;
+  LyMusic: TLyMusic;
+  MEIMusic: TMEIMusic;
 begin
   LyScoreStr := LyArg(SourceLines.Text, '\score');
   if not LyScoreStr.IsEmpty then
@@ -403,10 +361,10 @@ begin
       LyObjectTree.SetStaffNums;
       MEIScoreLines := LyObjectTree.ToNewMEIScoreDef;
       { process music }
-//      LyMusic := TLyMusic.Create(LyObjectTree);
+      LyMusic := TLyMusic.Create(LyObjectTree);
 
-//      MEIMusic := MakeMEIMusic(LyMusic);
-//      DebugLn(MEIMusic.ToString);
+      MEIMusic := MakeMEIMusic(LyMusic);
+      DebugLn(MEIMusic.ToString);
 
 
       { MEIMusicLines := LyObjectTree.ToMusic(MEIMusicLines);
@@ -423,8 +381,8 @@ begin
   MEIScoreLines.EncloseInXML('body');
   MEIScoreLines.EncloseInXML('music');
 
-//  FreeAndNil(MEIMusic);
-//  FreeAndNil(LyMusic);
+  FreeAndNil(MEIMusic);
+  FreeAndNil(LyMusic);
   FreeAndNIl(LyObjectTree);
   result := MEIScoreLines;
 end;
