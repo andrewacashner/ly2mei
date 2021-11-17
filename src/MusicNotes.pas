@@ -70,15 +70,18 @@ type
       FMeasures: TMeasureList;
       FChild, FSibling: TMEIElement;
   public
-    constructor Create(Name, ID: String; Num: Integer; 
+    constructor Create();
+    constructor Create(Name, ID: String; Num: Integer = 1; 
       Measures: TMeasureList = nil; Child: TMEIElement = nil; 
       Sibling: TMEIElement = nil);
-    constructor CreateFromLyTree(LyTree: TLyObject);
     destructor Destroy; override;
     function ToString: String; override;
     function LastChild: TMEIElement;
+    function LastSibling: TMEIElement;
     function ToMeasures: TMEIElement;
   end;
+
+function LyToMEITree(LyTree: TLyObject): TMEIElement;
 
 { Parse a Lilypond \score expression and create an MEI music
   element including the scoreDef and music notes }
@@ -303,8 +306,14 @@ begin
   FreeAndNil(LyLines);
 end;
 
-constructor TMEIElement.Create(Name, ID: String; Num: Integer; Measures:
-  TMeasureList = nil; Child: TMEIElement = nil; Sibling: TMEIElement = nil);
+constructor TMEIElement.Create();
+begin
+  inherited Create;
+end;
+
+constructor TMEIElement.Create(Name, ID: String; Num: Integer = 1; 
+  Measures: TMeasureList = nil; Child: TMEIElement = nil; 
+  Sibling: TMEIElement = nil); 
 begin
   inherited Create;
   FName := Name;
@@ -315,32 +324,41 @@ begin
   FSibling := Sibling;
 end;
 
-constructor TMEIElement.CreateFromLyTree(LyTree: TLyObject);
+function LyToMEITree(LyTree: TLyObject): TMEIElement;
+function InnerTree(LyNode: TLyObject; MEINode: TMEIElement): TMEIElement;
+var
+  NewNode: TMEIElement = nil;
 begin
-  inherited Create;
-  if LyTree <> nil then
+  assert(MEINode <> nil);
+  if LyNode <> nil then
   begin
-    case LyTree.FType of
+    case LyNode.FType of
       'Staff' : 
       begin
-        FName := 'staff';
-        FID := LyTree.FID;
-        FNum := LyTree.FNum;
-        FMeasures := nil;
+        NewNode := TMEIElement.Create('staff', LyNode.FID, LyNode.FNum);
       end;
       'Voice' :
       begin
-        FName := 'layer';
-        FID := LyTree.FID;
-        FNum := LyTree.FNum;
-        FMeasures := TMeasureList.CreateFromLy(LyTree.FContents); 
+        NewNode := TMEIElement.Create('layer', LyNode.FID, LyNode.FNum);
+        NewNode.FMeasures := TMeasureList.CreateFromLy(LyNode.FContents); 
       end;
     end;
-    if LyTree.FChild <> nil then
-      FChild := TMEIElement.CreateFromLyTree(LyTree.FChild);
-    if LyTree.FSibling <> nil then
-      FSibling := TMEIElement.CreateFromLyTree(LyTree.FSibling);
+    if NewNode <> nil then
+      MEINode.LastChild.FChild := NewNode;
+    
+    if LyNode.FChild <> nil then
+      MEINode := InnerTree(LyNode.FChild, MEINode);
+    if LyNode.FSibling <> nil then
+      MEINode := InnerTree(LyNode.FSibling, MEINode);
   end;
+  result := MEINode;
+end;
+var
+  MEITree: TMEIElement;
+begin
+  MEITree := TMEIElement.Create('score', '');
+  MEITree := InnerTree(LyTree, MEITree);
+  result := MEITree;
 end;
 
 destructor TMEIElement.Destroy;
@@ -384,34 +402,73 @@ begin
     result := FChild.LastChild;
 end;
 
+function TMEIElement.LastSibling: TMEIElement;
+begin
+  if FSibling = nil then
+    result := Self
+  else
+    result := FSibling.LastSibling;
+end;
+
+
 
 function TMEIElement.ToMeasures: TMEIElement;
+function BuildTree(NodeA, NodeB: TMEIElement): TMEIElement;
 var
-  NewTree: TMEIElement;
+  ThisStaff, ThisLayer: TMEIElement;
+  NewMeasure, NewStaff, NewLayer, NewPitchList: TMEIElement;
   ThisPitchList: TPitchList;
   ThisMeasureList: TMeasureList;
   MeasureNum: Integer;
 begin
-  if LastChild.FMeasures <> nil then
+  if NodeA <> nil then
   begin
-    ThisMeasureList := LastChild.FMeasures;
-    MeasureNum := 0;
-    for ThisPitchList in ThisMeasureList do
+    DebugLn('Visiting Tree A Node FName ' + NodeA.FName);
+    if (NodeA.FName = 'staff') then
     begin
-      NewTree := TMEIElement.Create(FName, FID, FNum);
-      if FMeasures <> nil then
+      ThisStaff := NodeA;
+      if (ThisStaff.FChild <> nil) and (ThisStaff.FChild.FName = 'layer') then 
       begin
-        NewTree.FMeasures := TMeasureList.Create;
-        NewTree.FMeasures.Add(FMeasures[MeasureNum]);
+        ThisLayer := ThisStaff.FChild;
+        DebugLn('Visiting layer n ' + IntToStr(ThisLayer.FNum));
+        ThisMeasureList := ThisLayer.FMeasures;
+        MeasureNum := 0;
+        DebugLn('Measure count = ' + IntToStr(ThisMeasureList.Count));
+        NewMeasure := TMEIElement.Create('measure', '', MeasureNum + 1);
+        { TODO START
+        for ThisPitchList in ThisMeasureList do
+        begin
+          //BuildTree again from root?
+          NewStaff := TMEIElement.Create('staff', ThisStaff.FID, ThisStaff.FNum);
+          if NewMeasure.FChild = nil then
+            NewMeasure.FChild := NewStaff
+          else
+            NewMeasure.FChild.FSibling := NewStaff;
+          
+          NewLayer := TMEIElement.Create('layer', ThisLayer.FID, ThisLayer.FNum);
+          NewStaff.FChild := NewLayer;
+          NewLayer.FMeasures := TMeasureList.Create;
+          NewLayer.FMeasures.Add(ThisLayer.FMeasures[MeasureNum]);
+          Inc(MeasureNum);
+        end;
+        }
+        if NewMeasure <> nil then
+          NodeB.LastChild.FChild := NewMeasure;
       end;
-      Inc(MeasureNum);
     end;
-    if FChild <> nil then
-      NewTree.FChild := FChild.ToMeasures;
-    if FSibling <> nil then
-      NewTree.FSibling := FSibling.ToMeasures;
+    if NodeA.FChild <> nil then
+      NodeB := BuildTree(NodeA.FChild, NodeB);
+    if NodeA.FSibling <> nil then
+      NodeB := BuildTree(NodeA.FSibling, NodeB);
   end;
-  result := NewTree;
+  result := NodeB;
+end;
+var
+  Root: TMEIElement;
+begin
+  Root := TMEIElement.Create('score', '', 1);
+  Root := BuildTree(Self, Root);
+  result := Root;
 end;
 
 function CreateMEIMusic(SourceLines: TStringListAAC): TStringListAAC;
@@ -432,11 +489,11 @@ begin
       LyObjectTree.SetNumbers;
       MEIMusicLines := LyObjectTree.ToNewMEIScoreDef;
       { process music }
-      MEITree := TMEIElement.CreateFromLyTree(LyObjectTree);
+      MEITree := LyToMEITree(LyObjectTree);
       DebugLn(MEITree.ToString);
       { TODO START here }
-//      MEIMeasures := MEITree.ToMeasures;
-//      DebugLn(MEIMeasures.ToString);
+      MEIMeasures := MEITree.ToMeasures;
+      DebugLn(MEIMeasures.ToString);
     end;
   end;
   
