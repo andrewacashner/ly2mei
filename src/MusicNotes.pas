@@ -449,13 +449,12 @@ begin
   FNum      := LyObject.FNum;
   FChild    := nil;
   FSibling  := nil;
-//  if LyObject.FContents = '' then
+  if LyObject.FContents = '' then
     FMeasures := nil
-//  else
-//    FMeasures := TMeasureList.CreateFromLy(LyObject.FContents);
+  else
+    FMeasures := TMeasureList.CreateFromLy(LyObject.FContents);
 end;
 
-{ TODO start here, doesn't work }
 function TMEIElement.CountMeasures: Integer;
 var
   MasterCount: Integer = 0;
@@ -468,21 +467,20 @@ begin
     if (Node.FType = ekLayer) and (Node.FMeasures <> nil) then
     begin
       ThisCount := Node.FMeasures.Count;
+      if MasterCount = 0 then
+        MasterCount := ThisCount
+      else if ThisCount <> MasterCount then
+      begin
+        result := -1;
+        exit;
+      end;
     end;
     if Node.FChild <> nil then
       ThisCount := InnerCount(Node.FChild);
     if Node.FSibling <> nil then
       ThisCount := InnerCount(Node.FSibling);
-    DebugLn('ThisCount = ' + IntToStr(ThisCount) 
-      + ', MasterCount = ' + IntToStr(MasterCount));
-    if (MasterCount = 0) or (MasterCount = ThisCount) then
-    begin
-      MasterCount := ThisCount;
-      result := ThisCount;
-    end
-    else
-      result := -1;
   end;
+  result := ThisCount;
 end;
 begin
   result := InnerCount(Self)
@@ -631,7 +629,7 @@ var
   MEIMusicLines: TStringListAAC = nil;
   MEIScoreLines: TStringListAAC = nil;
   MEITree: TMEIElement = nil;
-  MeasureCount: Integer;
+  MeasureCount, MeasureNum: Integer;
   MEIMeasures: TMEIElement = nil;
 begin
   LyScoreStr := LyArg(SourceLines.Text, '\score');
@@ -651,14 +649,16 @@ begin
       DebugLn('MEASURE COUNT: ' + IntToStr(MeasureCount));
       if MeasureCount > 0 then
       begin
-//      
-//      { TODO START here }
+      { TODO START here: follow pattern of assign function }
+        for MeasureNum := 0 to MeasureCount - 1 do
+          DebugLn(XMLElement('measure', '', XMLAttribute('n', IntToStr(MeasureNum + 1))));
+
 //      MEIMeasures := TMEIElement.Create;
 //      MEIMeasures.AssignTree(MEITree);
-//      DebugLn(MEIMeasures.ToString);
+//      DebugLn('MEI TREE COPY:' + LineEnding + MEIMeasures.ToString);
+      
 //      MEIMeasures := MEITree.ToMeasures;
 //      DebugLn(MEIMeasures.ToString);
-
       end;
     end;
   end;
@@ -673,7 +673,7 @@ begin
   MEIMusicLines.EncloseInXML('body');
   MEIMusicLines.EncloseInXML('music');
 
-  FreeAndNil(MEIMeasures);
+//  FreeAndNil(MEIMeasures);
   FreeAndNil(MEITree);
   FreeAndNil(MEIScoreLines);
   FreeAndNil(LyObjectTree);
