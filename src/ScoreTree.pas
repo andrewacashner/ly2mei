@@ -44,7 +44,7 @@ type
       FSibling: TLyObject;
     constructor Create();
     constructor Create(TypeStr, IDStr: String; ContentsStr: String = ''; 
-      Num: Integer = 0; Child: TLyObject = nil; Sibling: TLyObject = nil); 
+      Num: Integer = 1; Child: TLyObject = nil; Sibling: TLyObject = nil); 
 
     { Destroy the whole tree. }
     destructor Destroy; override;
@@ -101,7 +101,7 @@ begin
 end;
 
 constructor TLyObject.Create(TypeStr, IDStr: String; ContentsStr: String = '';
-  Num: Integer = 0; Child: TLyObject = nil; Sibling: TLyObject = nil); 
+  Num: Integer = 1; Child: TLyObject = nil; Sibling: TLyObject = nil); 
 begin
   inherited Create;
   FType     := TypeStr;
@@ -148,9 +148,11 @@ function TLyObject.ToString: String;
       Indent := IndentStr(Generation);
 
       if Parent.FID <> '' then 
-        IDStr := '" id="' + Parent.FID;
+        IDStr := ' ' + XMLAttribute('id', Parent.FID);
       
-      ParentStr := '<lyobject type="' + Parent.FType + IDStr + '">' + Parent.FContents;
+      ParentStr := '<lyobject ' + XMLAttribute('type', Parent.FType) + IDStr 
+                    + ' ' + XMLAttribute('n', IntToStr(Parent.FNum)) + '">' 
+                    + Parent.FContents;
 
       if Parent.FChild <> nil then
         ChildStr := LineEnding + TreeToString(Parent.FChild, Generation + 1) + Indent;

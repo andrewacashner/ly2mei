@@ -460,21 +460,23 @@ begin
         MEINode.FID := LyNode.FID;
         MEINode.FNum := LyNode.FNum;
         MEINode.FMeasures := TMeasureList.CreateFromLy(LyNode.FContents);
+        if LyNode.FSibling <> nil then
+          MEINode.FSibling := InnerTree(LyNode.FSibling, MEINode.FSibling);
       end;
     end;
-    if MEINode <> nil then
-    begin
-      if LyNode.FChild <> nil then
-        MEINode.FChild := InnerTree(LyNode.FChild, MEINode.FChild);
-      if LyNode.FSibling <> nil then
-        MEINode.FSibling := InnerTree(LyNode.FSibling, MEINode.FSibling);
-    end
-    else
+    if MEINode = nil then
     begin
       if LyNode.FChild <> nil then
         MEINode := InnerTree(LyNode.FChild, MEINode);
       if LyNode.FSibling <> nil then
         MEINode := InnerTree(LyNode.FSibling, MEINode);
+    end
+    else
+    begin
+      if LyNode.FChild <> nil then
+        MEINode.FChild := InnerTree(LyNode.FChild, MEINode.FChild);
+      if LyNode.FSibling <> nil then
+        MEINode.FSibling := InnerTree(LyNode.FSibling, MEINode.FSibling);
     end;
   end;
   result := MEINode;
@@ -482,8 +484,8 @@ end;
 var 
   MEITree: TMEIElement;
 begin
-  MEITree := TMEIElement.Create('score', '');
-  MEITree.FChild := InnerTree(LyTree, MEITree.FChild);
+  MEITree := TMEIElement.Create;
+  MEITree := InnerTree(LyTree, MEITree);
   result := MEITree;
 end;
 
@@ -683,7 +685,7 @@ var
   MEIScoreLines: TStringListAAC = nil;
   MEITree: TMEIElement = nil;
   MeasureCount: Integer;
-  MEIMeasures: TMEIElement = nil;
+//  MEIMeasures: TMEIElement = nil;
 begin
   LyScoreStr := LyArg(SourceLines.Text, '\score');
   if not LyScoreStr.IsEmpty then
@@ -691,21 +693,23 @@ begin
     LyObjectTree := FindLyNewTree(LyScoreStr, LyObjectTree);
     if LyObjectTree <> nil then
     begin
+//      DebugLn('LYOBJECT TREE:' + LineEnding + LyObjectTree.ToString);
       LyObjectTree.SetNumbers;
+//      DebugLn('LYOBJECT TREE, NUMBERED:' + LineEnding + LyObjectTree.ToString);
       MEIMusicLines := LyObjectTree.ToNewMEIScoreDef;
       { process music }
       MEITree := LyToMEITree(LyObjectTree);
       DebugLn(MEITree.ToString);
 
       MeasureCount := CountMeasures(MEITree);
-      DebugLn('Measure count: ' + IntToStr(MeasureCount));
+      DebugLn('MEASURE COUNT: ' + IntToStr(MeasureCount));
       if MeasureCount > 0 then
       begin
       
       { TODO START here }
-      MEIMeasures := TMEIElement.Create;
-      MEIMeasures.AssignTree(MEITree);
-      DebugLn(MEIMeasures.ToString);
+//      MEIMeasures := TMEIElement.Create;
+//      MEIMeasures.AssignTree(MEITree);
+//      DebugLn(MEIMeasures.ToString);
 //      MEIMeasures := MEITree.ToMeasures;
 //      DebugLn(MEIMeasures.ToString);
 
@@ -723,7 +727,7 @@ begin
   MEIMusicLines.EncloseInXML('body');
   MEIMusicLines.EncloseInXML('music');
 
-  FreeAndNil(MEIMeasures);
+//  FreeAndNil(MEIMeasures);
   FreeAndNil(MEITree);
   FreeAndNil(MEIScoreLines);
   FreeAndNil(LyObjectTree);
