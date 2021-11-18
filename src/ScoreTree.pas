@@ -19,14 +19,18 @@ interface
 
 uses SysUtils, StrUtils, Classes, StringTools, Outline;
 
-type
+type 
+  TMusicTreeElement = (ekAnonymous, ekScore, ekStaffGrp, ekStaff, ekLayer, ekMeasure);
+
   { One node in a tree of Lilypond code objects that were
   created with @code(\new) commands. }
   TLyObject = class
   public
     var
+      { Label for object type, equivalent between Lilypond and MEI }
+      FType: TMusicTreeElement;
       { Type of object, e.g., Voice or Lyrics }
-      FType: String;
+      FName: String;
       { ID string, as in @code(\new Voice = "Soprano"); blank if omitted in
         Lilypond source }
       FID: String;
@@ -43,8 +47,8 @@ type
       { Right sibling node (tree) }
       FSibling: TLyObject;
     constructor Create();
-    constructor Create(TypeStr, IDStr: String; ContentsStr: String = ''; 
-      Num: Integer = 1; Child: TLyObject = nil; Sibling: TLyObject = nil); 
+    constructor Create(Name, ID: String; ContentsStr: String = ''; Num:
+      Integer = 1; Child: TLyObject = nil; Sibling: TLyObject = nil); 
 
     { Destroy the whole tree. }
     destructor Destroy; override;
@@ -57,7 +61,7 @@ type
 
     { Number the objects with a given FType label consecutively in an in-order
     traversal, regardless of relation to other elements of the tree hierarchy }
-    procedure NumberElementsInOrder(Name: String);
+    procedure NumberElementsInOrder(ElementType: TMusicTreeElement);
 
     { Number ChoirStaff, StaffGroup, Staff, and Voice elements in order }
     procedure SetNumbers;
@@ -100,12 +104,25 @@ begin
   inherited Create;
 end;
 
-constructor TLyObject.Create(TypeStr, IDStr: String; ContentsStr: String = '';
+constructor TLyObject.Create(Name, ID: String; ContentsStr: String = ''; 
   Num: Integer = 1; Child: TLyObject = nil; Sibling: TLyObject = nil); 
+function NameToType(Name: String): TMusicTreeElement;
+var
+  Element: TMusicTreeElement;
+begin
+  case Name of
+    'StaffGroup', 'ChoirStaff': Element := ekStaffGrp;
+    'Staff': Element := ekStaff;
+    'Voice': Element := ekLayer;
+  else Element := ekAnonymous;
+  end;
+  result := Element;
+end;
 begin
   inherited Create;
-  FType     := TypeStr;
-  FID       := IDStr;
+  FType     := NameToType(Name);
+  FName     := Name;
+  FID       := ID;
   FNum      := Num;
   FContents := ContentsStr;
   FChild    := Child;
@@ -150,7 +167,7 @@ function TLyObject.ToString: String;
       if Parent.FID <> '' then 
         IDStr := ' ' + XMLAttribute('id', Parent.FID);
       
-      ParentStr := '<lyobject ' + XMLAttribute('type', Parent.FType) + IDStr 
+      ParentStr := '<lyobject ' + XMLAttribute('type', Parent.FName) + IDStr 
                     + ' ' + XMLAttribute('n', IntToStr(Parent.FNum)) + '">' 
                     + Parent.FContents;
 
@@ -165,7 +182,7 @@ function TLyObject.ToString: String;
     end;
   end;
 begin
-  if FType = '' then
+  if FType = ekAnonymous then {TODO is this necessary? }
     result := ''
   else 
     result := TreeToString(Self, 0);
@@ -243,14 +260,14 @@ begin
   result := Tree;
 end;
 
-procedure TLyObject.NumberElementsInOrder(Name: String);
+procedure TLyObject.NumberElementsInOrder(ElementType: TMusicTreeElement);
 var
   N: Integer = 0;
 function InnerNums(Node: TLyObject): TLyObject;
 begin
   if Node <> nil then
   begin
-    if Node.FType = Name then
+    if Node.FType = ElementType then
     begin
       Inc(N);
       Node.FNum := N;
@@ -268,10 +285,10 @@ end;
 
 procedure TLyObject.SetNumbers;
 begin
-  NumberElementsInOrder('ChoirStaff');
-  NumberElementsInOrder('StaffGroup');
-  NumberElementsInOrder('Staff');
-  NumberElementsInOrder('Voice');
+  { TODO treating ChoirStaff and StaffGroup as part of same series }
+  NumberElementsInOrder(ekStaffGrp); 
+  NumberElementsInOrder(ekStaff);
+  NumberElementsInOrder(ekLayer);
 end;
 
 type
@@ -312,6 +329,7 @@ begin
             + XMLAttribute(' def', '#' + Node.FID);
 end;
 
+
 function TLyObject.ToNewMEIScoreDef: TStringListAAC;
 function InnerScoreDef(Node: TLyObject; InnerLines: TStringListAAC): TStringListAAC;
 var 
@@ -326,13 +344,13 @@ begin
   ThisTag := '';
   try
     case Node.FType of
-      'ChoirStaff', 'StaffGroup' : 
+      ekStaffGrp:
       begin
         ThisTag := 'staffGrp';
         Attributes := XMLAttribute('xml:id', Node.FID) + StaffGrpAttributes;
       end;
 
-      'Staff' : 
+      ekStaff:
       begin
         ThisTag := 'staffDef';
         Attributes := XMLAttribute('n', IntToStr(Node.FNum)) 
@@ -340,7 +358,7 @@ begin
         
         { Extract staffDef info from the first music expression in the first
         child Voice }
-        if (Node.FChild <> nil) and (Node.FChild.FType = 'Voice') then
+        if (Node.FChild <> nil) and (Node.FChild.FType = ekLayer) then
         begin
           { Search c. first 10 lines }
           SearchStr := Node.FChild.FContents.Substring(0, 800); 

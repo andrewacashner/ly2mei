@@ -71,35 +71,26 @@ type
   TMEIElement = class
   private
     var
+      FType: TMusicTreeElement;
       FName, FID: String;
       FNum: Integer;
       FMeasures: TMeasureList;
       FChild, FSibling: TMEIElement;
   public
     constructor Create();
-    constructor Create(Name, ID: String; Num: Integer = 1; 
-      Measures: TMeasureList = nil; Child: TMEIElement = nil; 
-      Sibling: TMEIElement = nil);
+    constructor Create(ElementType: TMusicTreeElement; ID: String; 
+      Num: Integer = 1; Measures: TMeasureList = nil; 
+      Child: TMEIElement = nil; Sibling: TMEIElement = nil);
     destructor Destroy; override;
     procedure AssignNode(Source: TMEIElement);
     procedure AssignTree(Source: TMEIElement);
+    procedure SetFromLyObject(LyObject: TLyObject);
     function ToString: String; override;
-    function LastChild: TMEIElement;
-    function LastSibling: TMEIElement;
+    function CountMeasures: Integer;
     function ToMeasures: TMEIElement;
   end;
 
 function LyToMEITree(LyTree: TLyObject): TMEIElement;
-
-type 
-  TMEIElementList = class(specialize TObjectList<TMEIElement>)
-  public
-    constructor CreateFromTree(Tree: TMEIElement);
-    function ToString: String; override;
-    function MeasureCount: Integer;
-  end;
-
-function CountMeasures(MEITree: TMEIElement): Integer;
 
 { Parse a Lilypond \score expression and create an MEI music
   element including the scoreDef and music notes }
@@ -385,31 +376,48 @@ begin
   inherited Create;
 end;
 
-constructor TMEIElement.Create(Name, ID: String; Num: Integer = 1; 
-  Measures: TMeasureList = nil; Child: TMEIElement = nil; 
+function TypeToName(Element: TMusicTreeElement): String;
+var
+  Name: String;
+begin
+  case Element of
+    ekScore:    Name := 'score';
+    ekStaffGrp: Name := 'staffGrp';
+    ekStaff:    Name := 'staff';
+    ekLayer:    Name := 'layer';
+    ekMeasure:  Name := 'measure';
+  else Name := 'UNKNOWN';
+  end;
+  result := Name;
+end;
+
+constructor TMEIElement.Create(ElementType: TMusicTreeElement; ID: String;
+  Num: Integer = 1; Measures: TMeasureList = nil; Child: TMEIElement = nil;
   Sibling: TMEIElement = nil); 
 begin
   inherited Create;
-  FName := Name;
-  FID := ID;
-  FNum := Num;
+  FType     := ElementType;
+  FName     := TypeToName(ElementType);
+  FID       := ID;
+  FNum      := Num;
   FMeasures := Measures;
-  FChild := Child;
-  FSibling := Sibling;
+  FChild    := Child;
+  FSibling  := Sibling;
 end;
 
 procedure TMEIElement.AssignNode(Source: TMEIElement);
 begin
+  FType := Source.FType;
   FName := Source.FName;
-  FID := Source.FID;
-  FNum := Source.FNum;
+  FID   := Source.FID;
+  FNum  := Source.FNum;
   if Source.FMeasures <> nil then
   begin
     FMeasures := TMeasureList.Create;
     FMeasures.Assign(Source.FMeasures);
   end;
-  FChild := nil;
-  FSibling := nil;
+  FChild    := nil;
+  FSibling  := nil;
 end;
 
 procedure TMEIElement.AssignTree(Source: TMEIElement);
@@ -433,6 +441,51 @@ begin
   InnerAssign(Source, Self);
 end;
 
+procedure TMEIElement.SetFromLyObject(LyObject: TLyObject);
+begin
+  FType     := LyObject.FType;
+  FName     := TypeToName(LyObject.FType);
+  FID       := LyObject.FID;
+  FNum      := LyObject.FNum;
+  FChild    := nil;
+  FSibling  := nil;
+  if LyObject.FContents = '' then
+    FMeasures := nil
+  else
+    FMeasures := TMeasureList.CreateFromLy(LyObject.FContents);
+end;
+
+function TMEIElement.CountMeasures: Integer;
+var
+  MasterCount: Integer = 0;
+function InnerCount(Node: TMEIElement): Integer;
+var
+  ThisCount: Integer;
+begin
+  if Node <> nil then
+  begin
+    if (Node.FType = ekLayer) and (Node.FMeasures <> nil) then
+    begin
+      ThisCount := Node.FMeasures.Count;
+    end;
+    if Node.FChild <> nil then
+      ThisCount := InnerCount(Node.FChild);
+    if Node.FSibling <> nil then
+      ThisCount := InnerCount(Node.FSibling);
+    DebugLn('ThisCount = ' + IntToStr(ThisCount) 
+      + ', MasterCount = ' + IntToStr(ThisCount));
+    if (MasterCount = 0) or (MasterCount = ThisCount) then
+    begin
+      MasterCount := ThisCount;
+      result := ThisCount;
+    end
+    else
+      result := -1;
+  end;
+end;
+begin
+  result := InnerCount(Self)
+end;
 
 function LyToMEITree(LyTree: TLyObject): TMEIElement;
 function InnerTree(LyNode: TLyObject; MEINode: TMEIElement): TMEIElement;
@@ -440,28 +493,13 @@ begin
   if LyNode <> nil then
   begin
     case LyNode.FType of
-      'Staff':
+      ekStaff, ekLayer:
       begin
         if MEINode = nil then
         begin
           MEINode := TMEIElement.Create;
         end;
-        MEINode.FName := 'staff';
-        MEINode.FID := LyNode.FID;
-        MEINode.FNum := LyNode.FNum;
-      end;
-      'Voice':
-      begin
-        if MEINode = nil then
-        begin
-          MEINode := TMEIElement.Create;
-        end;
-        MEINode.FName := 'layer';
-        MEINode.FID := LyNode.FID;
-        MEINode.FNum := LyNode.FNum;
-        MEINode.FMeasures := TMeasureList.CreateFromLy(LyNode.FContents);
-        if LyNode.FSibling <> nil then
-          MEINode.FSibling := InnerTree(LyNode.FSibling, MEINode.FSibling);
+        MEINode.SetFromLyObject(LyNode);
       end;
     end;
     if MEINode = nil then
@@ -474,9 +512,19 @@ begin
     else
     begin
       if LyNode.FChild <> nil then
-        MEINode.FChild := InnerTree(LyNode.FChild, MEINode.FChild);
+      begin
+        if LyNode.FType = LyNode.FChild.FType then
+          MEINode.FSibling := InnerTree(LyNode.FChild, MEINode.FSibling)
+        else
+          MEINode.FChild := InnerTree(LyNode.FChild, MEINode.FChild);
+      end;
       if LyNode.FSibling <> nil then
-        MEINode.FSibling := InnerTree(LyNode.FSibling, MEINode.FSibling);
+      begin
+        if LyNode.FType = LyNode.FSibling.FType then
+          MEINode.FSibling := InnerTree(LyNode.FSibling, MEINode.FSibling)
+        else
+          MEINode.FChild := InnerTree(LyNode.FSibling, MEINode.FChild);
+      end;
     end;
   end;
   result := MEINode;
@@ -484,6 +532,7 @@ end;
 var 
   MEITree: TMEIElement;
 begin
+  { TODO Start there is an empty root element }
   MEITree := TMEIElement.Create;
   MEITree := InnerTree(LyTree, MEITree);
   result := MEITree;
@@ -522,25 +571,9 @@ begin
   result := OutputStr;
 end;
 
-function TMEIElement.LastChild: TMEIElement;
-begin
-  if FChild = nil then
-    result := Self
-  else
-    result := FChild.LastChild;
-end;
-
-function TMEIElement.LastSibling: TMEIElement;
-begin
-  if FSibling = nil then
-    result := Self
-  else
-    result := FSibling.LastSibling;
-end;
-
-
 
 function TMEIElement.ToMeasures: TMEIElement;
+{ TODO START
 function BuildTree(NodeA, NodeB: TMEIElement): TMEIElement;
 var
   ThisStaff, ThisLayer: TMEIElement;
@@ -552,18 +585,17 @@ begin
   if NodeA <> nil then
   begin
     DebugLn('Visiting Tree A Node FName ' + NodeA.FName);
-    if (NodeA.FName = 'staff') then
+    if (NodeA.FType = ekStaff) then
     begin
       ThisStaff := NodeA;
-      if (ThisStaff.FChild <> nil) and (ThisStaff.FChild.FName = 'layer') then 
+      if (ThisStaff.FChild <> nil) and (ThisStaff.FChild.FType = ekLayer) then 
       begin
         ThisLayer := ThisStaff.FChild;
         DebugLn('Visiting layer n ' + IntToStr(ThisLayer.FNum));
         ThisMeasureList := ThisLayer.FMeasures;
         MeasureNum := 0;
         DebugLn('Measure count = ' + IntToStr(ThisMeasureList.Count));
-        NewMeasure := TMEIElement.Create('measure', '', MeasureNum + 1);
-        { TODO START
+        NewMeasure := TMEIElement.Create(ekMeasure, '', MeasureNum + 1);
         for ThisPitchList in ThisMeasureList do
         begin
           //BuildTree again from root?
@@ -579,7 +611,6 @@ begin
           NewLayer.FMeasures.Add(ThisLayer.FMeasures[MeasureNum]);
           Inc(MeasureNum);
         end;
-        }
         if NewMeasure <> nil then
           NodeB.LastChild.FChild := NewMeasure;
       end;
@@ -591,91 +622,14 @@ begin
   end;
   result := NodeB;
 end;
+}
 var
   Root: TMEIElement;
 begin
-  Root := TMEIElement.Create('score', '', 1);
-  Root := BuildTree(Self, Root);
+  Root := TMEIElement.Create(ekScore, '', 1);
+//  Root := BuildTree(Self, Root);
   result := Root;
 end;
-
-constructor TMEIElementList.CreateFromTree(Tree: TMEIElement);
-function InnerTreeToList(Tree: TMEIElement; List: TMEIElementList): TMEIElementList;
-var 
-  NewElement: TMEIELement;
-begin
-  assert(List <> nil);
-  if Tree <> nil then
-    with Tree do
-    begin
-      NewElement := TMEIElement.Create;
-      NewElement.AssignNode(Tree);
-      List.Add(NewElement);
-      if FChild <> nil then
-        List := InnerTreeToList(FChild, List);
-      if FSibling <> nil then
-        List := InnerTreeToList(FSibling, List);
-    end;
-  result := List;
-end;
-begin
-  inherited Create;
-  Self := InnerTreeToList(Tree, Self);
-end;
-
-function TMEIElementList.ToString: String;
-var
-  ThisElement: TMEIElement;
-  ThisElementStr: String;
-  OutputStr: String = '';
-begin
-  for ThisElement in Self do
-  begin
-    with ThisElement do
-    begin
-      ThisElementStr := FName + ' ' + FID + ' ' + IntToStr(FNum);
-      if FMeasures <> nil then
-        ThisElementStr := ThisElementStr + ' (' + IntToStr(FMeasures.Count) + ' measures)';
-    end;
-    OutputStr := OutputStr + 'ELEMENT: ' + ThisElementStr + ' | ';
-  end;
-  result := OutputStr;
-end;
-
-function TMEIElementList.MeasureCount: Integer;
-var
-  ThisElement: TMEIElement;
-  PrevCount: Integer = 0;
-  NewCount: Integer = 0;
-begin
-  for ThisElement in Self do
-  begin
-    if ThisElement.FMeasures <> nil then
-    begin
-      NewCount := ThisElement.FMeasures.Count
-    end;
-    if (PrevCount = 0) or (PrevCount = NewCount) then
-      PrevCount := NewCount
-    else
-    begin
-      NewCount := -1;
-      break;
-    end;
-  end;
-  result := NewCount;
-end;
-
-function CountMeasures(MEITree: TMEIElement): Integer;
-var
-  MEIList: TMEIELementList;
-  Count: Integer;
-begin
-  MEIList := TMEIElementList.CreateFromTree(MEITree);
-  Count := MEIList.MeasureCount;
-  FreeAndNil(MEIList);
-  result := Count;
-end;
-
 
 function CreateMEIMusic(SourceLines: TStringListAAC): TStringListAAC;
 var
@@ -685,7 +639,7 @@ var
   MEIScoreLines: TStringListAAC = nil;
   MEITree: TMEIElement = nil;
   MeasureCount: Integer;
-//  MEIMeasures: TMEIElement = nil;
+  MEIMeasures: TMEIElement = nil;
 begin
   LyScoreStr := LyArg(SourceLines.Text, '\score');
   if not LyScoreStr.IsEmpty then
@@ -701,15 +655,16 @@ begin
       MEITree := LyToMEITree(LyObjectTree);
       DebugLn(MEITree.ToString);
 
-      MeasureCount := CountMeasures(MEITree);
+//      MeasureCount := CountMeasures(MEITree);
+      MeasureCount := MEITree.CountMeasures;
       DebugLn('MEASURE COUNT: ' + IntToStr(MeasureCount));
       if MeasureCount > 0 then
       begin
       
       { TODO START here }
-//      MEIMeasures := TMEIElement.Create;
-//      MEIMeasures.AssignTree(MEITree);
-//      DebugLn(MEIMeasures.ToString);
+      MEIMeasures := TMEIElement.Create;
+      MEIMeasures.AssignTree(MEITree);
+      DebugLn(MEIMeasures.ToString);
 //      MEIMeasures := MEITree.ToMeasures;
 //      DebugLn(MEIMeasures.ToString);
 
@@ -727,7 +682,7 @@ begin
   MEIMusicLines.EncloseInXML('body');
   MEIMusicLines.EncloseInXML('music');
 
-//  FreeAndNil(MEIMeasures);
+  FreeAndNil(MEIMeasures);
   FreeAndNil(MEITree);
   FreeAndNil(MEIScoreLines);
   FreeAndNil(LyObjectTree);
