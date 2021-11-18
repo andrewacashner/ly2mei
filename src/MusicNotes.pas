@@ -449,18 +449,19 @@ begin
   FNum      := LyObject.FNum;
   FChild    := nil;
   FSibling  := nil;
-  if LyObject.FContents = '' then
+//  if LyObject.FContents = '' then
     FMeasures := nil
-  else
-    FMeasures := TMeasureList.CreateFromLy(LyObject.FContents);
+//  else
+//    FMeasures := TMeasureList.CreateFromLy(LyObject.FContents);
 end;
 
+{ TODO start here, doesn't work }
 function TMEIElement.CountMeasures: Integer;
 var
   MasterCount: Integer = 0;
 function InnerCount(Node: TMEIElement): Integer;
 var
-  ThisCount: Integer;
+  ThisCount: Integer = 0;
 begin
   if Node <> nil then
   begin
@@ -473,7 +474,7 @@ begin
     if Node.FSibling <> nil then
       ThisCount := InnerCount(Node.FSibling);
     DebugLn('ThisCount = ' + IntToStr(ThisCount) 
-      + ', MasterCount = ' + IntToStr(ThisCount));
+      + ', MasterCount = ' + IntToStr(MasterCount));
     if (MasterCount = 0) or (MasterCount = ThisCount) then
     begin
       MasterCount := ThisCount;
@@ -502,40 +503,31 @@ begin
         MEINode.SetFromLyObject(LyNode);
       end;
     end;
-    if MEINode = nil then
+    if LyNode.FChild <> nil then
     begin
-      if LyNode.FChild <> nil then
-        MEINode := InnerTree(LyNode.FChild, MEINode);
-      if LyNode.FSibling <> nil then
-        MEINode := InnerTree(LyNode.FSibling, MEINode);
-    end
-    else
+      if MEINode = nil then
+        MEINode := InnerTree(LyNode.FChild, MEINode)
+      else if MEINode.FType = LyNode.FChild.FType then
+        MEINode.FSibling := InnerTree(LyNode.FChild, MEINode.FSibling)
+      else
+        MEINode.FChild := InnerTree(LyNode.FChild, MEINode.FChild);
+    end;
+    if LyNode.FSibling <> nil then
     begin
-      if LyNode.FChild <> nil then
-      begin
-        if LyNode.FType = LyNode.FChild.FType then
-          MEINode.FSibling := InnerTree(LyNode.FChild, MEINode.FSibling)
-        else
-          MEINode.FChild := InnerTree(LyNode.FChild, MEINode.FChild);
-      end;
-      if LyNode.FSibling <> nil then
-      begin
-        if LyNode.FType = LyNode.FSibling.FType then
-          MEINode.FSibling := InnerTree(LyNode.FSibling, MEINode.FSibling)
-        else
-          MEINode.FChild := InnerTree(LyNode.FSibling, MEINode.FChild);
-      end;
+      if MEINode = nil then
+        MEINode := InnerTree(LyNode.FSibling, MEINode)
+      else
+        MEINode.FSibling := InnerTree(LyNode.FSibling, MEINode.FSibling);
     end;
   end;
   result := MEINode;
 end;
 var 
-  MEITree: TMEIElement;
+  MEIRoot: TMEIElement;
 begin
-  { TODO Start there is an empty root element }
-  MEITree := TMEIElement.Create;
-  MEITree := InnerTree(LyTree, MEITree);
-  result := MEITree;
+  MEIRoot := TMEIElement.Create(ekScore, '');
+  MEIRoot.FChild := InnerTree(LyTree, MEIRoot.FChild);
+  result := MEIRoot;
 end;
 
 destructor TMEIElement.Destroy;
@@ -565,9 +557,10 @@ begin
     end;
   end;
   if FChild <> nil then
-    OutputStr := OutputStr + 'CHILD: ' + FChild.ToString;
-  if FSibling <> nil then
-    OutputStr := OutputStr + 'SIBLING: ' + FSibling.ToString;
+    OutputStr := OutputStr + 'CHILD (to ' + Fname + ' ' + IntToStr(FNum) +
+        '): ' + FChild.ToString; if FSibling <> nil then
+    OutputStr := OutputStr + 'SIBLING (to ' + Fname + ' ' + IntToStr(FNum) +
+        '): ' + FSibling.ToString; 
   result := OutputStr;
 end;
 
@@ -647,24 +640,22 @@ begin
     LyObjectTree := FindLyNewTree(LyScoreStr, LyObjectTree);
     if LyObjectTree <> nil then
     begin
-//      DebugLn('LYOBJECT TREE:' + LineEnding + LyObjectTree.ToString);
       LyObjectTree.SetNumbers;
-//      DebugLn('LYOBJECT TREE, NUMBERED:' + LineEnding + LyObjectTree.ToString);
+      DebugLn('LYOBJECT TREE, NUMBERED:' + LineEnding + LyObjectTree.ToString);
       MEIMusicLines := LyObjectTree.ToNewMEIScoreDef;
       { process music }
       MEITree := LyToMEITree(LyObjectTree);
-      DebugLn(MEITree.ToString);
+      DebugLn('MEI TREE STAGE 1:' + LineEnding + MEITree.ToString);
 
-//      MeasureCount := CountMeasures(MEITree);
       MeasureCount := MEITree.CountMeasures;
       DebugLn('MEASURE COUNT: ' + IntToStr(MeasureCount));
       if MeasureCount > 0 then
       begin
-      
-      { TODO START here }
-      MEIMeasures := TMEIElement.Create;
-      MEIMeasures.AssignTree(MEITree);
-      DebugLn(MEIMeasures.ToString);
+//      
+//      { TODO START here }
+//      MEIMeasures := TMEIElement.Create;
+//      MEIMeasures.AssignTree(MEITree);
+//      DebugLn(MEIMeasures.ToString);
 //      MEIMeasures := MEITree.ToMeasures;
 //      DebugLn(MEIMeasures.ToString);
 

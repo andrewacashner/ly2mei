@@ -155,37 +155,34 @@ begin
 end;
 
 function TLyObject.ToString: String; 
-  function TreeToString(Parent: TLyObject; Generation: Integer): String;
-  var
-    Indent: String;
-    ParentStr, ChildStr, SibStr, IDStr: String;
-  begin
-    if Parent <> nil then
-    begin
-      Indent := IndentStr(Generation);
-
-      if Parent.FID <> '' then 
-        IDStr := ' ' + XMLAttribute('id', Parent.FID);
-      
-      ParentStr := '<lyobject ' + XMLAttribute('type', Parent.FName) + IDStr 
-                    + ' ' + XMLAttribute('n', IntToStr(Parent.FNum)) + '">' 
-                    + Parent.FContents;
-
-      if Parent.FChild <> nil then
-        ChildStr := LineEnding + TreeToString(Parent.FChild, Generation + 1) + Indent;
-
-      SibStr := LineEnding;
-      if Parent.FSibling <> nil then 
-        SibStr := LineEnding + TreeToString(Parent.FSibling, Generation);
-
-      result := Indent + ParentStr + ChildStr + '</lyobject>' + SibStr;
-    end;
-  end;
+function TreeToString(Parent: TLyObject; Generation: Integer): String;
+var
+  Indent: String;
+  ParentStr, ChildStr, SibStr, IDStr: String;
 begin
-  if FType = ekAnonymous then {TODO is this necessary? }
-    result := ''
-  else 
-    result := TreeToString(Self, 0);
+  if Parent <> nil then
+  begin
+    Indent := IndentStr(Generation);
+
+    if Parent.FID <> '' then 
+      IDStr := ' ' + XMLAttribute('id', Parent.FID);
+    
+    ParentStr := '<lyobject ' + XMLAttribute('type', Parent.FName) + IDStr 
+                  + ' ' + XMLAttribute('n', IntToStr(Parent.FNum)) + '">' 
+                  + Parent.FContents;
+
+    if Parent.FChild <> nil then
+      ChildStr := LineEnding + TreeToString(Parent.FChild, Generation + 1) + Indent;
+
+    SibStr := LineEnding;
+    if Parent.FSibling <> nil then 
+      SibStr := LineEnding + TreeToString(Parent.FSibling, Generation);
+
+    result := Indent + ParentStr + ChildStr + '</lyobject>' + SibStr;
+  end;
+end;
+begin
+  result := TreeToString(Self, 0);
 end;
 
 function FindLyNewTree(Source: String; Tree: TLyObject): TLyObject;
