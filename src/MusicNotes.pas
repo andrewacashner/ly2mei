@@ -44,7 +44,8 @@ type
       FOct: Integer;
       FDur: TDuration;
     constructor Create();
-    constructor Create(Name: TPitchName; Accid: TAccidental; Oct: Integer; Dur: TDuration);
+    constructor Create(Name: TPitchName; Accid: TAccidental; Oct: Integer;
+      Dur: TDuration); 
     constructor CreateFromLy(Source: String);
     procedure Assign(Source: TPitch); 
     function MEIPName: String;
@@ -80,7 +81,8 @@ type
       Measures: TMeasureList = nil; Child: TMEIElement = nil; 
       Sibling: TMEIElement = nil);
     destructor Destroy; override;
-    procedure Assign(Source: TMEIElement);
+    procedure AssignNode(Source: TMEIElement);
+    procedure AssignTree(Source: TMEIElement);
     function ToString: String; override;
     function LastChild: TMEIElement;
     function LastSibling: TMEIElement;
@@ -396,7 +398,7 @@ begin
   FSibling := Sibling;
 end;
 
-procedure TMEIElement.Assign(Source: TMEIElement);
+procedure TMEIElement.AssignNode(Source: TMEIElement);
 begin
   FName := Source.FName;
   FID := Source.FID;
@@ -406,44 +408,82 @@ begin
     FMeasures := TMeasureList.Create;
     FMeasures.Assign(Source.FMeasures);
   end;
-  FChild := Source.FChild;
-  FSibling := Source.FSibling;
+  FChild := nil;
+  FSibling := nil;
 end;
+
+procedure TMEIElement.AssignTree(Source: TMEIElement);
+function InnerAssign(TreeA, TreeB: TMEIElement): TMEIElement;
+begin
+  if TreeA <> nil then
+  begin
+    if TreeB = nil then
+    begin
+      TreeB := TMEIElement.Create;
+    end;
+    TreeB.AssignNode(TreeA);
+    if TreeA.FChild <> nil then
+      TreeB.FChild := InnerAssign(TreeA.FChild, TreeB.FChild);
+    if TreeA.FSibling <> nil then
+      TreeB.FSibling:= InnerAssign(TreeA.FSibling, TreeB.FSibling);
+  end;
+  result := TreeB;
+end;
+begin
+  InnerAssign(Source, Self);
+end;
+
 
 function LyToMEITree(LyTree: TLyObject): TMEIElement;
 function InnerTree(LyNode: TLyObject; MEINode: TMEIElement): TMEIElement;
-var
-  NewNode: TMEIElement = nil;
 begin
-  assert(MEINode <> nil);
   if LyNode <> nil then
   begin
     case LyNode.FType of
-      'Staff' : 
+      'Staff':
       begin
-        NewNode := TMEIElement.Create('staff', LyNode.FID, LyNode.FNum);
+        if MEINode = nil then
+        begin
+          MEINode := TMEIElement.Create;
+        end;
+        MEINode.FName := 'staff';
+        MEINode.FID := LyNode.FID;
+        MEINode.FNum := LyNode.FNum;
       end;
-      'Voice' :
+      'Voice':
       begin
-        NewNode := TMEIElement.Create('layer', LyNode.FID, LyNode.FNum);
-        NewNode.FMeasures := TMeasureList.CreateFromLy(LyNode.FContents); 
+        if MEINode = nil then
+        begin
+          MEINode := TMEIElement.Create;
+        end;
+        MEINode.FName := 'layer';
+        MEINode.FID := LyNode.FID;
+        MEINode.FNum := LyNode.FNum;
+        MEINode.FMeasures := TMeasureList.CreateFromLy(LyNode.FContents);
       end;
     end;
-    if NewNode <> nil then
-      MEINode.LastChild.FChild := NewNode;
-    
-    if LyNode.FChild <> nil then
-      MEINode := InnerTree(LyNode.FChild, MEINode);
-    if LyNode.FSibling <> nil then
-      MEINode := InnerTree(LyNode.FSibling, MEINode);
+    if MEINode <> nil then
+    begin
+      if LyNode.FChild <> nil then
+        MEINode.FChild := InnerTree(LyNode.FChild, MEINode.FChild);
+      if LyNode.FSibling <> nil then
+        MEINode.FSibling := InnerTree(LyNode.FSibling, MEINode.FSibling);
+    end
+    else
+    begin
+      if LyNode.FChild <> nil then
+        MEINode := InnerTree(LyNode.FChild, MEINode);
+      if LyNode.FSibling <> nil then
+        MEINode := InnerTree(LyNode.FSibling, MEINode);
+    end;
   end;
   result := MEINode;
 end;
-var
+var 
   MEITree: TMEIElement;
 begin
   MEITree := TMEIElement.Create('score', '');
-  MEITree := InnerTree(LyTree, MEITree);
+  MEITree.FChild := InnerTree(LyTree, MEITree.FChild);
   result := MEITree;
 end;
 
@@ -474,9 +514,9 @@ begin
     end;
   end;
   if FChild <> nil then
-    OutputStr := OutputStr + FChild.ToString;
+    OutputStr := OutputStr + 'CHILD: ' + FChild.ToString;
   if FSibling <> nil then
-    OutputStr := OutputStr + FSibling.ToString;
+    OutputStr := OutputStr + 'SIBLING: ' + FSibling.ToString;
   result := OutputStr;
 end;
 
@@ -567,9 +607,7 @@ begin
     with Tree do
     begin
       NewElement := TMEIElement.Create;
-      NewElement.Assign(Tree);
-      NewElement.FChild := nil;
-      NewElement.FSibling := nil;
+      NewElement.AssignNode(Tree);
       List.Add(NewElement);
       if FChild <> nil then
         List := InnerTreeToList(FChild, List);
@@ -645,7 +683,7 @@ var
   MEIScoreLines: TStringListAAC = nil;
   MEITree: TMEIElement = nil;
   MeasureCount: Integer;
-//  MEIMeasures: TMEIElement = nil;
+  MEIMeasures: TMEIElement = nil;
 begin
   LyScoreStr := LyArg(SourceLines.Text, '\score');
   if not LyScoreStr.IsEmpty then
@@ -665,6 +703,9 @@ begin
       begin
       
       { TODO START here }
+      MEIMeasures := TMEIElement.Create;
+      MEIMeasures.AssignTree(MEITree);
+      DebugLn(MEIMeasures.ToString);
 //      MEIMeasures := MEITree.ToMeasures;
 //      DebugLn(MEIMeasures.ToString);
 
@@ -682,7 +723,7 @@ begin
   MEIMusicLines.EncloseInXML('body');
   MEIMusicLines.EncloseInXML('music');
 
-//  FreeAndNil(MEIMeasures);
+  FreeAndNil(MEIMeasures);
   FreeAndNil(MEITree);
   FreeAndNil(MEIScoreLines);
   FreeAndNil(LyObjectTree);
