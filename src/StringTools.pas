@@ -17,6 +17,10 @@ function StringDropBefore(Source, Cut: String): String;
 { Return the portion of a string before a given delimiter. }
 function StringDropAfter(InputStr: String; Delim: String): String;
 
+{ Return the first quoted portion of a string (enclosed in @code(") marks),
+  omitting the quotation marks }
+function CopyFirstQuotedString(Source: String): String;
+
 { Is this a single quoted string without any other quotes within it? }
 function IsASingleQuotedString(Source: String): Boolean;
 
@@ -87,6 +91,20 @@ begin
   if InputStr.Contains(Delim) then
     InputStr := InputStr.Substring(0, InputStr.IndexOf(Delim));
   result := InputStr;
+end;
+
+function CopyFirstQuotedString(Source: String): String;
+var
+  OutputStr: String;
+begin
+  if Source.Contains('"') and (Source.CountChar('"') > 1) then
+  begin
+    OutputStr := StringDropBefore(Source, '"');
+    OutputStr := OutputStr.Substring(0, OutputStr.IndexOf('"'));
+    result := OutputStr;
+  end
+  else
+    result := '';
 end;
 
 function IsASingleQuotedString(Source: String): Boolean;

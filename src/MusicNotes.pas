@@ -688,21 +688,19 @@ begin
   LyScoreStr := LyArg(SourceLines.Text, '\score');
   if not LyScoreStr.IsEmpty then
   begin
-    LyObjectTree := FindLyNewTree(LyScoreStr, LyObjectTree);
-    if LyObjectTree <> nil then
-    begin
-      LyObjectTree.SetNumbers;
-      DebugLn('LYOBJECT TREE, NUMBERED:' + LineEnding + LyObjectTree.ToString);
-      MEIMusicLines := LyObjectTree.ToNewMEIScoreDef;
-      
-      MEIStaffTree := LyToMEITree(LyObjectTree);
-      DebugLn('MEI TREE STAGE 1:' + LineEnding + MEIStaffTree.ToString);
+    LyObjectTree := BuildLyObjectTree(LyScoreStr, LyObjectTree);
+    LyObjectTree.SetNumbers;
+    DebugLn('LYOBJECT TREE, NUMBERED:' + LineEnding + LyObjectTree.ToString);
+    
+    MEIMusicLines := LyObjectTree.ToMEIScoreDef;
+    
+    MEIStaffTree := LyToMEITree(LyObjectTree);
+    DebugLn('MEI TREE STAGE 1:' + LineEnding + MEIStaffTree.ToString);
 
-      MEIMeasureTree := MEIStaffTree.StaffToMeasureTree;
-      DebugLn('MEI TREE STAGE 2:' + LineEnding + MEIMeasureTree.ToString);
+    MEIMeasureTree := MEIStaffTree.StaffToMeasureTree;
+    DebugLn('MEI TREE STAGE 2:' + LineEnding + MEIMeasureTree.ToString);
 
-      MEIScoreLines := MEIMeasureTree.ToMEI;
-   end;
+    MEIScoreLines := MEIMeasureTree.ToMEI;
   end;
   
   if MEIScoreLines <> nil then

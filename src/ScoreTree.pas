@@ -72,10 +72,7 @@ type
 
     { Create a new stringlist containing an MEI scoreDef element, drawing the
     information from this tree. }
-    function ToNewMEIScoreDef: TStringListAAC;
-   
-//    { Convert a Lilypond music expression to MEI in a stringlist }
-//    function ToMusic(MEILines: TStringListAAC): TStringListAAC;
+    function ToMEIScoreDef: TStringListAAC;
   end;
 
 { Build an LCRS tree of Lilypond @code(\new) objects.
@@ -90,11 +87,11 @@ type
   For the first kind, we store the value and ID, if there is one; then we
   continue to look recursively for child elements within the angle-bracket
   expression. For the second kind, we store value, ID, and contents
-  (everything from the ID up to the end of the matched-brace expression) as a
-  sibling of the previous item.
+  (everything from the ID up to the end of the matched-brace expression)
+  as a sibling of the previous item.
 }
+function BuildLyObjectTree(Source: String; Tree: TLyObject): TLyObject;
 
-function FindLyNewTree(Source: String; Tree: TLyObject): TLyObject;
 
 
 implementation
@@ -185,20 +182,19 @@ begin
   result := TreeToString(Self, 0);
 end;
 
-function FindLyNewTree(Source: String; Tree: TLyObject): TLyObject;
+function BuildLyObjectTree(Source: String; Tree: TLyObject): TLyObject;
 var
-  SearchIndex: Integer;
+  SearchIndex: Integer = 0;
   SearchStr, ThisType, ThisID, ThisContents: String;
   Outline: TIndexPair;
 begin
-  SearchStr := Source;
-  SearchIndex := 0;
-  if (Length(Source) = 0) then
+  if Length(Source) = 0 then
   begin
     result := Tree;
     exit;
   end;
  
+  SearchStr := Source;
   SearchIndex := SearchStr.IndexOf('\new ');
   if SearchIndex = -1 then 
   begin
@@ -235,7 +231,7 @@ begin
     else
       Tree.LastChild.FChild := TLyObject.Create(ThisType, ThisID);
   
-    Tree.LastChild.FChild := FindLyNewTree(ThisContents, nil);
+    Tree.LastChild.FChild := BuildLyObjectTree(ThisContents, nil);
     Source := StringDropBefore(Source.Substring(SearchIndex), ThisContents);
   end
   else
@@ -253,7 +249,7 @@ begin
   end;
 
   { Look for the next sibling where you left off from the last search }
-  Tree.LastSibling.FSibling := FindLyNewTree(Source, nil);
+  Tree.LastSibling.FSibling := BuildLyObjectTree(Source, nil);
   result := Tree;
 end;
 
@@ -282,28 +278,88 @@ end;
 
 procedure TLyObject.SetNumbers;
 begin
-  { TODO treating ChoirStaff and StaffGroup as part of same series }
+  { NOTE treating ChoirStaff and StaffGroup as part of same series }
   NumberElementsInOrder(ekStaffGrp); 
   NumberElementsInOrder(ekStaff);
   NumberElementsInOrder(ekLayer);
 end;
 
 type
-  ClefKind = (ckTreble, ckBass);
-  KeyKind = (kkDurus, kkMollis);
-  MeterKind = (mkDuple, mkTriple);
+  TClefKind = (ckNone, ckTreble, ckSoprano, ckMezzoSoprano, ckAlto, ckTenor,
+    ckBaritone, ckBass, ckTreble8va); 
+  TKeyKind = (kkDurus, kkMollis);
+  TMeterKind = (mkDuple, mkTriple);
+
+function FindLyClef(Source: String): TClefKind;
+var
+  TestStr, ClefStr: String;
+  Clef: TClefKind = ckNone;
+begin
+  if Source.Contains('\clef ') then
+  begin
+    TestStr := StringDropBefore(Source, '\clef ');
+    ClefStr := CopyFirstQuotedString(TestStr);
+    case ClefStr of
+      'treble'       : Clef := ckTreble;
+      'soprano'      : Clef := ckSoprano; 
+      'mezzosoprano' : Clef := ckMezzoSoprano;
+      'alto'         : Clef := ckAlto;
+      'tenor'        : Clef := ckTenor;
+      'baritone'     : Clef := ckBaritone;
+      'bass'         : Clef := ckBass;
+      'treble_8'     : Clef := ckTreble8va;
+      else
+        Clef := ckNone;
+    end;
+  end;
+  
+  DebugLn('CLEF test string: ''' + ClefStr + '''');
+  DebugLn('CLEF kind: ');
+  {$ifdef DEBUG} WriteLn(Clef); {$endif}
+
+  result := Clef;
+end;
+
+function MEIClef(Clef: TClefKind): String;
+var
+  ClefLine: Integer;
+  ClefLetter: Char;
+  ClefDis: String;
+  XML: String;
+begin
+  case Clef of
+    ckSoprano                  : ClefLine := 1;
+    ckTreble, ckMezzoSoprano,  
+      ckTreble8va              : ClefLine := 2;
+    ckAlto, ckBaritone         : ClefLine := 3;
+    ckTenor, ckBass            : ClefLine := 4;
+  end;
+  case Clef of
+    ckTreble, ckTreble8va       : ClefLetter := 'G';
+    ckSoprano, ckMezzoSoprano,   
+      ckAlto, ckTenor           : ClefLetter := 'C';
+    ckBaritone, ckBass          : ClefLetter := 'F';
+  end;
+  case Clef of
+    ckTreble8va : ClefDis := ' ' + XMLAttribute('clef.dis', '8') + ' '
+                              + XMLAttribute('clef.dis.place', 'below');
+    else
+      ClefDis := '';
+  end;
+  XML := XMLAttribute('clef.line', IntToStr(ClefLine)) + ' '
+            + XMLAttribute('clef.shape', ClefLetter) + ClefDis;
+  result := XML;
+end;
+
 
 const StaffGrpAttributes = ' bar.thru="false" symbol="bracket"';
 
-function StaffDefAttributes(Clef: ClefKind; Key: KeyKind; Meter: MeterKind): String;
+function StaffDefAttributes(Clef: TClefKind; Key: TKeyKind; Meter: TMeterKind): String;
 var
   ClefStr, KeyStr, MeterStr, OutputStr: String;
 begin
   OutputStr := ' lines="5" ';
-  case Clef of
-    ckTreble: ClefStr := 'clef.line="2" clef.shape="G" ';
-    ckBass  : ClefStr := 'clef.line="4" clef.shape="F" ';
-  end;
+  ClefStr := MEIClef(Clef);
   case Key of 
     kkDurus : KeyStr := 'key.sig="0" ';
     kkMollis: KeyStr := 'key.sig="1f" ';
@@ -312,12 +368,7 @@ begin
     mkDuple : MeterStr := 'mensur.sign="C" mensur.tempus="2"';
     mkTriple: MeterStr := 'mensur.sign="C" mensur.tempus="2" proport.num="3"';
   end;
-  result := OutputStr + ClefStr + KeyStr + MeterStr;
-end;
-
-function ElementNumID(Node: TLyObject; N: Integer): String;
-begin
-  result := XMLAttribute('n', IntToStr(N)) + XMLAttribute(' xml:id', Node.FID);
+  result := OutputStr + ClefStr + ' ' + KeyStr + MeterStr;
 end;
 
 function StaffNumID(Node: TLyObject): String;
@@ -326,70 +377,67 @@ begin
             + XMLAttribute(' def', '#' + Node.FID);
 end;
 
-
-function TLyObject.ToNewMEIScoreDef: TStringListAAC;
+function TLyObject.ToMEIScoreDef: TStringListAAC;
 function InnerScoreDef(Node: TLyObject; InnerLines: TStringListAAC): TStringListAAC;
 var 
   ThisTag, SearchStr, Attributes: String;
   TempLines: TStringListAAC;
-  Clef: ClefKind;
-  Key: KeyKind;
-  Meter: MeterKind;
+  Clef: TClefKind;
+  Key: TKeyKind;
+  Meter: TMeterKind;
 begin
   assert(InnerLines <> nil);
   TempLines := TStringListAAC.Create;
   ThisTag := '';
-  try
-    case Node.FType of
-      ekStaffGrp:
-      begin
-        ThisTag := 'staffGrp';
-        Attributes := XMLAttribute('xml:id', Node.FID) + StaffGrpAttributes;
-      end;
-
-      ekStaff:
-      begin
-        ThisTag := 'staffDef';
-        Attributes := XMLAttribute('n', IntToStr(Node.FNum)) 
-                      + XMLAttribute(' xml:id', Node.FID);
-        
-        { Extract staffDef info from the first music expression in the first
-        child Voice }
-        if (Node.FChild <> nil) and (Node.FChild.FType = ekLayer) then
-        begin
-          { Search c. first 10 lines }
-          SearchStr := Node.FChild.FContents.Substring(0, 800); 
-          Clef := ckTreble;
-          if SearchStr.Contains('\clef "bass"') then 
-            Clef := ckBass;
-
-          Key := kkDurus;
-          if SearchStr.Contains('\CantusMollis') then
-            Key := kkMollis;
-
-          Meter := mkDuple;
-          if SearchStr.Contains('\MeterTriple') then
-            Meter := mkTriple;
-        end;
-        Attributes := Attributes + StaffDefAttributes(Clef, Key, Meter);
-      end;
-    end;
-
-    { Create this element and its children }
-    if (ThisTag <> '') and (Node.FChild <> nil) then
+  case Node.FType of
+    ekStaffGrp:
     begin
-      TempLines.AddStrings(InnerScoreDef(Node.FChild, InnerLines));
-      TempLines.EncloseInXML(ThisTag, Attributes);
+      ThisTag := 'staffGrp';
+      Attributes := XMLAttribute('xml:id', Node.FID) + StaffGrpAttributes;
     end;
 
-    { Create its siblings }
-    if Node.FSibling <> nil then
-      TempLines.AddStrings(InnerScoreDef(Node.FSibling, InnerLines));
-    InnerLines.Assign(TempLines);
-  finally
-    FreeAndNil(TempLines);
-    result := InnerLines;
+    ekStaff:
+    begin
+      ThisTag := 'staffDef';
+      Attributes := XMLAttribute('n', IntToStr(Node.FNum)) 
+                    + XMLAttribute(' xml:id', Node.FID);
+      
+      { Extract staffDef info from the first music expression in the first
+      child Voice }
+      if (Node.FChild <> nil) and (Node.FChild.FType = ekLayer) then
+      begin
+        { Search c. first 10 lines }
+        SearchStr := Node.FChild.FContents.Substring(0, 800); 
+        Clef := FindLyClef(SearchStr);
+
+        { TODO make this a function catching more key kinds, like we did with
+        FindLyClef; same for Meter below }
+        Key := kkDurus;
+        if SearchStr.Contains('\CantusMollis') then
+          Key := kkMollis;
+
+        Meter := mkDuple;
+        if SearchStr.Contains('\MeterTriple') then
+          Meter := mkTriple;
+      end;
+      Attributes := Attributes + StaffDefAttributes(Clef, Key, Meter);
+    end;
   end;
+
+  { Create this element and its children }
+  if (ThisTag <> '') and (Node.FChild <> nil) then
+  begin
+    TempLines.AddStrings(InnerScoreDef(Node.FChild, InnerLines));
+    TempLines.EncloseInXML(ThisTag, Attributes);
+  end;
+
+  { Create its siblings }
+  if Node.FSibling <> nil then
+    TempLines.AddStrings(InnerScoreDef(Node.FSibling, InnerLines));
+
+  InnerLines.Assign(TempLines);
+  FreeAndNil(TempLines);
+  result := InnerLines;
 end;
 var
   MEI: TStringListAAC;

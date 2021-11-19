@@ -1,4 +1,5 @@
-\version "3.0"
+\version "2.23"
+\include "early-music.ly"
 \header {
   title = "Test of Score Reading"
   composer = "Andrew Cashner"
@@ -6,7 +7,7 @@
 
 MusicS = {
   \clef "treble"
-  \DupleMeter
+  \MeterDuple
   \CantusMollis
   | c'4 d'4 e'4 f'4
   | f'4 e'4 d'4 c'4
@@ -16,21 +17,21 @@ LyricsS = \lyricmode {
   du -- ple me -- ter
 }
 
-MusicA = {
-  \clef "treble"
-  \DupleMeter
+MusicT = {
+  \clef "treble_8"
+  \MeterDuple
   \CantusMollis
   | a4 b4 c'4 d'4
-  | d'4 c'4 b4 a4
+  | d'4 c'4 bes4 a4
 }
-LyricsA = \lyricmode {
+LyricsT = \lyricmode {
   Un deux trois quatre
   im -- per -- fec -- tum
 }
 
 MusicB = {
   \clef "bass"
-  \DupleMeter
+  \MeterDuple
   \CantusMollis
   | c1
   | c1
@@ -50,10 +51,10 @@ FiguresB = \figuremode {
         \new Voice = "Soprano" { \MusicS }
         \new Lyrics \lyricsto "Soprano" { \LyricsS }
       >>
-      \new Staff = "s-Alto"
+      \new Staff = "s-Tenor"
       <<
-        \new Voice = "Alto" { \MusicS }
-        \new Lyrics \lyricsto "Alto" { \LyricsS }
+        \new Voice = "Tenor" { \MusicT }
+        \new Lyrics \lyricsto "Tenor" { \LyricsT }
       >>
     >>
     \new ChoirStaff = "accompaniment"
@@ -61,7 +62,7 @@ FiguresB = \figuremode {
       \new Staff = "s-continuo"
       <<
         \new Voice = "Bass" { \MusicB }
-        \new Figures { \FiguresB }
+        \new FiguredBass { \FiguresB }
       >>
     >>
   >>
