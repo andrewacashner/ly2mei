@@ -113,8 +113,14 @@ begin
 end;
 
 function XMLAttributeIDNum(ID: String; Num: Integer): String;
+var
+  IDStr: String;
 begin
-  result := XMLAttribute('xml:id', ID) + ' ' + XMLAttribute('n', IntToStr(Num));
+  if ID = '' then
+    IDStr := ''
+  else 
+    IDStr := XMLAttribute('xml:id', ID) + ' ';
+  result := IDStr + XMLAttribute('n', IntToStr(Num));
 end;
 
 constructor TStringListAAC.Create;

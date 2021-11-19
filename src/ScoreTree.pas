@@ -20,7 +20,7 @@ interface
 uses SysUtils, StrUtils, Classes, StringTools, Outline;
 
 type 
-  TMusicTreeElement = (ekAnonymous, ekScore, ekStaffGrp, ekStaff, ekLayer, ekMeasure);
+  TMusicTreeElement = (ekAnonymous, ekStaffGrp, ekStaff, ekLayer, ekMeasure);
 
   { One node in a tree of Lilypond code objects that were
   created with @code(\new) commands. }
@@ -396,6 +396,7 @@ var
 begin
   MEI := TStringListAAC.Create;
   MEI := InnerScoreDef(Self, MEI);
+  MEI.EncloseInXML('staffGrp');
   MEI.EncloseInXML('scoreDef');
   result := MEI;
 end;

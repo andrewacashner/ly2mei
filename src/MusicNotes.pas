@@ -24,11 +24,11 @@ uses SysUtils, StrUtils, Classes, Generics.Collections, StringTools, Outline,
 ScoreTree;
 
 type 
-  TPitchName = (pkC, pkD, pkE, pkF, pkG, pkA, pkB, pkRest);
+  TPitchName = (pkNone, pkC, pkD, pkE, pkF, pkG, pkA, pkB, pkRest);
   TAccidental = (akNatural, akFlat, akSharp);
-  TDuration = (dkBreve, dkSemibreve, dkMinim, dkSemiminim, dkFusa, dkSemifusa,
-    dkBreveDotted, dkSemibreveDotted, dkMinimDotted, dkSemiminimDotted,
-    dkFusaDotted);
+  TDuration = (dkNone, dkBreve, dkSemibreve, dkMinim, dkSemiminim, dkFusa,
+    dkSemifusa, dkBreveDotted, dkSemibreveDotted, dkMinimDotted,
+    dkSemiminimDotted, dkFusaDotted);
 
 function GetPitchKind(LyName: String): TPitchName;
 function GetOctave(OctLy: String): Integer;
@@ -68,6 +68,8 @@ type
     procedure Assign(Source: TMeasureList);
   end;
 
+  TMeasureCopyMode = (mkAllMeasures, mkOneMeasure);
+
   TMEIElement = class
   private
     var
@@ -82,12 +84,16 @@ type
       Num: Integer = 1; Measures: TMeasureList = nil; 
       Child: TMEIElement = nil; Sibling: TMEIElement = nil);
     destructor Destroy; override;
-    procedure AssignNode(Source: TMEIElement);
-    procedure AssignTree(Source: TMEIElement);
+    function LastSibling: TMEIElement;
+    procedure AssignNode(Source: TMEIElement; Mode: TMeasureCopyMode =
+      mkAllMeasures; MeasureIndex: Integer = 0); 
+    procedure AssignTree(Source: TMEIElement; Mode: TMeasureCopyMode =
+      mkAllMeasures; MeasureIndex: Integer = 0); 
     procedure SetFromLyObject(LyObject: TLyObject);
-    function ToString: String; override;
     function CountMeasures: Integer;
-    function ToMeasures: TMEIElement;
+    function ToString: String; override;
+    function StaffToMeasureTree: TMEIElement;
+    function ToMEI: TStringListAAC;
   end;
 
 function LyToMEITree(LyTree: TLyObject): TMEIElement;
@@ -111,8 +117,8 @@ begin
     'a': PitchName := pkA;
     'b': PitchName := pkB;
     'r': PitchName := pkRest;
-  else
-    WriteLn(Stderr, 'Could not extract pitch from input "' + LyName + '"');
+    else 
+      PitchName := pkNone;
   end;
   result := PitchName;
 end;
@@ -129,8 +135,8 @@ begin
     ''''      : Oct := 4; { '' }
     ''''''    : Oct := 5; { ''' }
     ''''''''  : Oct := 6; { '''' }
-  else
-    WriteLn(Stderr, 'Could not extract octave from input "' + OctLy + '"');
+    else 
+      Oct := -1;
   end;
   result := Oct;
 end;
@@ -151,8 +157,8 @@ begin
     '2.'      : Dur := dkMinimDotted;
     '4.'      : Dur := dkSemiminimDotted;
     '8.'      : Dur := dkFusaDotted;
-  else
-    WriteLn(Stderr, 'Could not extract duration from input "' + DurLy + '"');
+    else
+      Dur := dkNone
   end;
   result := Dur;
 end;
@@ -209,6 +215,13 @@ begin
   FAccid     := GetAccidKind(PitchNameLy);
   FOct       := GetOctave(OctLy);
   FDur       := GetDurationKind(DurLy);
+ 
+  { TODO how to deal with unexpected input? }
+  if (FPitchName = pkNone) or (FOct = -1) or (FDur = dkNone) then
+  begin
+    WriteLn(Stderr, 'Error creating pitch from string ' + Source);
+    halt;
+  end;
 end;
 
 procedure TPitch.Assign(Source: TPitch);
@@ -247,7 +260,9 @@ begin
     akFlat    : Accid := 'f';
     akSharp   : Accid := 's';
   end;
-  result := XMLAttribute('accid', Accid);
+  result := XMLAttribute('accid.ges', Accid);
+  { TODO do we have to check every accidental against the key signature to
+  know whether to do accid or accid.ges ? }
 end;
 
 function TPitch.MEIOct: String;
@@ -307,7 +322,9 @@ begin
   for ThisNote in Notes do
   begin
     NewPitch := TPitch.CreateFromLy(ThisNote);
-    Self.Add(NewPitch);
+    { TODO test if NewPitch is valid? }
+    if NewPitch <> nil then
+      Self.Add(NewPitch);
   end;
 end;
 
@@ -381,7 +398,6 @@ var
   Name: String;
 begin
   case Element of
-    ekScore:    Name := 'score';
     ekStaffGrp: Name := 'staffGrp';
     ekStaff:    Name := 'staff';
     ekLayer:    Name := 'layer';
@@ -405,7 +421,10 @@ begin
   FSibling  := Sibling;
 end;
 
-procedure TMEIElement.AssignNode(Source: TMEIElement);
+procedure TMEIElement.AssignNode(Source: TMEIElement; Mode: TMeasureCopyMode =
+  mkAllMeasures; MeasureIndex: Integer = 0); 
+var
+  NewMeasure: TPitchList;
 begin
   FType := Source.FType;
   FName := Source.FName;
@@ -414,22 +433,34 @@ begin
   if Source.FMeasures <> nil then
   begin
     FMeasures := TMeasureList.Create;
-    FMeasures.Assign(Source.FMeasures);
+    case Mode of 
+      mkAllMeasures: FMeasures.Assign(Source.FMeasures);
+      mkOneMeasure:
+      begin
+        if MeasureIndex < Source.FMeasures.Count then
+        begin
+          NewMeasure := TPitchList.Create;
+          NewMeasure.Assign(Source.FMeasures[MeasureIndex]);
+          FMeasures.Add(NewMeasure);
+        end;
+      end;
+    end;
   end;
-  FChild    := nil;
-  FSibling  := nil;
+  FChild   := nil;
+  FSibling := nil;
 end;
 
-procedure TMEIElement.AssignTree(Source: TMEIElement);
+procedure TMEIElement.AssignTree(Source: TMEIElement; Mode: TMeasureCopyMode =
+  mkAllMeasures; MeasureIndex: Integer = 0); 
 function InnerAssign(TreeA, TreeB: TMEIElement): TMEIElement;
 begin
   if TreeA <> nil then
   begin
     if TreeB = nil then
-    begin
       TreeB := TMEIElement.Create;
-    end;
-    TreeB.AssignNode(TreeA);
+   
+    TreeB.AssignNode(TreeA, Mode, MeasureIndex);
+
     if TreeA.FChild <> nil then
       TreeB.FChild := InnerAssign(TreeA.FChild, TreeB.FChild);
     if TreeA.FSibling <> nil then
@@ -440,6 +471,7 @@ end;
 begin
   InnerAssign(Source, Self);
 end;
+
 
 procedure TMEIElement.SetFromLyObject(LyObject: TLyObject);
 begin
@@ -520,12 +552,8 @@ begin
   end;
   result := MEINode;
 end;
-var 
-  MEIRoot: TMEIElement;
 begin
-  MEIRoot := TMEIElement.Create(ekScore, '');
-  MEIRoot.FChild := InnerTree(LyTree, MEIRoot.FChild);
-  result := MEIRoot;
+  result := InnerTree(LyTree, nil);
 end;
 
 destructor TMEIElement.Destroy;
@@ -537,6 +565,15 @@ begin
     FSibling.Destroy;
   inherited Destroy;
 end;
+
+function TMEIElement.LastSibling: TMEIElement;
+begin
+  if FSibling = nil then
+    result := Self
+  else
+    result := FSibling.LastSibling;
+end;
+
 
 function TMEIElement.ToString: String;
 var
@@ -562,64 +599,81 @@ begin
   result := OutputStr;
 end;
 
-
-function TMEIElement.ToMeasures: TMEIElement;
-{ TODO START
-function BuildTree(NodeA, NodeB: TMEIElement): TMEIElement;
+function TMEIElement.StaffToMeasureTree: TMEIElement;
 var
-  ThisStaff, ThisLayer: TMEIElement;
-  NewMeasure, NewStaff, NewLayer, NewPitchList: TMEIElement;
-  ThisPitchList: TPitchList;
-  ThisMeasureList: TMeasureList;
-  MeasureNum: Integer;
+  MeasureCount, MeasureNum: Integer;
+  MeasureTree, Root, Branch: TMEIElement;
 begin
-  if NodeA <> nil then
+  MeasureCount := Self.CountMeasures;
+  DebugLn('MEASURE COUNT: ' + IntToStr(MeasureCount));
+  if MeasureCount <= 0 then
   begin
-    DebugLn('Visiting Tree A Node FName ' + NodeA.FName);
-    if (NodeA.FType = ekStaff) then
-    begin
-      ThisStaff := NodeA;
-      if (ThisStaff.FChild <> nil) and (ThisStaff.FChild.FType = ekLayer) then 
-      begin
-        ThisLayer := ThisStaff.FChild;
-        DebugLn('Visiting layer n ' + IntToStr(ThisLayer.FNum));
-        ThisMeasureList := ThisLayer.FMeasures;
-        MeasureNum := 0;
-        DebugLn('Measure count = ' + IntToStr(ThisMeasureList.Count));
-        NewMeasure := TMEIElement.Create(ekMeasure, '', MeasureNum + 1);
-        for ThisPitchList in ThisMeasureList do
-        begin
-          //BuildTree again from root?
-          NewStaff := TMEIElement.Create('staff', ThisStaff.FID, ThisStaff.FNum);
-          if NewMeasure.FChild = nil then
-            NewMeasure.FChild := NewStaff
-          else
-            NewMeasure.FChild.FSibling := NewStaff;
-          
-          NewLayer := TMEIElement.Create('layer', ThisLayer.FID, ThisLayer.FNum);
-          NewStaff.FChild := NewLayer;
-          NewLayer.FMeasures := TMeasureList.Create;
-          NewLayer.FMeasures.Add(ThisLayer.FMeasures[MeasureNum]);
-          Inc(MeasureNum);
-        end;
-        if NewMeasure <> nil then
-          NodeB.LastChild.FChild := NewMeasure;
-      end;
-    end;
-    if NodeA.FChild <> nil then
-      NodeB := BuildTree(NodeA.FChild, NodeB);
-    if NodeA.FSibling <> nil then
-      NodeB := BuildTree(NodeA.FSibling, NodeB);
+    result := nil;
+    exit;
   end;
-  result := NodeB;
+  for MeasureNum := 0 to MeasureCount - 1 do
+  begin
+    Root := TMEIElement.Create(ekMeasure, '', MeasureNum + 1);
+    Branch := TMEIElement.Create;
+    Branch.AssignTree(Self, mkOneMeasure, MeasureNum);
+    Root.FChild := Branch;
+    if MeasureNum = 0 then
+      MeasureTree := Root
+    else
+      MeasureTree.LastSibling.FSibling := Root;
+  end;
+  result := MeasureTree;
 end;
-}
+
+function TMEIElement.ToMEI: TStringListAAC;
 var
-  Root: TMEIElement;
+  MasterMEI: TStringListAAC;
+
+function InnerToMEI(Node: TMEIElement; MEI: TStringListAAC): TStringListAAC;
+
+function InnerAddNewElement(Node: TMEIElement; List: TStringListAAC): TStringListAAC;
+var
+  NewLines: TStringListAAC;
 begin
-  Root := TMEIElement.Create(ekScore, '', 1);
-//  Root := BuildTree(Self, Root);
-  result := Root;
+  assert(List <> nil);
+  NewLines := TStringListAAC.Create;
+  NewLines := InnerToMEI(Node, NewLines);
+  List.AddStrings(NewLines);
+  FreeAndNil(NewLines);
+  result := List;
+end;
+
+var
+  NewElement, NewMeasure: TStringListAAC;
+begin
+  if Node <> nil then
+  begin
+    NewElement := TStringListAAC.Create;
+
+    if (Node.FType = ekLayer) and (Node.FMeasures <> nil) then
+    begin
+      NewMeasure := Node.FMeasures[0].ToMEI;
+      NewElement.AddStrings(NewMeasure);
+      FreeAndNil(NewMeasure);
+    end;
+
+    if Node.FChild <> nil then
+      NewElement := InnerAddNewElement(Node.FChild, NewElement);
+ 
+    NewElement.EncloseInXML(Node.FName, XMLAttributeIDNum(Node.FID, Node.FNum));
+
+    if Node.FSibling <> nil then
+      NewElement := InnerAddNewElement(Node.FSibling, NewElement);
+  end;
+  MEI.AddStrings(NewElement);
+  FreeAndNil(NewElement);
+  result := MEI;
+end;
+
+begin
+  MasterMEI := TStringListAAC.Create;
+  MasterMEI := InnerToMEI(Self, MasterMEI);
+  result := MasterMEI;
 end;
 
 function CreateMEIMusic(SourceLines: TStringListAAC): TStringListAAC;
@@ -628,9 +682,8 @@ var
   LyObjectTree: TLyObject = nil;
   MEIMusicLines: TStringListAAC = nil;
   MEIScoreLines: TStringListAAC = nil;
-  MEITree: TMEIElement = nil;
-  MeasureCount, MeasureNum: Integer;
-  MEIMeasures: TMEIElement = nil;
+  MEIStaffTree: TMEIElement = nil;
+  MEIMeasureTree: TMEIElement = nil;
 begin
   LyScoreStr := LyArg(SourceLines.Text, '\score');
   if not LyScoreStr.IsEmpty then
@@ -641,40 +694,28 @@ begin
       LyObjectTree.SetNumbers;
       DebugLn('LYOBJECT TREE, NUMBERED:' + LineEnding + LyObjectTree.ToString);
       MEIMusicLines := LyObjectTree.ToNewMEIScoreDef;
-      { process music }
-      MEITree := LyToMEITree(LyObjectTree);
-      DebugLn('MEI TREE STAGE 1:' + LineEnding + MEITree.ToString);
-
-      MeasureCount := MEITree.CountMeasures;
-      DebugLn('MEASURE COUNT: ' + IntToStr(MeasureCount));
-      if MeasureCount > 0 then
-      begin
-      { TODO START here: follow pattern of assign function }
-        for MeasureNum := 0 to MeasureCount - 1 do
-          DebugLn(XMLElement('measure', '', XMLAttribute('n', IntToStr(MeasureNum + 1))));
-
-//      MEIMeasures := TMEIElement.Create;
-//      MEIMeasures.AssignTree(MEITree);
-//      DebugLn('MEI TREE COPY:' + LineEnding + MEIMeasures.ToString);
       
-//      MEIMeasures := MEITree.ToMeasures;
-//      DebugLn(MEIMeasures.ToString);
-      end;
-    end;
+      MEIStaffTree := LyToMEITree(LyObjectTree);
+      DebugLn('MEI TREE STAGE 1:' + LineEnding + MEIStaffTree.ToString);
+
+      MEIMeasureTree := MEIStaffTree.StaffToMeasureTree;
+      DebugLn('MEI TREE STAGE 2:' + LineEnding + MEIMeasureTree.ToString);
+
+      MEIScoreLines := MEIMeasureTree.ToMEI;
+   end;
   end;
   
-  if MEIScoreLines = nil then
-  begin
-    MEIScoreLines := TStringListAAC.Create;
-    MEIScoreLines.EncloseInXML('score');
-  end;
+  if MEIScoreLines <> nil then
+    MEIScoreLines.EncloseInXML('section');
+    
   MEIMusicLines.AddStrings(MEIScoreLines);
+  MEIMusicLines.EncloseInXML('score');
   MEIMusicLines.EncloseInXML('mdiv');
   MEIMusicLines.EncloseInXML('body');
   MEIMusicLines.EncloseInXML('music');
 
-//  FreeAndNil(MEIMeasures);
-  FreeAndNil(MEITree);
+  FreeAndNil(MEIMeasureTree);
+  FreeAndNil(MEIStaffTree);
   FreeAndNil(MEIScoreLines);
   FreeAndNil(LyObjectTree);
   result := MEIMusicLines;
