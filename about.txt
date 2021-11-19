@@ -17,6 +17,8 @@ seventeenth-century music.
   @row( @cell(2021/11/05) @cell(Score-tree program complete) )
   @row( @cell(2021/11/08) @cell(Restructured into units and documentation
     revised for PasDoc) )
+  @row (@cell(2021/11/19) @cell(Working proof-of-concept converting sample
+  Lilypond score to MEI (just staves, voices, and notes)))
 )
 
 
