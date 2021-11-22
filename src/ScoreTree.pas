@@ -288,7 +288,6 @@ type
   TClefKind = (ckNone, ckTreble, ckSoprano, ckMezzoSoprano, ckAlto, ckTenor,
     ckBaritone, ckBass, ckTreble8va); 
   TKeyKind = (kkDurus, kkMollis);
-  TMeterKind = (mkDuple, mkTriple);
 
 function FindLyClef(Source: String): TClefKind;
 var
@@ -351,10 +350,74 @@ begin
   result := XML;
 end;
 
+type 
+  TMeterKind = (mkNone, mkMensuralTempusImperfectum,
+    mkMensuralProportioMinor, mkModern);
+
+  TMeter = record
+    FKind: TMeterKind;
+    FCount, FUnit: Integer;
+  end;
+
+function FindLyMeter(MeterStr: String): TMeter;
+var
+  Meter: TMeter;
+  SearchStr, NumStr: String;
+  MeterNums: TStringArray;
+begin
+  Meter.FKind := mkNone;
+  Meter.FCount := 0;
+  Meter.FUnit := 0;
+
+  if MeterStr.Contains('\MeterDuple') then
+    Meter.FKind := mkMensuralTempusImperfectum
+  else if MeterStr.Contains('\MeterTriple') then
+    Meter.FKind := mkMensuralProportioMinor
+  else if MeterStr.Contains('\time ') then
+  begin
+    Meter.FKind := mkModern;
+    SearchStr := StringDropBefore(MeterStr, '\time ');
+    NumStr := ExtractWord(1, SearchStr, [' ', LineEnding]);
+    DebugLn('Looking for meter in string: ''' + NumStr + '''');
+
+    MeterNums := NumStr.Split(['/'], 2);
+    Meter.FCount := StrToInt(MeterNums[0]);
+    Meter.FUnit := StrToInt(MeterNums[1]);
+  end;
+
+  DebugLn('METER Kind: ');
+  {$ifdef DEBUG}WriteLn(Meter.FKind);{$endif}
+  DebugLn('METER Count: ' + IntToStr(Meter.FCount) + ', Unit: ' +
+    IntToStr(Meter.FUnit)); 
+
+  result := Meter;
+end;
+
+function MEIMeter(Meter: TMeter): String;
+var
+  MEI: String;
+begin
+  with Meter do
+  begin
+    case FKind of
+      mkMensuralTempusImperfectum : 
+        MEI := 'mensur.sign="C" mensur.tempus="2"';
+      mkMensuralProportioMinor : 
+        MEI := 'mensur.sign="C" mensur.tempus="2" proport.num="3"';
+      mkModern : 
+        MEI := XMLAttribute('meter.count', IntToStr(FCount)) + ' ' 
+                + XMLAttribute('meter.unit', IntToStr(FUnit));
+      else
+        MEI := '';
+    end;
+  end;
+  result := MEI;
+end;
+
 
 const StaffGrpAttributes = ' bar.thru="false" symbol="bracket"';
 
-function StaffDefAttributes(Clef: TClefKind; Key: TKeyKind; Meter: TMeterKind): String;
+function StaffDefAttributes(Clef: TClefKind; Key: TKeyKind; Meter: TMeter): String;
 var
   ClefStr, KeyStr, MeterStr, OutputStr: String;
 begin
@@ -364,10 +427,7 @@ begin
     kkDurus : KeyStr := 'key.sig="0" ';
     kkMollis: KeyStr := 'key.sig="1f" ';
   end;
-  case Meter of
-    mkDuple : MeterStr := 'mensur.sign="C" mensur.tempus="2"';
-    mkTriple: MeterStr := 'mensur.sign="C" mensur.tempus="2" proport.num="3"';
-  end;
+  MeterStr := MEIMeter(Meter);
   result := OutputStr + ClefStr + ' ' + KeyStr + MeterStr;
 end;
 
@@ -384,7 +444,7 @@ var
   TempLines: TStringListAAC;
   Clef: TClefKind;
   Key: TKeyKind;
-  Meter: TMeterKind;
+  Meter: TMeter;
 begin
   assert(InnerLines <> nil);
   TempLines := TStringListAAC.Create;
@@ -416,9 +476,8 @@ begin
         if SearchStr.Contains('\CantusMollis') then
           Key := kkMollis;
 
-        Meter := mkDuple;
-        if SearchStr.Contains('\MeterTriple') then
-          Meter := mkTriple;
+        if SearchStr.Contains('\Meter') or SearchStr.Contains('\time ') then
+          Meter := FindLyMeter(SearchStr);
       end;
       Attributes := Attributes + StaffDefAttributes(Clef, Key, Meter);
     end;

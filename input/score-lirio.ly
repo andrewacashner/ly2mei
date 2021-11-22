@@ -1,13 +1,14 @@
 \version "2.23"
+\include "early-music.ly"
 \header {
-  title = "Simple Lilypond Score with Default Syntax"
+  title = "Test of Score Reading"
   composer = "Andrew Cashner"
 }
 
 MusicS = {
   \clef "treble"
-  \time 4/4
-  \key f\major
+  \MeterDuple
+  \CantusMollis
   | c'4 d'4 e'4 f'4
   | f'4 e'4 d'4 c'4
 }
@@ -18,8 +19,8 @@ LyricsS = \lyricmode {
 
 MusicT = {
   \clef "treble_8"
-  \time 4/4
-  \key f\major
+  \MeterDuple
+  \CantusMollis
   | a4 b4 c'4 d'4
   | d'4 c'4 bes4 a4
 }
@@ -30,8 +31,8 @@ LyricsT = \lyricmode {
 
 MusicB = {
   \clef "bass"
-  \time 4/4
-  \key f\major
+  \MeterDuple
+  \CantusMollis
   | c1
   | c1
 }

@@ -313,7 +313,7 @@ end;
 constructor TPitchList.CreateFromLy(Source: String);
 var
   MEI, ThisNote: String;
-  Notes: Array of String = ('');
+  Notes: TStringArray;
   NewPitch: TPitch;
 begin
   inherited Create;
