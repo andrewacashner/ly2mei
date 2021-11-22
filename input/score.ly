@@ -7,7 +7,7 @@
 MusicS = {
   \clef "treble"
   \time 4/4
-  \key cis\minor
+  \key f\major
   | c'4 d'4 e'4 f'4
   | f'4 e'4 d'4 c'4
 }
@@ -19,7 +19,7 @@ LyricsS = \lyricmode {
 MusicT = {
   \clef "treble_8"
   \time 4/4
-  \key ges \major
+  \key f\major
   | a4 b4 c'4 d'4
   | d'4 c'4 bes4 a4
 }
@@ -31,7 +31,7 @@ LyricsT = \lyricmode {
 MusicB = {
   \clef "bass"
   \time 4/4
-  \key as \minor
+  \key f\major
   | c1
   | c1
 }

@@ -25,15 +25,18 @@ ScoreTree;
 
 type 
   TPitchName = (pkNone, pkC, pkD, pkE, pkF, pkG, pkA, pkB, pkRest);
-  TAccidental = (akNatural, akFlat, akSharp);
+  TAccidental = (akFlat, akNatural, akSharp);
+  TAccidType = (akImplicit, akExplicit, akFicta); { TODO ficta }
   TDuration = (dkNone, dkBreve, dkSemibreve, dkMinim, dkSemiminim, dkFusa,
     dkSemifusa, dkBreveDotted, dkSemibreveDotted, dkMinimDotted,
     dkSemiminimDotted, dkFusaDotted);
 
-function GetPitchKind(LyName: String): TPitchName;
+function GetPitchName(LyName: String): TPitchName;
 function GetOctave(OctLy: String): Integer;
 function GetDurationKind(DurLy: String): TDuration;
-function GetAccidKind(LyName: String): TAccidental;
+function GetAccid(LyName: String): TAccidental;
+function GetAccidType(PitchName: TPitchName; Accid: TAccidental; 
+  Key: TKeyKind): TAccidType; 
 
 type
   TPitch = class
@@ -41,12 +44,13 @@ type
     var
       FPitchName: TPitchName;
       FAccid: TAccidental;
+      FAccidType: TAccidType;
       FOct: Integer;
       FDur: TDuration;
     constructor Create();
-    constructor Create(Name: TPitchName; Accid: TAccidental; Oct: Integer;
-      Dur: TDuration); 
-    constructor CreateFromLy(Source: String);
+    constructor Create(Name: TPitchName; Accid: TAccidental; AccidType:
+      TAccidType; Oct: Integer; Dur: TDuration); 
+    constructor CreateFromLy(Source: String; Key: TKeyKind);
     procedure Assign(Source: TPitch); 
     function MEIPName: String;
     function MEIAccid: String;
@@ -57,7 +61,7 @@ type
   
   TPitchList = class(specialize TObjectList<TPitch>)
   public
-    constructor CreateFromLy(Source: String);
+    constructor CreateFromLy(Source: String; Key: TKeyKind);
     procedure Assign(Source: TPitchList);
     function ToMEI: TStringListAAC;
   end;
@@ -105,7 +109,7 @@ function CreateMEIMusic(SourceLines: TStringListAAC): TStringListAAC;
 
 implementation
 
-function GetPitchKind(LyName: String): TPitchName;
+function GetPitchName(LyName: String): TPitchName;
 var PitchName: TPitchName;
 begin
   case LyName.Substring(0, 1) of 
@@ -163,7 +167,7 @@ begin
   result := Dur;
 end;
 
-function GetAccidKind(LyName: String): TAccidental;
+function GetAccid(LyName: String): TAccidental;
 var
   Accid: TAccidental;
 begin
@@ -176,22 +180,139 @@ begin
   result := Accid;
 end;
 
+type 
+  TPitchAccid = (nkCb, nkC, nkCs, 
+                 nkDb, nkD, nkDs, 
+                 nkEb, nkE, nkEs, 
+                 nkFb, nkF, nkFs, 
+                 nkGb, nkG, nkGs, 
+                 nkAb, nkA, nkAs, 
+                 nkBb, nkB, nkBs);
+const
+  Gamut: Array [1..15, 1..7] of TPitchAccid = (
+    (nkC, nkD, nkE, nkF, nkG, nkA, nkB),
+    (nkG, nkA, nkB, nkC, nkD, nkE, nkFs),
+    (nkD, nkE, nkFs, nkG, nkA, nkB, nkCs),
+    (nkA, nkB, nkCs, nkD, nkE, nkFs, nkGs),
+    (nkE, nkFs, nkGs, nkA, nkB, nkCs, nkDs),
+    (nkB, nkCs, nkDs, nkE, nkFs, nkGs, nkAs),
+    (nkFs, nkGs, nkAs, nkB, nkCs, nkDs, nkEs),
+    (nkCs, nkDs, nkEs, nkFs, nkGs, nkAs, nkBs),
+    (nkF, nkG, nkA, nkBb, nkC, nkD, nkE),
+    (nkBb, nkC, nkD, nkEb, nkF, nkG, nkA),
+    (nkEb, nkF, nkG, nkAb, nkBb, nkC, nkD),
+    (nkAb, nkBb, nkC, nkDb, nkEb, nkF, nkG),
+    (nkDb, nkEb, nkF, nkGb, nkAb, nkBb, nkC),
+    (nkGb, nkAb, nkBb, nkC, nkDb, nkEb, nkF),
+    (nkCb, nkDb, nkEb, nkFb, nkGb, nkAb, nkBb));
+
+function ToPitchAccid(Pitch: TPitchName; Accid: TAccidental): TPitchAccid;
+var
+  BasePitch, FinalPitch: TPitchAccid;
+begin 
+  case Pitch of
+    pkC : BasePitch := nkC;
+    pkD : BasePitch := nkD;
+    pkE : BasePitch := nkE;
+    pkF : BasePitch := nkF;
+    pkG : BasePitch := nkG;
+    pkA : BasePitch := nkA;
+    pkB : BasePitch := nkB;
+    else
+      BasePitch := nkC;
+  end;
+  case Accid of 
+    akFlat    : FinalPitch := Pred(BasePitch);
+    akNatural : FinalPitch := BasePitch;
+    akSharp   : FinalPitch := Succ(BasePitch);
+    else
+      FinalPitch := BasePitch;
+  end;
+  result := FinalPitch;
+end;
+
+function IsNoteInScale(PitchAccid: TPitchAccid; Key: TKeyKind): Boolean; 
+var
+  ScaleIndex: Integer;
+  ThisPitchAccid: TPitchAccid;
+  Found: Boolean = False;
+begin
+  case Key of 
+    kkNone, kkCMaj, kkAmin, kkCantusDurus : 
+      ScaleIndex := 1;
+    kkGMaj, kkEMin   : ScaleIndex := 2;
+    kkDMaj, kkBmin   : ScaleIndex := 3;
+    kkAMaj, kkFsMin  : ScaleIndex := 4;
+    kkEMaj, kkCsMin  : ScaleIndex := 5;
+    kkBMaj, kkGsMin  : ScaleIndex := 6;
+    kkFsMaj, kkDsMin : ScaleIndex := 7;
+    kkCsMaj, kkAsMin : ScaleIndex := 8;
+
+    kkFMaj, kkDMin, kkCantusMollis : 
+      ScaleIndex := 9;
+    kkBbMaj, kkGMin  : ScaleIndex := 10;
+    kkEbMaj, kkCMin  : ScaleIndex := 11;
+    kkAbMaj, kkFMin  : ScaleIndex := 12;
+    kkDbMaj, kkBbMin : ScaleIndex := 13;
+    kkGbMaj, kkEbMin : ScaleIndex := 14;
+    kkCbMaj, kkAbMin : ScaleIndex := 15;
+    else
+      ScaleIndex := 1;
+  end;
+  for ThisPitchAccid in Gamut[ScaleIndex] do
+  begin
+    if PitchAccid = ThisPitchAccid then
+    begin
+      Found := True;
+      break;
+    end;
+  end;
+  result := Found;
+end;
+
+ 
+function GetAccidType(PitchName: TPitchName; Accid: TAccidental; 
+  Key: TKeyKind): TAccidType; 
+var
+  AccidType: TAccidType;
+  PitchAccid, ThisPitchAccid: TPitchAccid;
+  ThisScale: Array of TPitchAccid;
+begin
+  PitchAccid := ToPitchAccid(PitchName, Accid);
+
+  if IsNoteInScale(PitchAccid, Key) then
+    AccidType := akImplicit
+  else
+    AccidType := akExplicit;
+
+  DebugLn('Checking accid type: pitchAccid, key = ');
+  {$ifdef DEBUG}
+    WriteLn(PitchAccid); 
+    WriteLn(Key);
+  {$endif}
+  DebugLn('ACCID TYPE:');
+  {$ifdef DEBUG}WriteLn(AccidType);{$endif}
+
+  result := AccidType;
+end;
+
 constructor TPitch.Create();
 begin
   inherited Create;
 end;
 
-constructor TPitch.Create(Name: TPitchName; Accid: TAccidental; Oct: Integer;
-  Dur: TDuration);
+constructor TPitch.Create(Name: TPitchName; Accid: TAccidental; 
+  AccidType: TAccidType; Oct: Integer; Dur: TDuration);
 begin
   inherited Create;
   FPitchName := Name;
   FAccid := Accid;
+  FAccidType := AccidType;
   FOct := Oct;
   FDur := Dur;
 end;
 
-constructor TPitch.CreateFromLy(Source: String);
+constructor TPitch.CreateFromLy(Source: String; Key: TKeyKind);
 var
   NoteStr, PitchNameLy, OctLy, DurLy, EtcLy: String;
 begin
@@ -211,8 +332,9 @@ begin
     EtcLy := NoteStr; { TODO }
   end;
 
-  FPitchName := GetPitchKind(PitchNameLy);
-  FAccid     := GetAccidKind(PitchNameLy);
+  FPitchName := GetPitchName(PitchNameLy);
+  FAccid     := GetAccid(PitchNameLy);
+  FAccidType := GetAccidType(FPitchName, FAccid, Key);
   FOct       := GetOctave(OctLy);
   FDur       := GetDurationKind(DurLy);
  
@@ -230,6 +352,7 @@ begin
   begin
     FPitchName := Source.FPitchName;
     FAccid := Source.FAccid;
+    FAccidType := Source.FAccidType;
     FOct := Source.FOct;
     FDur := Source.FDur;
   end;
@@ -253,16 +376,21 @@ end;
 
 function TPitch.MEIAccid: String;
 var
-  Accid: String;
+  AccidSounded, AccidWritten: String;
 begin
   case FAccid of
-    akNatural : Accid := 'n';
-    akFlat    : Accid := 'f';
-    akSharp   : Accid := 's';
+    akNatural : AccidSounded := 'n';
+    akFlat    : AccidSounded := 'f';
+    akSharp   : AccidSounded := 's';
   end;
-  result := XMLAttribute('accid.ges', Accid);
-  { TODO do we have to check every accidental against the key signature to
-  know whether to do accid or accid.ges ? }
+
+  AccidWritten := '';
+  if FAccidType = akExplicit then
+    AccidWritten := ' ' + XMLAttribute('accid', AccidSounded);
+  
+  AccidSounded := XMLAttribute('accid.ges', AccidSounded);
+
+  result := AccidSounded + AccidWritten;
 end;
 
 function TPitch.MEIOct: String;
@@ -310,7 +438,7 @@ begin
       + ' ' + Dur); 
 end;
 
-constructor TPitchList.CreateFromLy(Source: String);
+constructor TPitchList.CreateFromLy(Source: String; Key: TKeyKind);
 var
   MEI, ThisNote: String;
   Notes: TStringArray;
@@ -321,7 +449,7 @@ begin
   Notes := MEI.Split([' ']);
   for ThisNote in Notes do
   begin
-    NewPitch := TPitch.CreateFromLy(ThisNote);
+    NewPitch := TPitch.CreateFromLy(ThisNote, Key);
     { TODO test if NewPitch is valid? }
     if NewPitch <> nil then
       Self.Add(NewPitch);
@@ -356,10 +484,16 @@ end;
 
 constructor TMeasureList.CreateFromLy(Source: String);
 var
+  Key: TKeyKind;
   LyLines: TStringListAAC;
-  ThisLine: String;
+  SearchStr, ThisLine: String;
 begin
   inherited Create;
+  { Find the key signature for this voice }
+  SearchStr := Source.Substring(0, 800); 
+  Key := FindLyKey(SearchStr);
+
+  { Find measures and parse the notes in them }
   LyLines := TStringListAAC.Create(Source);
   for ThisLine in LyLines do
   begin
@@ -367,7 +501,7 @@ begin
       and (ThisLine.CountChar('|') = 1) then 
     begin
       DebugLn('Adding new TPitchList to TMeasureList...');
-      Self.Add(TPitchList.CreateFromLy(ThisLine));
+      Self.Add(TPitchList.CreateFromLy(ThisLine, Key));
     end;
   end;
   FreeAndNil(LyLines);
@@ -676,7 +810,7 @@ begin
   result := MasterMEI;
 end;
 
-function CreateMEIMusic(SourceLines: TStringListAAC): TStringListAAC;
+function CreateMEIMusic(SourceLines: TStringListAAC): TStringListAAC; 
 var
   LyScoreStr: String;
   LyObjectTree: TLyObject = nil;

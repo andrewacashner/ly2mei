@@ -19,6 +19,33 @@ interface
 
 uses SysUtils, StrUtils, Classes, StringTools, Outline;
 
+type
+  TKeyKind = (kkNone, 
+    kkCantusDurus, kkCantusMollis,
+    kkCMaj, kkAMin,
+    kkGMaj, kkEMin,
+    kkDMaj, kkBMin,
+    kkAMaj, kkFsMin,
+    kkEMaj, kkCsMin,
+    kkBMaj, kkGsMin,
+    kkFsMaj, kkDsMin,
+    kkCsMaj, kkAsMin,
+    kkFMaj, kkDMin,
+    kkBbMaj, kkGMin,
+    kkEbMaj, kkCMin,
+    kkAbMaj, kkFMin,
+    kkDbMaj, kkBbMin,
+    kkGbMaj, kkEbMin,
+    kkCbMaj, kkAbMin);
+
+  TClefKind = (ckNone, ckTreble, ckSoprano, ckMezzoSoprano, ckAlto, ckTenor,
+    ckBaritone, ckBass, ckTreble8va); 
+
+  TMeterKind = (mkNone, mkMensuralTempusImperfectum,
+    mkMensuralProportioMinor, mkModern);
+
+function FindLyKey(KeyStr: String): TKeyKind;
+
 type 
   TMusicTreeElement = (ekAnonymous, ekStaffGrp, ekStaff, ekLayer, ekMeasure);
 
@@ -284,10 +311,6 @@ begin
   NumberElementsInOrder(ekLayer);
 end;
 
-type
-  TClefKind = (ckNone, ckTreble, ckSoprano, ckMezzoSoprano, ckAlto, ckTenor,
-    ckBaritone, ckBass, ckTreble8va); 
-
 function FindLyClef(Source: String): TClefKind;
 var
   TestStr, ClefStr: String;
@@ -348,25 +371,6 @@ begin
             + XMLAttribute('clef.shape', ClefLetter) + ClefDis;
   result := XML;
 end;
-
-type
-  TKeyKind = (kkNone, 
-    kkCantusDurus, kkCantusMollis,
-    kkCMaj, kkAMin,
-    kkGMaj, kkEMin,
-    kkDMaj, kkBMin,
-    kkAMaj, kkFsMin,
-    kkEMaj, kkCsMin,
-    kkBMaj, kkGsMin,
-    kkFsMaj, kkDsMin,
-    kkCsMaj, kkAsMin,
-    kkFMaj, kkDMin,
-    kkBbMaj, kkGMin,
-    kkEbMaj, kkCMin,
-    kkAbMaj, kkFMin,
-    kkDbMaj, kkBbMin,
-    kkGbMaj, kkEbMin,
-    kkCbMaj, kkAbMin);
 
 function FindLyKey(KeyStr: String): TKeyKind;
 type
@@ -474,10 +478,7 @@ begin
   result := XMLAttribute('key.sig', KeySig);
 end;
 
-type 
-  TMeterKind = (mkNone, mkMensuralTempusImperfectum,
-    mkMensuralProportioMinor, mkModern);
-
+type
   TMeter = record
     FKind: TMeterKind;
     FCount, FUnit: Integer;
