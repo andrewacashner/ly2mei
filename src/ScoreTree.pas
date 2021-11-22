@@ -287,7 +287,6 @@ end;
 type
   TClefKind = (ckNone, ckTreble, ckSoprano, ckMezzoSoprano, ckAlto, ckTenor,
     ckBaritone, ckBass, ckTreble8va); 
-  TKeyKind = (kkDurus, kkMollis);
 
 function FindLyClef(Source: String): TClefKind;
 var
@@ -348,6 +347,131 @@ begin
   XML := XMLAttribute('clef.line', IntToStr(ClefLine)) + ' '
             + XMLAttribute('clef.shape', ClefLetter) + ClefDis;
   result := XML;
+end;
+
+type
+  TKeyKind = (kkNone, 
+    kkCantusDurus, kkCantusMollis,
+    kkCMaj, kkAMin,
+    kkGMaj, kkEMin,
+    kkDMaj, kkBMin,
+    kkAMaj, kkFsMin,
+    kkEMaj, kkCsMin,
+    kkBMaj, kkGsMin,
+    kkFsMaj, kkDsMin,
+    kkCsMaj, kkAsMin,
+    kkFMaj, kkDMin,
+    kkBbMaj, kkGMin,
+    kkEbMaj, kkCMin,
+    kkAbMaj, kkFMin,
+    kkDbMaj, kkBbMin,
+    kkGbMaj, kkEbMin,
+    kkCbMaj, kkAbMin);
+
+function FindLyKey(KeyStr: String): TKeyKind;
+type
+  TKeyMode = (kMajor, kMinor);
+var
+  Key: TKeyKind = kkNone;
+  KeyName: String;
+  Mode: TKeyMode;
+begin
+  if KeyStr.Contains('\CantusDurus') then
+    Key := kkCantusDurus
+  else if KeyStr.Contains('\CantusMollis') then
+    Key := kkCantusMollis
+  else if KeyStr.Contains('\key ') then
+  begin
+    KeyStr := StringDropBefore(KeyStr, '\key ');
+    DebugLn('Searching for Key in string: ''' + KeyStr + '''');
+
+    if KeyStr.Contains('\major') then
+    begin
+      KeyStr := StringDropAfter(KeyStr, '\major'); 
+      Mode := kMajor;
+    end
+    else if KeyStr.Contains('\minor') then
+    begin
+      KeyStr := StringDropAfter(KeyStr, '\minor'); 
+      Mode := kMinor;
+    end
+    else 
+    begin
+      result := kkNone;
+      exit;
+    end;
+
+    KeyName := StringDropAfter(KeyStr, '\m').Trim;
+    case Mode of
+      kMajor :
+        case KeyName of
+          'c'   : Key := kkCMaj;
+          'ces' : Key := kkCbMaj;
+          'cis' : Key := kkCsMaj;
+          'd'   : Key := kkDMaj;
+          'des' : Key := kkDbMaj;
+          'e'   : Key := kkEMaj;
+          'es', 'ees' : Key := kkEbMaj;
+          'f'   : Key := kkFMaj;
+          'fis' : Key := kkFsMaj;
+          'g'   : Key := kkGMaj;
+          'ges' : Key := kkGbMaj;
+          'a'   : Key := kkAMaj;
+          'as', 'aes' : Key := kkAbMaj;
+          'b'   : Key := kkBMaj;
+          'bes' : Key := kkBbMaj;
+        end;
+
+      kMinor :
+        case KeyName of
+          'c'   : Key := kkCMin;
+          'cis' : Key := kkCsMin;
+          'd'   : Key := kkDMin;
+          'dis' : Key := kkDsMin;
+          'e'   : Key := kkEMin;
+          'es', 'ees' : Key := kkEbMin;
+          'f'   : Key := kkFMin;
+          'fis' : Key := kkFsMin;
+          'g'   : Key := kkGMin;
+          'gis' : Key := kkGsMin;
+          'a'   : Key := kkAMin;
+          'as', 'aes' : Key := kkAbMin;
+          'ais' : Key := kkAsMin;
+          'bes' : Key := kkBbMin;
+          'b'   : Key := kkBMin;
+        end;
+    end;
+  end;
+  DebugLn('KEY: ');
+  {$ifdef DEBUG}WriteLn(Key);{$endif}
+
+  result := Key;
+end;
+
+function MEIKey(Key: TKeyKind): String;
+var
+  KeySig: String;
+begin
+  case Key of 
+    kkNone, kkCantusDurus : KeySig := '0';
+    kkCantusMollis        : KeySig := '1f';
+    kkCMaj,  kkAMin   : KeySig := '0';
+    kkGMaj,  kkEMin   : KeySig := '1s';
+    kkDMaj,  kkBMin   : KeySig := '2s';
+    kkAMaj,  kkFsMin  : KeySig := '3s';
+    kkEMaj,  kkCsMin  : KeySig := '4s';
+    kkBMaj,  kkGsMin  : KeySig := '5s';
+    kkFsMaj, kkDsMin  : KeySig := '6s';
+    kkCsMaj, kkAsMin  : KeySig := '7s';
+    kkFMaj,  kkDMin   : KeySig := '1f';
+    kkBbMaj, kkGMin   : KeySig := '2f';
+    kkEbMaj, kkCMin   : KeySig := '3f';
+    kkAbMaj, kkFMin   : KeySig := '4f';
+    kkDbMaj, kkBbMin  : KeySig := '5f';
+    kkGbMaj, kkEbMin  : KeySig := '6f';
+    kkCbMaj, kkAbMin  : KeySig := '7f';
+  end;
+  result := XMLAttribute('key.sig', KeySig);
 end;
 
 type 
@@ -414,21 +538,21 @@ begin
   result := MEI;
 end;
 
-
-const StaffGrpAttributes = ' bar.thru="false" symbol="bracket"';
-
 function StaffDefAttributes(Clef: TClefKind; Key: TKeyKind; Meter: TMeter): String;
 var
   ClefStr, KeyStr, MeterStr, OutputStr: String;
 begin
-  OutputStr := ' lines="5" ';
+  OutputStr := XMLAttribute('lines', '5');
   ClefStr := MEIClef(Clef);
-  case Key of 
-    kkDurus : KeyStr := 'key.sig="0" ';
-    kkMollis: KeyStr := 'key.sig="1f" ';
-  end;
+  KeyStr := MEIKEy(Key);
   MeterStr := MEIMeter(Meter);
-  result := OutputStr + ClefStr + ' ' + KeyStr + MeterStr;
+  result := OutputStr + ' ' + ClefStr + ' ' + KeyStr + ' ' + MeterStr;
+end;
+
+function StaffGrpAttributes(): String;
+begin
+  result := ' ' + XMLAttribute('bar.thru', 'false') + ' '
+            + XMLAttribute('symbol', 'bracket');
 end;
 
 function StaffNumID(Node: TLyObject): String;
@@ -468,18 +592,11 @@ begin
       begin
         { Search c. first 10 lines }
         SearchStr := Node.FChild.FContents.Substring(0, 800); 
-        Clef := FindLyClef(SearchStr);
-
-        { TODO make this a function catching more key kinds, like we did with
-        FindLyClef; same for Meter below }
-        Key := kkDurus;
-        if SearchStr.Contains('\CantusMollis') then
-          Key := kkMollis;
-
-        if SearchStr.Contains('\Meter') or SearchStr.Contains('\time ') then
-          Meter := FindLyMeter(SearchStr);
+        Clef  := FindLyClef(SearchStr);
+        Key   := FindLyKey(SearchStr);
+        Meter := FindLyMeter(SearchStr);
       end;
-      Attributes := Attributes + StaffDefAttributes(Clef, Key, Meter);
+      Attributes := Attributes + ' ' + StaffDefAttributes(Clef, Key, Meter);
     end;
   end;
 
