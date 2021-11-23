@@ -32,7 +32,7 @@ MusicB = {
   \clef "bass"
   \time 4/4
   \key f\major
-  | c1
+  | c2. r4
   | c1
 }
 

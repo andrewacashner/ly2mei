@@ -334,8 +334,7 @@ begin
   end;
   
   DebugLn('CLEF test string: ''' + ClefStr + '''');
-  DebugLn('CLEF kind: ');
-  {$ifdef DEBUG} WriteLn(Clef); {$endif}
+  DebugLn('CLEF kind: '); {$ifdef DEBUG}WriteLn(Clef);{$endif}
 
   result := Clef;
 end;
@@ -445,9 +444,7 @@ begin
         end;
     end;
   end;
-  DebugLn('KEY: ');
-  {$ifdef DEBUG}WriteLn(Key);{$endif}
-
+  DebugLn('KEY: '); {$ifdef DEBUG}WriteLn(Key);{$endif}
   result := Key;
 end;
 
@@ -509,8 +506,7 @@ begin
     Meter.FUnit := StrToInt(MeterNums[1]);
   end;
 
-  DebugLn('METER Kind: ');
-  {$ifdef DEBUG}WriteLn(Meter.FKind);{$endif}
+  DebugLn('METER Kind: '); {$ifdef DEBUG}WriteLn(Meter.FKind);{$endif}
   DebugLn('METER Count: ' + IntToStr(Meter.FCount) + ', Unit: ' +
     IntToStr(Meter.FUnit)); 
 

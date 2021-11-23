@@ -24,8 +24,8 @@ uses SysUtils, StrUtils, Classes, Generics.Collections, StringTools, Outline,
 ScoreTree;
 
 type 
-  TPitchName = (pkNone = 0, pkC = 1, pkD, pkE, pkF, pkG, pkA, pkB, pkRest);
-  TAccidental = (akFlat = -1, akNatural = 0, akSharp = 1);
+  TPitchName = (pkNone, pkC, pkD, pkE, pkF, pkG, pkA, pkB, pkRest);
+  TAccidental = (akFlat, akNatural, akSharp);
   TAccidType = (akImplicit, akExplicit, akFicta); { TODO ficta }
   TDuration = (dkNone, dkBreve, dkSemibreve, dkMinim, dkSemiminim, dkFusa,
     dkSemifusa, dkBreveDotted, dkSemibreveDotted, dkMinimDotted,
@@ -52,6 +52,8 @@ type
       TAccidType; Oct: Integer; Dur: TDuration); 
     constructor CreateFromLy(Source: String; Key: TKeyKind);
     procedure Assign(Source: TPitch); 
+    function IsValid: Boolean;
+    function IsRest: Boolean;
     function MEIPName: String;
     function MEIAccid: String;
     function MEIOct: String;
@@ -120,9 +122,12 @@ begin
     'g': PitchName := pkG;
     'a': PitchName := pkA;
     'b': PitchName := pkB;
-    'r': PitchName := pkRest;
+    'r', 'R': PitchName := pkRest;
     else 
+    begin
+      WriteLn(StdErr, 'Unrecognized pitch name, substituting C: input was ' + LyName);
       PitchName := pkNone;
+    end;
   end;
   result := PitchName;
 end;
@@ -162,7 +167,10 @@ begin
     '4.'      : Dur := dkSemiminimDotted;
     '8.'      : Dur := dkFusaDotted;
     else
-      Dur := dkNone
+    begin
+      WriteLn(StdErr, 'Unrecognized duration: ' + DurLy);
+      Dur := dkNone;
+    end;
   end;
   result := Dur;
 end;
@@ -199,31 +207,53 @@ const
 { Gb } (akFlat,    akFlat,    akFlat,    akNatural, akFlat,    akFlat,    akFlat),
 { Cb } (akFlat,    akFlat,    akFlat,    akFlat,    akFlat,    akFlat,    akFlat));
 
-function KeyIndex(Key: TKeyKind): Integer;
+function AccidInKey(PitchName: TPitchName; Key: TKeyKind): TAccidental;
 var
-  Index: Integer;
+  KeyIndex, PitchIndex: Integer;
 begin
   case Key of
-    kkNone, kkCMaj,  kkAMin,  kkCantusDurus : Index := 1;
-
-    kkGMaj,  kkEMin  : Index := 2;
-    kkDMaj,  kkBMin  : Index := 3;
-    kkAMaj,  kkFsMin : Index := 4;
-    kkEMaj,  kkCsMin : Index := 5;
-    kkBMaj,  kkGsMin : Index := 6;
-    kkFsMaj, kkDsMin : Index := 7;
-    kkCsMaj, kkAsMin : Index := 8;
-
-    kkFMaj,  kkDMin,  kkCantusMollis : Index := 9;
-    kkBbMaj, kkGMin  : Index := 10;
-    kkEbMaj, kkCMin  : Index := 11;
-    kkAbMaj, kkFMin  : Index := 12;
-    kkDbMaj, kkBbMin : Index := 13;
-    kkGbMaj, kkEbMin : Index := 14;
-    kkCbMaj, kkAbMin : Index := 15;
+    kkCMaj,  kkAMin,  
+       kkCantusDurus : KeyIndex := 1;
+    kkGMaj,  kkEMin  : KeyIndex := 2;
+    kkDMaj,  kkBMin  : KeyIndex := 3;
+    kkAMaj,  kkFsMin : KeyIndex := 4;
+    kkEMaj,  kkCsMin : KeyIndex := 5;
+    kkBMaj,  kkGsMin : KeyIndex := 6;
+    kkFsMaj, kkDsMin : KeyIndex := 7;
+    kkCsMaj, kkAsMin : KeyIndex := 8;
+    kkFMaj,  kkDMin,  
+      kkCantusMollis : KeyIndex := 9;
+    kkBbMaj, kkGMin  : KeyIndex := 10;
+    kkEbMaj, kkCMin  : KeyIndex := 11;
+    kkAbMaj, kkFMin  : KeyIndex := 12;
+    kkDbMaj, kkBbMin : KeyIndex := 13;
+    kkGbMaj, kkEbMin : KeyIndex := 14;
+    kkCbMaj, kkAbMin : KeyIndex := 15;
+    else
+    begin
+      WriteLn(StdErr, 'Unrecognized key, substituting CMajor');
+      KeyIndex := 1;
+    end;
   end;
-  result := Index;
+
+  case PitchName of
+    pkC : PitchIndex := 1;
+    pkD : PitchIndex := 2;
+    pkE : PitchIndex := 3;
+    pkF : PitchIndex := 4;
+    pkG : PitchIndex := 5;
+    pkA : PitchIndex := 6;
+    pkB : PitchIndex := 7;
+    else
+    begin
+      WriteLn(StdErr, 'Unrecognized pitch name, substituting C');
+      PitchIndex := 1;
+    end;
+  end;
+
+  result := Gamut[KeyIndex, PitchIndex]
 end;
+
 
 function GetAccidType(PitchName: TPitchName; Accid: TAccidental; 
   Key: TKeyKind): TAccidType; 
@@ -231,18 +261,10 @@ var
   AccidType: TAccidType;
 begin
   AccidType := akExplicit;
-  if Accid = Gamut[KeyIndex(Key), Ord(PitchName)] then
+  if Accid = AccidInKey(PitchName, Key) then 
     AccidType := akImplicit;
 
-  DebugLn('Checking accid type: pitch, accid, key: ');
-  {$ifdef DEBUG}
-    WriteLn(PitchName); 
-    WriteLn(Accid);
-    WriteLn(Key);
-  {$endif}
-  DebugLn('ACCID TYPE:');
-  {$ifdef DEBUG}WriteLn(AccidType);{$endif}
-
+  DebugLn('ACCID TYPE:'); {$ifdef DEBUG}WriteLn(AccidType);{$endif}
   result := AccidType;
 end;
 
@@ -264,35 +286,44 @@ end;
 
 constructor TPitch.CreateFromLy(Source: String; Key: TKeyKind);
 var
-  NoteStr, PitchNameLy, OctLy, DurLy, EtcLy: String;
+  NoteStr, PitchNameLy, OctLy, DurLy, EtcLy, Test: String;
 begin
   inherited Create;
   NoteStr := Source;
   PitchNameLy := ExtractWord(1, NoteStr, [',', '''', '1', '2', '4', '8', '\']);
   NoteStr := StringDropBefore(NoteStr, PitchNameLy);
   
-  OctLy := ExtractWord(1, NoteStr, ['1', '2', '4', '8', '\']);
-  if OctLy <> '' then
-    NoteStr := StringDropBefore(NoteStr, OctLy);
- 
-  DurLy := ExtractWord(1, NoteStr, ['(', ')', '~', '\']);
-  if DurLy <> '' then
-  begin
-    NoteStr := StringDropBefore(NoteStr, DurLy);
-    EtcLy := NoteStr; { TODO }
+  OctLy := '';
+  Test := NoteStr.Substring(0, 1);
+  case Test of
+    '''', ',' :
+    begin
+      OctLy := ExtractWord(1, NoteStr, ['1', '2', '4', '8', '\']);
+      NoteStr := StringDropBefore(NoteStr, OctLy);
+    end;
+  end;
+
+  DurLy := '';
+  Test := NoteStr.Substring(0, 1);
+  case Test of
+    '1', '2', '4', '8' :
+    begin
+      DurLy := ExtractWord(1, NoteStr, ['(', ')', '~', '\', '[', ']', '*']);
+      NoteStr := StringDropBefore(NoteStr, DurLy);
+      EtcLy := NoteStr; { TODO }
+    end;
   end;
 
   FPitchName := GetPitchName(PitchNameLy);
-  FAccid     := GetAccid(PitchNameLy);
-  FAccidType := GetAccidType(FPitchName, FAccid, Key);
   FOct       := GetOctave(OctLy);
   FDur       := GetDurationKind(DurLy);
- 
-  { TODO how to deal with unexpected input? }
-  if (FPitchName = pkNone) or (FOct = -1) or (FDur = dkNone) then
+    
+  FAccid     := akNatural;
+  FAccidType := akImplicit;
+  if Self.IsValid and not Self.IsRest then
   begin
-    WriteLn(Stderr, 'Error creating pitch from string ' + Source);
-    halt;
+    FAccid     := GetAccid(PitchNameLy);
+    FAccidType := GetAccidType(FPitchName, FAccid, Key);
   end;
 end;
 
@@ -306,6 +337,16 @@ begin
     FOct := Source.FOct;
     FDur := Source.FDur;
   end;
+end;
+
+function TPitch.IsValid: Boolean;
+begin
+  result := not ((FPitchName = pkNone) or (FOct = -1) or (FDur = dkNone));
+end;
+
+function TPitch.IsRest: Boolean;
+begin
+  result := FPitchName = pkRest;
 end;
 
 function TPitch.MEIPname: String;
@@ -400,9 +441,13 @@ begin
   for ThisNote in Notes do
   begin
     NewPitch := TPitch.CreateFromLy(ThisNote, Key);
-    { TODO test if NewPitch is valid? }
-    if NewPitch <> nil then
-      Self.Add(NewPitch);
+    if NewPitch.IsValid then
+      Self.Add(NewPitch)
+    else
+    begin
+      WriteLn(StdErr, 'Invalid Pitch found in source ''' + ThisNote + '''');
+      FreeAndNil(NewPitch);
+    end;
   end;
 end;
 
@@ -782,9 +827,11 @@ begin
     DebugLn('MEI TREE STAGE 1:' + LineEnding + MEIStaffTree.ToString);
 
     MEIMeasureTree := MEIStaffTree.StaffToMeasureTree;
-    DebugLn('MEI TREE STAGE 2:' + LineEnding + MEIMeasureTree.ToString);
-
-    MEIScoreLines := MEIMeasureTree.ToMEI;
+    if MEIMeasureTree <> nil then
+    begin
+      DebugLn('MEI TREE STAGE 2:' + LineEnding + MEIMeasureTree.ToString);
+      MEIScoreLines := MEIMeasureTree.ToMEI;
+    end;
   end;
   
   if MEIScoreLines <> nil then
