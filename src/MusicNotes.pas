@@ -24,8 +24,8 @@ uses SysUtils, StrUtils, Classes, Generics.Collections, StringTools, Outline,
 ScoreTree;
 
 type 
-  TPitchName = (pkNone, pkC, pkD, pkE, pkF, pkG, pkA, pkB, pkRest);
-  TAccidental = (akFlat, akNatural, akSharp);
+  TPitchName = (pkNone = 0, pkC = 1, pkD, pkE, pkF, pkG, pkA, pkB, pkRest);
+  TAccidental = (akFlat = -1, akNatural = 0, akSharp = 1);
   TAccidType = (akImplicit, akExplicit, akFicta); { TODO ficta }
   TDuration = (dkNone, dkBreve, dkSemibreve, dkMinim, dkSemiminim, dkFusa,
     dkSemifusa, dkBreveDotted, dkSemibreveDotted, dkMinimDotted,
@@ -180,114 +180,64 @@ begin
   result := Accid;
 end;
 
-type 
-  TPitchAccid = (nkCb, nkC, nkCs, 
-                 nkDb, nkD, nkDs, 
-                 nkEb, nkE, nkEs, 
-                 nkFb, nkF, nkFs, 
-                 nkGb, nkG, nkGs, 
-                 nkAb, nkA, nkAs, 
-                 nkBb, nkB, nkBs);
 const
-  Gamut: Array [1..15, 1..7] of TPitchAccid = (
-    (nkC, nkD, nkE, nkF, nkG, nkA, nkB),
-    (nkG, nkA, nkB, nkC, nkD, nkE, nkFs),
-    (nkD, nkE, nkFs, nkG, nkA, nkB, nkCs),
-    (nkA, nkB, nkCs, nkD, nkE, nkFs, nkGs),
-    (nkE, nkFs, nkGs, nkA, nkB, nkCs, nkDs),
-    (nkB, nkCs, nkDs, nkE, nkFs, nkGs, nkAs),
-    (nkFs, nkGs, nkAs, nkB, nkCs, nkDs, nkEs),
-    (nkCs, nkDs, nkEs, nkFs, nkGs, nkAs, nkBs),
-    (nkF, nkG, nkA, nkBb, nkC, nkD, nkE),
-    (nkBb, nkC, nkD, nkEb, nkF, nkG, nkA),
-    (nkEb, nkF, nkG, nkAb, nkBb, nkC, nkD),
-    (nkAb, nkBb, nkC, nkDb, nkEb, nkF, nkG),
-    (nkDb, nkEb, nkF, nkGb, nkAb, nkBb, nkC),
-    (nkGb, nkAb, nkBb, nkC, nkDb, nkEb, nkF),
-    (nkCb, nkDb, nkEb, nkFb, nkGb, nkAb, nkBb));
+  Gamut: Array [1..15, 1..7] of TAccidental = (
+     { pkC        pkD         pkE         pkF       pkG       pkA         pkB } 
+{ C  } (akNatural, akNatural, akNatural, akNatural, akNatural, akNatural, akNatural),
+{ G  } (akNatural, akNatural, akNatural, akSharp,   akNatural, akNatural, akNatural),
+{ D  } (akSharp,   akNatural, akNatural, akSharp,   akNatural, akNatural, akNatural),
+{ A  } (akSharp,   akNatural, akNatural, akSharp,   akSharp,   akNatural, akNatural),
+{ E  } (akSharp,   akSharp,   akNatural, akSharp,   akSharp,   akNatural, akNatural),
+{ B  } (akSharp,   akSharp,   akNatural, akSharp,   akSharp,   akSharp,   akNatural),
+{ F# } (akSharp,   akSharp,   akSharp,   akSharp,   akSharp,   akSharp,   akNatural),
+{ C# } (akSharp,   akSharp,   akSharp,   akSharp,   akSharp,   akSharp,   akSharp),
+{ F  } (akNatural, akNatural, akNatural, akNatural, akNatural, akNatural, akFlat),
+{ Bb } (akNatural, akNatural, akFlat,    akNatural, akNatural, akNatural, akFlat),
+{ Eb } (akNatural, akNatural, akFlat,    akNatural, akNatural, akFlat,    akFlat),
+{ Ab } (akNatural, akFlat,    akFlat,    akNatural, akNatural, akFlat,    akFlat),
+{ Db } (akNatural, akFlat,    akFlat,    akNatural, akFlat,    akFlat,    akFlat),
+{ Gb } (akFlat,    akFlat,    akFlat,    akNatural, akFlat,    akFlat,    akFlat),
+{ Cb } (akFlat,    akFlat,    akFlat,    akFlat,    akFlat,    akFlat,    akFlat));
 
-function ToPitchAccid(Pitch: TPitchName; Accid: TAccidental): TPitchAccid;
+function KeyIndex(Key: TKeyKind): Integer;
 var
-  BasePitch, FinalPitch: TPitchAccid;
-begin 
-  case Pitch of
-    pkC : BasePitch := nkC;
-    pkD : BasePitch := nkD;
-    pkE : BasePitch := nkE;
-    pkF : BasePitch := nkF;
-    pkG : BasePitch := nkG;
-    pkA : BasePitch := nkA;
-    pkB : BasePitch := nkB;
-    else
-      BasePitch := nkC;
-  end;
-  case Accid of 
-    akFlat    : FinalPitch := Pred(BasePitch);
-    akNatural : FinalPitch := BasePitch;
-    akSharp   : FinalPitch := Succ(BasePitch);
-    else
-      FinalPitch := BasePitch;
-  end;
-  result := FinalPitch;
-end;
-
-function IsNoteInScale(PitchAccid: TPitchAccid; Key: TKeyKind): Boolean; 
-var
-  ScaleIndex: Integer;
-  ThisPitchAccid: TPitchAccid;
-  Found: Boolean = False;
+  Index: Integer;
 begin
-  case Key of 
-    kkNone, kkCMaj, kkAmin, kkCantusDurus : 
-      ScaleIndex := 1;
-    kkGMaj, kkEMin   : ScaleIndex := 2;
-    kkDMaj, kkBmin   : ScaleIndex := 3;
-    kkAMaj, kkFsMin  : ScaleIndex := 4;
-    kkEMaj, kkCsMin  : ScaleIndex := 5;
-    kkBMaj, kkGsMin  : ScaleIndex := 6;
-    kkFsMaj, kkDsMin : ScaleIndex := 7;
-    kkCsMaj, kkAsMin : ScaleIndex := 8;
+  case Key of
+    kkNone, kkCMaj,  kkAMin,  kkCantusDurus : Index := 1;
 
-    kkFMaj, kkDMin, kkCantusMollis : 
-      ScaleIndex := 9;
-    kkBbMaj, kkGMin  : ScaleIndex := 10;
-    kkEbMaj, kkCMin  : ScaleIndex := 11;
-    kkAbMaj, kkFMin  : ScaleIndex := 12;
-    kkDbMaj, kkBbMin : ScaleIndex := 13;
-    kkGbMaj, kkEbMin : ScaleIndex := 14;
-    kkCbMaj, kkAbMin : ScaleIndex := 15;
-    else
-      ScaleIndex := 1;
+    kkGMaj,  kkEMin  : Index := 2;
+    kkDMaj,  kkBMin  : Index := 3;
+    kkAMaj,  kkFsMin : Index := 4;
+    kkEMaj,  kkCsMin : Index := 5;
+    kkBMaj,  kkGsMin : Index := 6;
+    kkFsMaj, kkDsMin : Index := 7;
+    kkCsMaj, kkAsMin : Index := 8;
+
+    kkFMaj,  kkDMin,  kkCantusMollis : Index := 9;
+    kkBbMaj, kkGMin  : Index := 10;
+    kkEbMaj, kkCMin  : Index := 11;
+    kkAbMaj, kkFMin  : Index := 12;
+    kkDbMaj, kkBbMin : Index := 13;
+    kkGbMaj, kkEbMin : Index := 14;
+    kkCbMaj, kkAbMin : Index := 15;
   end;
-  for ThisPitchAccid in Gamut[ScaleIndex] do
-  begin
-    if PitchAccid = ThisPitchAccid then
-    begin
-      Found := True;
-      break;
-    end;
-  end;
-  result := Found;
+  result := Index;
 end;
 
- 
 function GetAccidType(PitchName: TPitchName; Accid: TAccidental; 
   Key: TKeyKind): TAccidType; 
 var
   AccidType: TAccidType;
-  PitchAccid, ThisPitchAccid: TPitchAccid;
-  ThisScale: Array of TPitchAccid;
 begin
-  PitchAccid := ToPitchAccid(PitchName, Accid);
+  AccidType := akExplicit;
+  if Accid = Gamut[KeyIndex(Key), Ord(PitchName)] then
+    AccidType := akImplicit;
 
-  if IsNoteInScale(PitchAccid, Key) then
-    AccidType := akImplicit
-  else
-    AccidType := akExplicit;
-
-  DebugLn('Checking accid type: pitchAccid, key = ');
+  DebugLn('Checking accid type: pitch, accid, key: ');
   {$ifdef DEBUG}
-    WriteLn(PitchAccid); 
+    WriteLn(PitchName); 
+    WriteLn(Accid);
     WriteLn(Key);
   {$endif}
   DebugLn('ACCID TYPE:');
