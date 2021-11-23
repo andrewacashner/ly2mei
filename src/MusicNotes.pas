@@ -2,21 +2,15 @@
 
 { @abstract(Convert a Lilypond music expression to MEI.)
   @author(Andrew Cashner)
+
+  We parse a tree of Lilypond objects (@code(TLyObject), from the ScoreTree unit)
+  into an internal representation of the music data. We then convert that
+  representation from Lilypond's hierarchy of data into that needed for MEI.
+
+  Lilypond (in our specification) is organized score/staff/voice/measures/notes.
+  MEI requires score/section/measure/staff/layer/notes.
 }
 unit MusicNotes;
-
-{
-  ly start:
-    Staff     : TVoiceList
-    Voice     : TMeasureList
-    | ... \n  : TPitchList
-    c'4       : TPitch
-  mei end:
-    <measure> : TStaffList
-      <staff> : TVoiceList
-        <layer> : TPitchList
-          <note> : TPitch
-}
 
 interface
 
@@ -24,21 +18,51 @@ uses SysUtils, StrUtils, Classes, Generics.Collections, StringTools, Outline,
 ScoreTree;
 
 type 
+  { Labels for pitch classes }
   TPitchName = (pkNone, pkC, pkD, pkE, pkF, pkG, pkA, pkB, pkRest);
-  TAccidental = (akFlat, akNatural, akSharp);
-  TAccidType = (akImplicit, akExplicit, akFicta); { TODO ficta }
-  TDuration = (dkNone, dkBreve, dkSemibreve, dkMinim, dkSemiminim, dkFusa,
-    dkSemifusa, dkBreveDotted, dkSemibreveDotted, dkMinimDotted,
-    dkSemiminimDotted, dkFusaDotted);
 
-function GetPitchName(LyName: String): TPitchName;
-function GetOctave(OctLy: String): Integer;
-function GetDurationKind(DurLy: String): TDuration;
-function GetAccid(LyName: String): TAccidental;
-function GetAccidType(PitchName: TPitchName; Accid: TAccidental; 
-  Key: TKeyKind): TAccidType; 
+  { Labels for accidentals }
+  TAccidental = (akFlat, akNatural, akSharp);
+
+  { Labels for types of accidentals }
+  TAccidType = (
+    { Played but not written if part of the scale in its key }
+    akImplicit, 
+    { Played and written out, not part of the scale }
+    akExplicit, 
+    { Suggested editorially for historical performance practice 
+      (TODO not implemented) }
+    akFicta); 
+
+  { Labels for rhythmic durations }
+  TDuration = (dkNone, 
+    { Double whole note }
+    dkBreve, 
+    { Whole }
+    dkSemibreve, 
+    { Half }
+    dkMinim, 
+    { Quarter }
+    dkSemiminim, 
+    { Eighth }
+    dkFusa,
+    { Sixteenth}
+    dkSemifusa, 
+    { Double whole, dotted }
+    dkBreveDotted, 
+    { Whole, dotted }
+    dkSemibreveDotted, 
+    { Half, dotted }
+    dkMinimDotted,
+    { Quarter, dotted }
+    dkSemiminimDotted, 
+    { Eigth, dotted }
+    dkFusaDotted);
 
 type
+  { Our internal structure for storing data for a pitch, using the labels
+    above except for octave, which is an integer in the Helmholtz system (middle
+    C is C4). } 
   TPitch = class
   public
     var
@@ -47,65 +71,159 @@ type
       FAccidType: TAccidType;
       FOct: Integer;
       FDur: TDuration;
+
     constructor Create();
+    
+    { Create from all the fields }
     constructor Create(Name: TPitchName; Accid: TAccidental; AccidType:
       TAccidType; Oct: Integer; Dur: TDuration); 
+
+    { Create from a Lilypond input string; set the accidental relative to the
+      given key. }
     constructor CreateFromLy(Source: String; Key: TKeyKind);
+
+    { Copy all the fields from an existing pitch to this one. }
     procedure Assign(Source: TPitch); 
+
+    { When we find invalid input, we construct invalid pitches, with the
+      fields set to "none" or negative values. Did we find a valid pitch? }
     function IsValid: Boolean;
+
+    { A rest is a @code(TPitch) with the pitch name set to @code(pkRest) and
+      only the duration. }
     function IsRest: Boolean;
+
+
+    { Generate the MEI @code(pname) attribute for the pitch name. }
     function MEIPName: String;
+
+    { Generate the MEI @code(accid) and/or @code(accid.ges) attributes for the
+      accidental, depending on whether the accidental is to be written
+      explicitly in this key. }
     function MEIAccid: String;
+
+    { Generate the MEI @code(oct) attribute for the octave. }
     function MEIOct: String;
+
+    { Generate the MEI @code(dur) and @code(dots) attributes for the rhythmic
+      duration. }
     function MEIDurDots: String;
+
+    { Generate a complete MEI @code(note) element for this pitch. }
     function ToMEI: String;
   end;
-  
+ 
+  { A list of @link(TPitch) objects, corresponding to one measure of music. }
   TPitchList = class(specialize TObjectList<TPitch>)
   public
+    { Create a new list of pitches from the Lilypond input string for a single
+      measure of music, and the key relevant to this music. Recursively create
+      all the pitches contained in the list. }
     constructor CreateFromLy(Source: String; Key: TKeyKind);
+
+    { Deep copy of all pitches from another list to this one. }
     procedure Assign(Source: TPitchList);
+
+    { Generate an MEI @code(measure) element, recursively generating the
+      @code(note) elements it contains. }
     function ToMEI: TStringListAAC;
   end;
 
+  { A list of @link(TPitchList) objects, corresponding to a list of all the
+  measures of music for a single voice (Lilypond) or layer (MEI). }
   TMeasureList = class(specialize TObjectList<TPitchList>)
   public
+    { Create a new list from the Lilypond input string for a single voice.
+      Find the key for this music and then recursively create all the
+      measures, and in turn all the pitches, it contains. }
     constructor CreateFromLy(Source: String);
+
+    { Deep copy of all measures and pitches in another list to this one. }
     procedure Assign(Source: TMeasureList);
   end;
 
+  { Label to indicate whether we should assign all measures or just one. Used
+  when converting a Lilypond tree to an MEI structure, where there are just
+  the notes for one measure at the bottom of the tree.}
   TMeasureCopyMode = (mkAllMeasures, mkOneMeasure);
 
+  { Like @link(TLyObject), this class functions as nodes in an LCRS tree. Each
+    node represents one XML element. We will convert the @link(TLyObject) tree
+    taken from Lilypond input into a new tree. }
   TMEIElement = class
   private
     var
+      { The element must be one of a standard set of types. }
       FType: TMusicTreeElement;
+      { Name and ID strings }
       FName, FID: String;
+      { Position in series of same type }
       FNum: Integer;
+      { Only elements with @code(ekLayer) type contain a list of measures; 
+        for all other types this will be @code(nil). }
       FMeasures: TMeasureList;
+      { Links to rest of tree }
       FChild, FSibling: TMEIElement;
   public
+
     constructor Create();
+
+    { Create from all fields (default is to create a single node with
+      @code(nil) relations) }
     constructor Create(ElementType: TMusicTreeElement; ID: String; 
       Num: Integer = 1; Measures: TMeasureList = nil; 
       Child: TMEIElement = nil; Sibling: TMEIElement = nil);
+
+    { Destroy entire tree }
     destructor Destroy; override;
+
+    { Return the last right sibling in the tree. }
     function LastSibling: TMEIElement;
+
+    { Deep copy of all fields of a single element node to this one, including
+      the measure list (and its contents recursively) if there is one. }
     procedure AssignNode(Source: TMEIElement; Mode: TMeasureCopyMode =
       mkAllMeasures; MeasureIndex: Integer = 0); 
+
+    { Deep copy of the entire tree starting at this node, including any
+      measure lists it contains and all their contents recursively. }
     procedure AssignTree(Source: TMEIElement; Mode: TMeasureCopyMode =
       mkAllMeasures; MeasureIndex: Integer = 0); 
+
+    { Copy data to convert from a @link(TLyObject). }
     procedure SetFromLyObject(LyObject: TLyObject);
+
+    { How many measures are in the measure list within this element? Return -1
+      if not all measure lists have the same count. }
     function CountMeasures: Integer;
+
+    { Convert the tree to a simple string representation for debugging. }
     function ToString: String; override;
+
+    { First we copy a @link(TLyObject) tree to a @link(TMEIElement) tree,
+      preserving its structure (score/staff/voice/measures). With this
+      function we create a new tree that is organized in the MEI hierarchy
+      (section/measure/staff/layer/notes).
+
+      We first count the measures and make sure all voices have the same
+      number of measures. Then for each measure, we create a new tree for that
+      measure, where the child element is the entire original tree
+      (staff/layer), but we include only a single measure in the list at the
+      bottom, corresponding to the music for this measure. }
     function StaffToMeasureTree: TMEIElement;
+
+    { Generate the MEI output for the whole tree starting at this node,
+      including recursively all its subelements and relations. Return a
+      stringlist with one MEI node and its contents. }
     function ToMEI: TStringListAAC;
   end;
 
+{ Convert a @code(TLyObject) tree to a @code(TMEIElement) tree, preserving the
+  same hierarchy from the Lilypond input. }
 function LyToMEITree(LyTree: TLyObject): TMEIElement;
 
 { Parse a Lilypond \score expression and create an MEI music
-  element including the scoreDef and music notes }
+  element including the scoreDef and music notes. }
 function CreateMEIMusic(SourceLines: TStringListAAC): TStringListAAC;
 
 

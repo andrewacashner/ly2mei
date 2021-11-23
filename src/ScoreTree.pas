@@ -1,4 +1,4 @@
-{$mode objfpc}{$H+}{$J-} {$ASSERTIONS+} {$OPTIMIZATION tailrec}
+{$mode objfpc}{$H+}{$J-} {$ASSERTIONS+}
 
 { @abstract(Build a tree of code objects defined by Lilypond @code(\new)
   commands within a @code(\score) expression.)
@@ -19,6 +19,7 @@ interface
 
 uses SysUtils, StrUtils, Classes, StringTools, Outline;
 
+{ Labels for keys or key signatures. }
 type
   TKeyKind = (kkNone,
     kkCMaj,  kkAMin,  kkCantusDurus, 
@@ -37,15 +38,13 @@ type
     kkGbMaj, kkEbMin,
     kkCbMaj, kkAbMin);
 
-  TClefKind = (ckNone, ckTreble, ckSoprano, ckMezzoSoprano, ckAlto, ckTenor,
-    ckBaritone, ckBass, ckTreble8va); 
-
-  TMeterKind = (mkNone, mkMensuralTempusImperfectum,
-    mkMensuralProportioMinor, mkModern);
-
+{ In Lilypond input, find a @code(\key) declaration, or in Lirio format,
+  @code(\CantusDurus) (no accidentals) or @code(\CantusMollis) (one flat). }
 function FindLyKey(KeyStr: String): TKeyKind;
 
 type 
+  { Types of elements in the internal tree of @code(TLyObject) or
+    @code(TMEIElement) objects }
   TMusicTreeElement = (ekAnonymous, ekStaffGrp, ekStaff, ekLayer, ekMeasure);
 
   { One node in a tree of Lilypond code objects that were
@@ -66,13 +65,17 @@ type
       FNum: Integer;
       { Contents: If the command is followed by section delimited by double
       angle brackets, then the contents will be blank; otherwise, everything
-      up to the end of a curly-brace-delimited argument }
+      up to the end of a curly-brace-delimited argument. }
       FContents: String;
       { Left child node (tree) }
       FChild: TLyObject;
       { Right sibling node (tree) }
       FSibling: TLyObject;
+
     constructor Create();
+
+    { The @code(FType) field will be created automatically based on the
+    @code(Name) argument. }
     constructor Create(Name, ID: String; ContentsStr: String = ''; Num:
       Integer = 1; Child: TLyObject = nil; Sibling: TLyObject = nil); 
 
@@ -89,7 +92,9 @@ type
     traversal, regardless of relation to other elements of the tree hierarchy }
     procedure NumberElementsInOrder(ElementType: TMusicTreeElement);
 
-    { Number ChoirStaff, StaffGroup, Staff, and Voice elements in order }
+    { Number ChoirStaff, StaffGroup, Staff, and Voice elements in order.
+      We are treating ChoirStaff and StaffGroup as part of the same series.
+      (Should we?) }
     procedure SetNumbers;
 
     { Return a string with a DIY XMl representation of the object tree, for
@@ -117,7 +122,6 @@ type
   as a sibling of the previous item.
 }
 function BuildLyObjectTree(Source: String; Tree: TLyObject): TLyObject;
-
 
 
 implementation
@@ -234,14 +238,13 @@ begin
   SearchStr := StringDropBefore(SearchStr, ThisType);
 
   { Find ID }
+  ThisID := '';
   if SearchStr.StartsWith(' = "') then
   begin 
     SearchStr := StringDropBefore(SearchStr, ' = "');
-    ThisID := SearchStr.Substring(0, SearchStr.IndexOf('"'));
+    ThisID := StringDropAfter(SearchStr, '"');
     SearchStr := StringDropBefore(SearchStr, ThisID + '"');
-  end
-  else
-    ThisID := '';
+  end;
 
   { Find Contents: Either an expression within double angle brackets or
   one within curly braces. If angle brackets, recursively look for nested
@@ -304,11 +307,14 @@ end;
 
 procedure TLyObject.SetNumbers;
 begin
-  { NOTE treating ChoirStaff and StaffGroup as part of same series }
   NumberElementsInOrder(ekStaffGrp); 
   NumberElementsInOrder(ekStaff);
   NumberElementsInOrder(ekLayer);
 end;
+
+type
+  TClefKind = (ckNone, ckTreble, ckSoprano, ckMezzoSoprano, ckAlto, ckTenor,
+    ckBaritone, ckBass, ckTreble8va); 
 
 function FindLyClef(Source: String): TClefKind;
 var
@@ -347,26 +353,31 @@ var
   XML: String;
 begin
   case Clef of
-    ckSoprano                  : ClefLine := 1;
-    ckTreble, ckMezzoSoprano,  
-      ckTreble8va              : ClefLine := 2;
-    ckAlto, ckBaritone         : ClefLine := 3;
-    ckTenor, ckBass            : ClefLine := 4;
+    ckNone, ckSoprano           : ClefLine := 1;
+    ckTreble, ckMezzoSoprano,   
+      ckTreble8va               : ClefLine := 2;
+    ckAlto, ckBaritone          : ClefLine := 3;
+    ckTenor, ckBass             : ClefLine := 4;
   end;
+  
   case Clef of
-    ckTreble, ckTreble8va       : ClefLetter := 'G';
+    ckNone, ckTreble, 
+      ckTreble8va               : ClefLetter := 'G';
     ckSoprano, ckMezzoSoprano,   
       ckAlto, ckTenor           : ClefLetter := 'C';
     ckBaritone, ckBass          : ClefLetter := 'F';
   end;
+
   case Clef of
     ckTreble8va : ClefDis := ' ' + XMLAttribute('clef.dis', '8') + ' '
                               + XMLAttribute('clef.dis.place', 'below');
     else
       ClefDis := '';
   end;
+
   XML := XMLAttribute('clef.line', IntToStr(ClefLine)) + ' '
             + XMLAttribute('clef.shape', ClefLetter) + ClefDis;
+
   result := XML;
 end;
 
@@ -475,7 +486,10 @@ begin
 end;
 
 type
-  TMeter = record
+  TMeterKind = (mkNone, mkMensuralTempusImperfectum,
+    mkMensuralProportioMinor, mkModern);
+  
+    TMeter = record
     FKind: TMeterKind;
     FCount, FUnit: Integer;
   end;
@@ -515,15 +529,19 @@ end;
 
 function MEIMeter(Meter: TMeter): String;
 var
-  MEI: String;
+  MEI, TempusImperfectum: String;
 begin
+  TempusImperfectum := XMLAttribute('mensur.sign', 'C') + ' '
+                        + XMLAttribute('mensur.tempus', '2'); 
   with Meter do
   begin
     case FKind of
       mkMensuralTempusImperfectum : 
-        MEI := 'mensur.sign="C" mensur.tempus="2"';
+        MEI := TempusImperfectum;
+
       mkMensuralProportioMinor : 
-        MEI := 'mensur.sign="C" mensur.tempus="2" proport.num="3"';
+        MEI := TempusImperfectum + ' ' + XMLAttribute('proport.num', '3');
+
       mkModern : 
         MEI := XMLAttribute('meter.count', IntToStr(FCount)) + ' ' 
                 + XMLAttribute('meter.unit', IntToStr(FUnit));
@@ -539,9 +557,10 @@ var
   ClefStr, KeyStr, MeterStr, OutputStr: String;
 begin
   OutputStr := XMLAttribute('lines', '5');
-  ClefStr := MEIClef(Clef);
-  KeyStr := MEIKEy(Key);
-  MeterStr := MEIMeter(Meter);
+  ClefStr   := MEIClef(Clef);
+  KeyStr    := MEIKEy(Key);
+  MeterStr  := MEIMeter(Meter);
+
   result := OutputStr + ' ' + ClefStr + ' ' + KeyStr + ' ' + MeterStr;
 end;
 
@@ -611,6 +630,7 @@ begin
   FreeAndNil(TempLines);
   result := InnerLines;
 end;
+
 var
   MEI: TStringListAAC;
 begin
@@ -618,6 +638,7 @@ begin
   MEI := InnerScoreDef(Self, MEI);
   MEI.EncloseInXML('staffGrp');
   MEI.EncloseInXML('scoreDef');
+
   result := MEI;
 end;
 
