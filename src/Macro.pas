@@ -52,6 +52,9 @@ function FindReplaceMacros(SourceLines: TStringListAAC; Dict: TMacroDict):
   macros, including nested ones. }
 function ExpandMacros(SourceLines: TStringListAAC): TStringListAAC;
 
+{ Write out Lilypond multimeasure rests as individual rests: @code(| R1*2)
+becomes @code(| R1\n| R1). }
+function ExpandMultiRests(SourceLines: TStringListAAC): TStringListAAC;
 
 implementation
 
@@ -208,4 +211,38 @@ begin
   end;
 end;
 
+function ExpandMultiRests(SourceLines: TStringListAAC): TStringListAAC;
+var
+  ThisLine, RestStr, DurStr: String;
+  RestData: Array of String;
+  Repeats, RestCount: Integer;
+  EditedLines: TStringListAAC;
+begin
+  assert(SourceLines <> nil);
+  EditedLines := TStringListAAC.Create;
+
+  for ThisLine in SourceLines do
+  begin
+    if ThisLine.TrimLeft.StartsWith('|') and ThisLine.Contains(' R') then
+    begin
+      RestStr := StringDropBefore(ThisLine, ' R');
+      RestStr := ExtractWord(1, RestStr, [' ']);
+      RestData := RestStr.Split('*', 2);
+      DurStr := RestData[0];
+
+      Repeats := 1;
+      if RestData[1] <> '' then
+        Repeats := RestData[1].ToInteger;
+    
+      for RestCount := Repeats - 1 downto 0 do
+        EditedLines.Add('| R' + DurStr);
+    end
+    else
+      EditedLines.Add(ThisLine);
+  end;
+  SourceLines.Assign(EditedLines);
+  FreeAndNil(EditedLines);
+  result := SourceLines;
+end;
+    
 end.

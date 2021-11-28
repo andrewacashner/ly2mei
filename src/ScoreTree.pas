@@ -195,7 +195,7 @@ begin
       IDStr := ' ' + XMLAttribute('id', Parent.FID);
     
     ParentStr := '<lyobject ' + XMLAttribute('type', Parent.FName) + IDStr 
-                  + ' ' + XMLAttribute('n', IntToStr(Parent.FNum)) + '">' 
+                  + ' ' + XMLAttribute('n', IntToStr(Parent.FNum)) + '>' 
                   + Parent.FContents;
 
     if Parent.FChild <> nil then
@@ -218,67 +218,59 @@ var
   SearchStr, ThisType, ThisID, ThisContents: String;
   Outline: TIndexPair;
 begin
-  if Length(Source) = 0 then
-  begin
-    result := Tree;
-    exit;
-  end;
- 
   SearchStr := Source;
   SearchIndex := SearchStr.IndexOf('\new ');
-  if SearchIndex = -1 then 
-  begin
-    result := Tree;
-    exit;
-  end;
-   
-  { Find Type }
-  SearchStr := SearchStr.Substring(SearchIndex);
-  ThisType := ExtractWord(2, SearchStr, StdWordDelims);
-  SearchStr := StringDropBefore(SearchStr, ThisType);
 
-  { Find ID }
-  ThisID := '';
-  if SearchStr.StartsWith(' = "') then
-  begin 
-    SearchStr := StringDropBefore(SearchStr, ' = "');
-    ThisID := StringDropAfter(SearchStr, '"');
-    SearchStr := StringDropBefore(SearchStr, ThisID + '"');
-  end;
-
-  { Find Contents: Either an expression within double angle brackets or
-  one within curly braces. If angle brackets, recursively look for nested
-  @code(\new) expressions. }
-  if SearchStr.TrimLeft.StartsWith('<<') then
+  if (SearchStr <> '') and (SearchIndex <> -1) then
   begin
-    { Search within group for nested @code(\new) expressions and save them
-    as children; then move on after this group. Omit content string. }
-    Outline := BalancedDelimiterSubstring(SearchStr, '<', '>');
-    ThisContents := CopyStringRange(SearchStr, Outline, rkInclusive);
-    if Tree = nil then
-      Tree := TLyObject.Create(ThisType, ThisID)
+    { Find Type }
+    SearchStr := SearchStr.Substring(SearchIndex);
+    ThisType := ExtractWord(2, SearchStr, StdWordDelims);
+    SearchStr := StringDropBefore(SearchStr, ThisType);
+
+    { Find ID }
+    ThisID := '';
+    if SearchStr.StartsWith(' = "') then
+    begin 
+      SearchStr := StringDropBefore(SearchStr, ' = "');
+      ThisID := StringDropAfter(SearchStr, '"');
+      SearchStr := StringDropBefore(SearchStr, ThisID + '"');
+    end;
+
+    { Find Contents: Either an expression within double angle brackets or
+      one within curly braces. If angle brackets, recursively look for nested
+      @code(\new) expressions. }
+    if SearchStr.TrimLeft.StartsWith('<<') then
+    begin
+      { Search within group for nested @code(\new) expressions and save them
+        as children; then move on after this group. Omit content string. }
+      Outline := BalancedDelimiterSubstring(SearchStr, '<', '>');
+      ThisContents := CopyStringRange(SearchStr, Outline, rkInclusive);
+      if Tree = nil then
+        Tree := TLyObject.Create(ThisType, ThisID)
+      else
+        Tree.LastChild.FChild := TLyObject.Create(ThisType, ThisID);
+
+      Tree.LastChild.FChild := BuildLyObjectTree(ThisContents, nil);
+      Source := StringDropBefore(Source.Substring(SearchIndex), ThisContents);
+    end
     else
-      Tree.LastChild.FChild := TLyObject.Create(ThisType, ThisID);
-  
-    Tree.LastChild.FChild := BuildLyObjectTree(ThisContents, nil);
-    Source := StringDropBefore(Source.Substring(SearchIndex), ThisContents);
-  end
-  else
-  begin
-    { Add this expression as a sibling, then move on to next }
-    ThisContents := SearchStr.Substring(0, SearchStr.IndexOf('{'));
-    ThisContents := ThisContents + CopyBraceExpr(SearchStr);
-    ThisContents := ThisContents.Trim;
-    if Tree = nil then
-      Tree := TLyObject.Create(ThisType, ThisID, ThisContents)
-    else
-      Tree.LastSibling.FSibling := TLyObject.Create(ThisType, ThisID, ThisContents);
-    
-    Source := Source.Substring(SearchIndex + 1); 
-  end;
+    begin
+      { Add this expression as a sibling, then move on to next }
+      ThisContents := SearchStr.Substring(0, SearchStr.IndexOf('{'));
+      ThisContents := ThisContents + CopyBraceExpr(SearchStr);
+      ThisContents := ThisContents.Trim;
+      if Tree = nil then
+        Tree := TLyObject.Create(ThisType, ThisID, ThisContents)
+      else
+        Tree.LastSibling.FSibling := TLyObject.Create(ThisType, ThisID, ThisContents);
 
-  { Look for the next sibling where you left off from the last search }
-  Tree.LastSibling.FSibling := BuildLyObjectTree(Source, nil);
+      Source := Source.Substring(SearchIndex + 1); 
+    end;
+
+    { Look for the next sibling where you left off from the last search }
+    Tree.LastSibling.FSibling := BuildLyObjectTree(Source, nil);
+  end;
   result := Tree;
 end;
 
@@ -588,18 +580,19 @@ begin
   assert(InnerLines <> nil);
   TempLines := TStringListAAC.Create;
   ThisTag := '';
+  
+  Attributes := XMLAttribute('n', IntToStr(Node.FNum)) + ' ' 
+                  + XMLAttribute('xml:id', Node.FID);
   case Node.FType of
     ekStaffGrp:
     begin
       ThisTag := 'staffGrp';
-      Attributes := XMLAttribute('xml:id', Node.FID) + StaffGrpAttributes;
+      Attributes := Attributes + StaffGrpAttributes;
     end;
 
     ekStaff:
     begin
       ThisTag := 'staffDef';
-      Attributes := XMLAttribute('n', IntToStr(Node.FNum)) 
-                    + XMLAttribute(' xml:id', Node.FID);
       
       { Extract staffDef info from the first music expression in the first
       child Voice }

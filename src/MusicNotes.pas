@@ -19,7 +19,7 @@ ScoreTree;
 
 type 
   { Labels for pitch classes }
-  TPitchName = (pkNone, pkC, pkD, pkE, pkF, pkG, pkA, pkB, pkRest);
+  TPitchName = (pkNone, pkC, pkD, pkE, pkF, pkG, pkA, pkB, pkRest, pkMeasureRest);
 
   { Labels for accidentals }
   TAccidental = (akFlat, akNatural, akSharp);
@@ -220,7 +220,7 @@ type
 
 { Convert a @code(TLyObject) tree to a @code(TMEIElement) tree, preserving the
   same hierarchy from the Lilypond input. }
-function LyToMEITree(LyTree: TLyObject): TMEIElement;
+function LyToMEITree(LyNode: TLyObject): TMEIElement;
 
 { Parse a Lilypond \score expression and create an MEI music
   element including the scoreDef and music notes. }
@@ -240,7 +240,8 @@ begin
     'g': PitchName := pkG;
     'a': PitchName := pkA;
     'b': PitchName := pkB;
-    'r', 'R': PitchName := pkRest;
+    'r': PitchName := pkRest;
+    'R': PitchName := pkMeasureRest;
     else 
     begin
       WriteLn(StdErr, 'Unrecognized pitch name, substituting C: input was ' + LyName);
@@ -464,7 +465,7 @@ end;
 
 function TPitch.IsRest: Boolean;
 begin
-  result := FPitchName = pkRest;
+  result := FPitchName >= pkRest;
 end;
 
 function TPitch.MEIPname: String;
@@ -537,14 +538,17 @@ end;
 
 function TPitch.ToMEI: String;
 var
-  Dur: String;
+  Dur, MEI: String;
 begin
   Dur := MEIDurDots;
-  if FPitchName = pkRest then
-    result := XMLElement('rest', '', Dur)
-  else
-    result := XMLElement('note', '', MEIPname + ' ' + MEIAccid + ' ' + MEIOct
-      + ' ' + Dur); 
+  case FPitchName of
+    pkRest:        MEI := XMLElement('rest', '', Dur);
+    pkMeasureRest: MEI := XMLElement('mRest', '', Dur);
+    else
+      MEI := XMLElement('note', '', MEIPname + ' ' + MEIAccid + ' ' 
+        + MEIOct + ' ' + Dur); 
+  end;
+  result := MEI;
 end;
 
 constructor TPitchList.CreateFromLy(Source: String; Key: TKeyKind);
@@ -765,42 +769,42 @@ begin
   result := InnerCount(Self)
 end;
 
-function LyToMEITree(LyTree: TLyObject): TMEIElement;
-function InnerTree(LyNode: TLyObject; MEINode: TMEIElement): TMEIElement;
+{ TODO Start here: We are not getting all (any?) of the siblings into the MEI
+tree, and this results in a memory leak }
+function LyToMEITree(LyNode: TLyObject): TMEIElement;
+var
+  MEINode: TMEIElement = nil;
 begin
   if LyNode <> nil then
   begin
     case LyNode.FType of
       ekStaff, ekLayer:
       begin
-        if MEINode = nil then
-        begin
-          MEINode := TMEIElement.Create;
-        end;
+        MEINode := TMEIElement.Create;
         MEINode.SetFromLyObject(LyNode);
       end;
     end;
+    
     if LyNode.FChild <> nil then
     begin
       if MEINode = nil then
-        MEINode := InnerTree(LyNode.FChild, MEINode)
+        MEINode := LyToMEITree(LyNode.FChild)
       else if MEINode.FType = LyNode.FChild.FType then
-        MEINode.FSibling := InnerTree(LyNode.FChild, MEINode.FSibling)
+        MEINode.FSibling := LyToMEITree(LyNode.FChild)
       else
-        MEINode.FChild := InnerTree(LyNode.FChild, MEINode.FChild);
+        MEINode.FChild := LyToMEITree(LyNode.FChild);
     end;
+
     if LyNode.FSibling <> nil then
     begin
       if MEINode = nil then
-        MEINode := InnerTree(LyNode.FSibling, MEINode)
+        MEINode := LyToMEITree(LyNode.FSibling)
       else
-        MEINode.FSibling := InnerTree(LyNode.FSibling, MEINode.FSibling);
+        MEINode.FSibling := LyToMEITree(LyNode.FSibling);
     end;
   end;
+
   result := MEINode;
-end;
-begin
-  result := InnerTree(LyTree, nil);
 end;
 
 destructor TMEIElement.Destroy;
@@ -892,6 +896,7 @@ end;
 
 var
   NewElement, NewMeasure: TStringListAAC;
+  Attributes: String;
 begin
   if Node <> nil then
   begin
@@ -906,8 +911,14 @@ begin
 
     if Node.FChild <> nil then
       NewElement := InnerAddNewElement(Node.FChild, NewElement);
- 
-    NewElement.EncloseInXML(Node.FName, XMLAttributeIDNum(Node.FID, Node.FNum));
+
+    Attributes := XMLAttribute('n', IntToStr(Node.FNum));
+    if Node.FType = ekStaff then
+      Attributes := Attributes + ' ' + XMLAttribute('def', '#' + Node.FID)
+    else if Node.FID <> '' then
+      Attributes := Attributes + ' ' + XMLAttribute('xml:id', Node.FID);
+    
+    NewElement.EncloseInXML(Node.FName, Attributes);
 
     if Node.FSibling <> nil then
       NewElement := InnerAddNewElement(Node.FSibling, NewElement);

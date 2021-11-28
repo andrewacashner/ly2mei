@@ -208,7 +208,7 @@ end;
 
 function TStringListAAC.MEIDocStr: String;
 const
-  MeiNamespace = 'xmlns="http://www.music-encoding.org/ns/mei" meiVersion="4.0.0"';
+  MeiNamespace = 'xmlns="http://www.music-encoding.org/ns/mei" meiversion="4.0.0"';
 begin
   result := Self.XMLDocStr('mei', MEINamespace);
 end;

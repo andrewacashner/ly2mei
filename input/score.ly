@@ -8,13 +8,29 @@ MusicS = {
   \clef "treble"
   \time 4/4
   \key f\major
-  | c'4 d'4 e'4 f'4
-  | f'4 e'4 d'4 c'4
+  | c''2 c''2
+  | a'4 g'2 a'4
 }
 LyricsS = \lyricmode {
   One two three four
   du -- ple me -- ter
 }
+
+MusicSII = {
+  \clef "treble"
+  \time 4/4
+  \key f\major
+  | R1*2
+}
+
+MusicA = {
+  \clef "treble"
+  \time 4/4
+  \key f\major
+  | c'4 d'4 e'4 f'4
+  | f'4 e'4 d'4 c'4
+}
+LyricsA = \LyricsS
 
 MusicT = {
   \clef "treble_8"
@@ -49,6 +65,15 @@ FiguresB = \figuremode {
       <<
         \new Voice = "Soprano" { \MusicS }
         \new Lyrics \lyricsto "Soprano" { \LyricsS }
+      >>
+      \new Staff = "s-SopranoII"
+      <<
+        \new Voice = "SopranoII" { \MusicSII }
+      >>
+      \new Staff = "s-Alto"
+      <<
+        \new Voice = "Alto" { \MusicA }
+        \new Lyrics \lyricsto "Alto" { \LyricsA }
       >>
       \new Staff = "s-Tenor"
       <<

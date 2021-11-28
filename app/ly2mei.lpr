@@ -23,6 +23,7 @@ begin
       InputLines.LoadFromFile(ParamStr(1));
 
     InputLines  := ExpandMacros(InputLines);
+    InputLines  := ExpandMultiRests(InputLines);
     HeaderLines := CreateMEIHeader(InputLines);
     ScoreLines  := CreateMEIMusic(InputLines);
 
