@@ -769,35 +769,45 @@ begin
   result := InnerCount(Self)
 end;
 
-{ TODO Start here: We are not getting all (any?) of the siblings into the MEI
-tree, and getting it wrong results in a memory leak }
 function LyToMEITree(LyNode: TLyObject; MEINode: TMEIElement): TMEIElement;
 begin
   if LyNode <> nil then
   begin
+    DebugLn('LyToMEITree: visiting non-empty LyObjectNode with FType: ');
+    WriteLn(LyNode.FType);
+    
     case LyNode.FType of
       ekStaff, ekLayer :
       begin
-        if MEINode = nil then
-        begin
-          MEINode := TMEIElement.Create;
-          MEINode.SetFromLyObject(LyNode);
-        end;
+        MEINode := TMEIElement.Create;
+        MEINode.SetFromLyObject(LyNode);
       end;
     end;
-    if LyNode.FChild <> nil then
-    begin
-      if MEINode = nil then
-        MEINode := LyToMEITree(LyNode.FChild, MEINode)
-      else
-        MEINode.FChild := LyToMEITree(LyNode.FChild, MEINode.FChild);
-    end;
 
-    if LyNode.FSibling <> nil then
+    { If we haven't made a new node yet, then we are skipping a parent node }
+    if MEINode = nil then
     begin
-      if MEINode = nil then
-        MEINode := LyToMEITree(LyNode.FSibling, MEINode)
-      else
+      if LyNode.FChild <> nil then
+        MEINode := LyToMEITree(LyNode.FChild, MEINode);
+      if LyNode.FSibling <> nil then
+        MEINode := LyToMEITree(LyNode.FSibling, MEINode);
+    end
+    else 
+    begin
+      if LyNode.FChild <> nil then
+      begin
+        { Because we are skipping some parent nodes, we may find child nodes
+        in the original tree that need to become sibling nodes in the new tree }
+        if MEINode.FType = LyNode.FChild.FType then
+        begin
+          MEINode.LastSibling.FSibling := 
+            LyToMEITree(LyNode.FChild, MEINode.LastSibling.FSibling);
+        end
+        else
+          MEINode.FChild := LyToMEITree(LyNode.FChild, MEINode.FChild);
+      end;
+        
+      if LyNode.FSibling <> nil then
         MEINode.FSibling := LyToMEITree(LyNode.FSibling, MEINode.FSibling);
     end;
   end;
