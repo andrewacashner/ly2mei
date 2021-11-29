@@ -220,7 +220,7 @@ type
 
 { Convert a @code(TLyObject) tree to a @code(TMEIElement) tree, preserving the
   same hierarchy from the Lilypond input. }
-function LyToMEITree(LyNode: TLyObject): TMEIElement;
+function LyToMEITree(LyNode: TLyObject; MEINode: TMEIElement): TMEIElement;
 
 { Parse a Lilypond \score expression and create an MEI music
   element including the scoreDef and music notes. }
@@ -770,43 +770,92 @@ begin
 end;
 
 { TODO Start here: We are not getting all (any?) of the siblings into the MEI
-tree, and this results in a memory leak }
-function LyToMEITree(LyNode: TLyObject): TMEIElement;
-var
-  MEINode: TMEIElement = nil;
+tree, and getting it wrong results in a memory leak }
+function LyToMEITree(LyNode: TLyObject; MEINode: TMEIElement): TMEIElement;
 begin
   if LyNode <> nil then
   begin
     case LyNode.FType of
-      ekStaff, ekLayer:
+      ekStaff, ekLayer :
       begin
-        MEINode := TMEIElement.Create;
-        MEINode.SetFromLyObject(LyNode);
+        if MEINode = nil then
+        begin
+          MEINode := TMEIElement.Create;
+          MEINode.SetFromLyObject(LyNode);
+        end;
       end;
     end;
-    
     if LyNode.FChild <> nil then
     begin
       if MEINode = nil then
-        MEINode := LyToMEITree(LyNode.FChild)
-      else if MEINode.FType = LyNode.FChild.FType then
-        MEINode.FSibling := LyToMEITree(LyNode.FChild)
+        MEINode := LyToMEITree(LyNode.FChild, MEINode)
       else
-        MEINode.FChild := LyToMEITree(LyNode.FChild);
+        MEINode.FChild := LyToMEITree(LyNode.FChild, MEINode.FChild);
     end;
 
     if LyNode.FSibling <> nil then
     begin
       if MEINode = nil then
-        MEINode := LyToMEITree(LyNode.FSibling)
+        MEINode := LyToMEITree(LyNode.FSibling, MEINode)
       else
-        MEINode.FSibling := LyToMEITree(LyNode.FSibling);
+        MEINode.FSibling := LyToMEITree(LyNode.FSibling, MEINode.FSibling);
     end;
   end;
-
   result := MEINode;
 end;
 
+{
+var
+  NewMEINode: TMEIElement = nil;
+begin
+  if LyNode <> nil then
+  begin
+    case LyNode.FType of
+      ekStaff :
+      begin
+        NewMEINode := TMEIElement.Create;
+        NewMEINode.SetFromLyObject(LyNode);
+        
+        if LyNode.FChild <> nil then
+          NewMEINode.FChild := LyToMEITree(LyNode.FChild, NewMEINode.FChild);
+
+        if LyNode.FSibling <> nil then
+          NewMEINode.FSibling := LyToMEITree(LyNode.FSibling, NewMEINode.FSibling);
+      end;
+
+      ekLayer :
+      begin
+        NewMEINode := TMEIElement.Create;
+        NewMEINode.SetFromLyObject(LyNode);
+        
+        if LyNode.FSibling <> nil then
+          NewMEINode.FSibling := LyToMEITree(LyNode.FSibling, NewMEINode.FSibling);
+      end;
+
+      else
+      begin
+        if LyNode.FChild <> nil then
+          NewMEINode := LyToMEITree(LyNode.FChild, NewMEINode);
+        if LyNode.FSibling <> nil then
+          NewMEINode := LyToMEITree(LyNode.FSibling, NewMEINode);
+      end;
+    end;
+
+    if MEINode = nil then
+      MEINode := NewMEINode
+    else if NewMEINode <> nil then
+    begin
+      if MEINode.FType = NewMEINode.FType then
+        MEINode.FSibling := NewMEINode
+      else
+        MEINode.FChild := NewMEINode;
+    end;
+
+  end; 
+
+  result := MEINode;
+end;
+}
 destructor TMEIElement.Destroy;
 begin
   FreeAndNil(FMeasures);
@@ -951,22 +1000,27 @@ begin
     DebugLn('LYOBJECT TREE, NUMBERED:' + LineEnding + LyObjectTree.ToString);
     
     MEIMusicLines := LyObjectTree.ToMEIScoreDef;
-    
-    MEIStaffTree := LyToMEITree(LyObjectTree);
-    DebugLn('MEI TREE STAGE 1:' + LineEnding + MEIStaffTree.ToString);
 
-    MEIMeasureTree := MEIStaffTree.StaffToMeasureTree;
+    MEIStaffTree := LyToMEITree(LyObjectTree, MEIStaffTree);
+    if MEIStaffTree <> nil then
+    begin
+      DebugLn('MEI TREE STAGE 1:' + LineEnding + MEIStaffTree.ToString);
+
+      MEIMeasureTree := MEIStaffTree.StaffToMeasureTree;
+    end;
     if MEIMeasureTree <> nil then
     begin
       DebugLn('MEI TREE STAGE 2:' + LineEnding + MEIMeasureTree.ToString);
       MEIScoreLines := MEIMeasureTree.ToMEI;
     end;
   end;
-  
+
   if MEIScoreLines <> nil then
+  begin
     MEIScoreLines.EncloseInXML('section');
-    
-  MEIMusicLines.AddStrings(MEIScoreLines);
+    MEIMusicLines.AddStrings(MEIScoreLines);
+  end;
+
   MEIMusicLines.EncloseInXML('score');
   MEIMusicLines.EncloseInXML('mdiv');
   MEIMusicLines.EncloseInXML('body');
