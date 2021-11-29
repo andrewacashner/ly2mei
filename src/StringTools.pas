@@ -17,6 +17,10 @@ function StringDropBefore(Source, Cut: String): String;
 { Return the portion of a string before a given delimiter. }
 function StringDropAfter(InputStr: String; Delim: String): String;
 
+{ Return the portion of a string between two substrings (exclusive); if the
+  substrings are not found, return the original string unchanged. }
+function CopyStringBetween(Source, StartAfter, EndBefore: String): String;
+
 { Return the first quoted portion of a string (enclosed in @code(") marks),
   omitting the quotation marks }
 function CopyFirstQuotedString(Source: String): String;
@@ -72,6 +76,8 @@ type
   end;
 
 
+function CopyXMLElement(Source, Tag: String): String;
+
 implementation
 
 procedure DebugLn(Msg: String);
@@ -91,6 +97,46 @@ begin
   if InputStr.Contains(Delim) then
     InputStr := InputStr.Substring(0, InputStr.IndexOf(Delim));
   result := InputStr;
+end;
+
+function CopyStringBetween(Source, StartAfter, EndBefore: String): String;
+var
+  OutputStr, TempStr: String;
+  CutFrom, CutTo: Integer;
+begin
+  OutputStr := Source;
+
+  CutFrom := Source.IndexOf(StartAfter);
+  if CutFrom >= 0 then
+  begin
+    TempStr := Source.Substring(CutFrom + Length(StartAfter));
+
+    CutTo := TempStr.IndexOf(EndBefore);
+    if CutTo >= 0 then
+    begin
+      TempStr := TempStr.Substring(0, CutTo);
+      OutputStr := TempStr;
+    end;
+  end;
+
+  result := OutputStr;
+end;
+
+function CopyXMLElement(Source, Tag: String): String;
+var
+  CopyFrom, CopyTo: Integer;
+  StartTag, EndTag, OutputStr: String;
+begin
+  StartTag := '<' + Tag;
+  EndTag   := '</' + Tag + '>';
+  CopyFrom := Source.IndexOf(StartTag);
+  CopyTo   := Source.IndexOf(EndTag);
+
+  OutputStr := '';
+  if (CopyFrom <> -1) and (CopyTo <> -1) then
+    OutputStr := Source.Substring(CopyFrom, CopyTo + Length(EndTag));
+  
+  result := OutputStr;
 end;
 
 function CopyFirstQuotedString(Source: String): String;
@@ -127,7 +173,10 @@ end;
 
 function XMLElement(Tag, Contents: String; Attributes: String = ''): String;
 begin
-  result := '<' + Tag + ' ' + Attributes + '>' + Contents + '</' + Tag + '>';
+  if Attributes <> '' then
+    Attributes := ' ' + Attributes;
+
+  result := '<' + Tag + Attributes + '>' + Contents + '</' + Tag + '>';
 end;
 
 function XMLAttributeIDNum(ID: String; Num: Integer): String;

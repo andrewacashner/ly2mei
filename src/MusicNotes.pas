@@ -62,8 +62,11 @@ type
 type
   { Our internal structure for storing data for a pitch, using the labels
     above except for octave, which is an integer in the Helmholtz system (middle
-    C is C4). } 
-  TPitch = class
+    C is C4). 
+
+    This class also represents rests, when the @code(FPitchName) field is set
+    to @code(pkRest) or @code(pkMeasureRest). } 
+TPitch = class
   public
     var
       FPitchName: TPitchName;
@@ -71,12 +74,14 @@ type
       FAccidType: TAccidType;
       FOct: Integer;
       FDur: TDuration;
+      { A string with additional text (like an MEI element) paired with this pitch. }
+      FAnnotation: String;
 
     constructor Create();
     
     { Create from all the fields }
     constructor Create(Name: TPitchName; Accid: TAccidental; AccidType:
-      TAccidType; Oct: Integer; Dur: TDuration); 
+      TAccidType; Oct: Integer; Dur: TDuration; Annot: String); 
 
     { Create from a Lilypond input string; set the accidental relative to the
       given key. }
@@ -108,6 +113,11 @@ type
     { Generate the MEI @code(dur) and @code(dots) attributes for the rhythmic
       duration. }
     function MEIDurDots: String;
+
+    { Process any additional MEI elements included in the @code(FAnnotation)
+      field; if there is non-MEI text in that field, put it in an
+      @code(unclear) element. } 
+    function MEISurplus: String;
 
     { Generate a complete MEI @code(note) element for this pitch. }
     function ToMEI: String;
@@ -222,10 +232,20 @@ type
   same hierarchy from the Lilypond input. }
 function LyToMEITree(LyNode: TLyObject; MEINode: TMEIElement): TMEIElement;
 
+{ Replace Lilypond/Lirio commands in a single string with their MEI equivalents:
+  @table(
+    @rowHead( @cell(Lilypond) @cell(MEI) )
+    @row( @cell(@code(\Section "[ESTRIBILLO] SOLO"))
+          @cell(@code(<tempo tstamp="1">[ESTRIBILLO] SOLO</tempo>)) ) 
+  )
+
+  If no commands are found, return the original string.
+}
+function MEISectionHead(Source: String): String;
+
 { Parse a Lilypond \score expression and create an MEI music
   element including the scoreDef and music notes. }
 function CreateMEIMusic(SourceLines: TStringListAAC): TStringListAAC;
-
 
 implementation
 
@@ -393,14 +413,15 @@ begin
 end;
 
 constructor TPitch.Create(Name: TPitchName; Accid: TAccidental; 
-  AccidType: TAccidType; Oct: Integer; Dur: TDuration);
+  AccidType: TAccidType; Oct: Integer; Dur: TDuration; Annot: String);
 begin
   inherited Create;
-  FPitchName := Name;
-  FAccid := Accid;
-  FAccidType := AccidType;
-  FOct := Oct;
-  FDur := Dur;
+  FPitchName  := Name;
+  FAccid      := Accid;
+  FAccidType  := AccidType;
+  FOct        := Oct;
+  FDur        := Dur;
+  FAnnotation := Annot;
 end;
 
 constructor TPitch.CreateFromLy(Source: String; Key: TKeyKind);
@@ -427,9 +448,9 @@ begin
   case Test of
     '1', '2', '4', '8' :
     begin
-      DurLy := ExtractWord(1, NoteStr, ['(', ')', '~', '\', '[', ']', '*']);
+      DurLy := ExtractWord(1, NoteStr, ['(', ')', '~', '\', '[', ']', '*', '<']);
       NoteStr := StringDropBefore(NoteStr, DurLy);
-      EtcLy := NoteStr; { TODO }
+      EtcLy := NoteStr; 
     end;
   end;
 
@@ -444,17 +465,21 @@ begin
     FAccid     := GetAccid(PitchNameLy);
     FAccidType := GetAccidType(FPitchName, FAccid, Key);
   end;
+
+  FAnnotation := EtcLy;
+  DebugLn('FAnnotation = ' + FAnnotation);
 end;
 
 procedure TPitch.Assign(Source: TPitch);
 begin
   if Source <> nil then
   begin
-    FPitchName := Source.FPitchName;
-    FAccid := Source.FAccid;
-    FAccidType := Source.FAccidType;
-    FOct := Source.FOct;
-    FDur := Source.FDur;
+    FPitchName  := Source.FPitchName;
+    FAccid      := Source.FAccid;
+    FAccidType  := Source.FAccidType;
+    FOct        := Source.FOct;
+    FDur        := Source.FDur;
+    FAnnotation := Source.FAnnotation;
   end;
 end;
 
@@ -536,6 +561,19 @@ begin
   result := Dur;
 end;
 
+function TPitch.MEISurplus: String;
+var 
+  MEIDiv, MEIUnclear: String;
+begin
+  MEIDiv := CopyXMLElement(FAnnotation, 'tempo');
+
+  MEIUnclear := FAnnotation.Replace(MEIDiv, '').Trim;
+  if MEIUnclear <> '' then
+    MEIUnclear := XMLElement('unclear', MEIUnclear);
+
+  result := MEIDiv + MEIUnclear;
+end;
+
 function TPitch.ToMEI: String;
 var
   Dur, MEI: String;
@@ -548,21 +586,36 @@ begin
       MEI := XMLElement('note', '', MEIPname + ' ' + MEIAccid + ' ' 
         + MEIOct + ' ' + Dur); 
   end;
+  MEI := MEI + MEISurplus;
   result := MEI;
 end;
 
 constructor TPitchList.CreateFromLy(Source: String; Key: TKeyKind);
 var
-  MEI, ThisNote: String;
+  ThisNote, NoteStr, Annotation: String;
   Notes: TStringArray;
   NewPitch: TPitch;
+  NoteNum: Integer;
 begin
   inherited Create;
-  MEI := StringDropBefore(Source.TrimLeft, '| ');
-  Notes := MEI.Split([' ']);
+  DebugLn('Trying to make new pitch list from string: ' + Source);
+  Annotation := CopyXMLElement(Source, 'tempo');
+  if Annotation <> '' then
+  begin
+    Source := Source.Replace(Annotation, '');
+    DebugLn('Found tempo element: ' + Annotation);
+  end;
+
+  Notes := Source.Split([' ']);
+  NoteNum := 0;
   for ThisNote in Notes do
   begin
-    NewPitch := TPitch.CreateFromLy(ThisNote, Key);
+    NoteStr := ThisNote;
+    if NoteNum = 0 then
+      NoteStr := ThisNote + Annotation;
+
+    DebugLn('Creating new pitch from string: ' + NoteStr);
+    NewPitch := TPitch.CreateFromLy(NoteStr, Key);
     if NewPitch.IsValid then
       Self.Add(NewPitch)
     else
@@ -570,6 +623,7 @@ begin
       WriteLn(StdErr, 'Invalid Pitch found in source ''' + ThisNote + '''');
       FreeAndNil(NewPitch);
     end;
+    Inc(NoteNum);
   end;
 end;
 
@@ -599,11 +653,20 @@ begin
   result := MEI;
 end;
 
+function MEISectionHead(Source: String): String;
+var
+  HeadingText: String;
+begin
+  HeadingText := CopyStringBetween(Source, '\Section "', '"');
+  result := XMLElement('tempo', HeadingText, XMLAttribute('place', 'above') + ' ' 
+              + XMLAttribute('tstamp', '1'));
+end;
+ 
 constructor TMeasureList.CreateFromLy(Source: String);
 var
   Key: TKeyKind;
   LyLines: TStringListAAC;
-  SearchStr, ThisLine: String;
+  SearchStr, ThisLine, SectionHead, MeasureStr: String;
 begin
   inherited Create;
   { Find the key signature for this voice }
@@ -612,13 +675,37 @@ begin
 
   { Find measures and parse the notes in them }
   LyLines := TStringListAAC.Create(Source);
+  SectionHead := '';
   for ThisLine in LyLines do
   begin
-    if ThisLine.TrimLeft.StartsWith('|') 
-      and (ThisLine.CountChar('|') = 1) then 
+    { TODO START 
+      We added section headings as tempo elements to the list of notes (under
+        measure/staff/layer), but they need to be contained by measure
+        directly; this will require major reworking.  
+        Also we are using tempo now instead of dir. Both require staff="1"
+        attribute.
+
+        Perhaps instead of MeasureList being a list of PitchLists it could be
+        a list of some container type, or a heterogenous list if that's
+        possible.
+      }
+    if ThisLine.TrimLeft.StartsWith('\Section ') then
     begin
+      DebugLn('Section heading found: ' + ThisLine);
+      SectionHead := MEISectionHead(ThisLine)
+    end
+    else if ThisLine.TrimLeft.StartsWith('|') then
+    begin
+      MeasureStr := StringDropBefore(ThisLine, '| ');
+      if SectionHead <> '' then
+      begin
+        MeasureStr := SectionHead + MeasureStr;
+        DebugLn('Proceeding with Measure string: ' + MeasureStr);
+        SectionHead := '';
+      end;
+
       DebugLn('Adding new TPitchList to TMeasureList...');
-      Self.Add(TPitchList.CreateFromLy(ThisLine, Key));
+      Self.Add(TPitchList.CreateFromLy(MeasureStr, Key));
     end;
   end;
   FreeAndNil(LyLines);
@@ -774,7 +861,7 @@ begin
   if LyNode <> nil then
   begin
     DebugLn('LyToMEITree: visiting non-empty LyObjectNode with FType: ');
-    WriteLn(LyNode.FType);
+    {$ifdef DEBUG}WriteLn(LyNode.FType);{$endif}
     
     case LyNode.FType of
       ekStaff, ekLayer :
@@ -814,58 +901,6 @@ begin
   result := MEINode;
 end;
 
-{
-var
-  NewMEINode: TMEIElement = nil;
-begin
-  if LyNode <> nil then
-  begin
-    case LyNode.FType of
-      ekStaff :
-      begin
-        NewMEINode := TMEIElement.Create;
-        NewMEINode.SetFromLyObject(LyNode);
-        
-        if LyNode.FChild <> nil then
-          NewMEINode.FChild := LyToMEITree(LyNode.FChild, NewMEINode.FChild);
-
-        if LyNode.FSibling <> nil then
-          NewMEINode.FSibling := LyToMEITree(LyNode.FSibling, NewMEINode.FSibling);
-      end;
-
-      ekLayer :
-      begin
-        NewMEINode := TMEIElement.Create;
-        NewMEINode.SetFromLyObject(LyNode);
-        
-        if LyNode.FSibling <> nil then
-          NewMEINode.FSibling := LyToMEITree(LyNode.FSibling, NewMEINode.FSibling);
-      end;
-
-      else
-      begin
-        if LyNode.FChild <> nil then
-          NewMEINode := LyToMEITree(LyNode.FChild, NewMEINode);
-        if LyNode.FSibling <> nil then
-          NewMEINode := LyToMEITree(LyNode.FSibling, NewMEINode);
-      end;
-    end;
-
-    if MEINode = nil then
-      MEINode := NewMEINode
-    else if NewMEINode <> nil then
-    begin
-      if MEINode.FType = NewMEINode.FType then
-        MEINode.FSibling := NewMEINode
-      else
-        MEINode.FChild := NewMEINode;
-    end;
-
-  end; 
-
-  result := MEINode;
-end;
-}
 destructor TMEIElement.Destroy;
 begin
   FreeAndNil(FMeasures);
@@ -1072,5 +1107,4 @@ begin
   result := OutputStr;
 end;
 }
-
 
