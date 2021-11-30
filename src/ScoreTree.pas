@@ -45,7 +45,7 @@ function FindLyKey(KeyStr: String): TKeyKind;
 type 
   { Types of elements in the internal tree of @code(TLyObject) or
     @code(TMEIElement) objects }
-  TMusicTreeElement = (ekAnonymous, ekStaffGrp, ekStaff, ekLayer, ekMeasure);
+  TMusicTreeElement = (ekAnonymous, ekStaffGrp, ekStaff, ekLayer, ekMeasure, ekXML);
 
   { One node in a tree of Lilypond code objects that were
   created with @code(\new) commands. }

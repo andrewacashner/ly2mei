@@ -125,6 +125,9 @@ TPitch = class
  
   { A list of @link(TPitch) objects, corresponding to one measure of music. }
   TPitchList = class(specialize TObjectList<TPitch>)
+  private
+    var
+      FPrefix, FSuffix: String;
   public
     { Create a new list of pitches from the Lilypond input string for a single
       measure of music, and the key relevant to this music. Recursively create
@@ -142,6 +145,9 @@ TPitch = class
   { A list of @link(TPitchList) objects, corresponding to a list of all the
   measures of music for a single voice (Lilypond) or layer (MEI). }
   TMeasureList = class(specialize TObjectList<TPitchList>)
+  private
+    var
+      FPrefix, FSuffix: String;
   public
     { Create a new list from the Lilypond input string for a single voice.
       Find the key for this music and then recursively create all the
@@ -563,15 +569,13 @@ end;
 
 function TPitch.MEISurplus: String;
 var 
-  MEIDiv, MEIUnclear: String;
+  MEIUnclear: String;
 begin
-  MEIDiv := CopyXMLElement(FAnnotation, 'tempo');
-
-  MEIUnclear := FAnnotation.Replace(MEIDiv, '').Trim;
+  MEIUnclear := FAnnotation.Trim;
   if MEIUnclear <> '' then
     MEIUnclear := XMLElement('unclear', MEIUnclear);
 
-  result := MEIDiv + MEIUnclear;
+  result := MEIUnclear;
 end;
 
 function TPitch.ToMEI: String;
@@ -599,23 +603,12 @@ var
 begin
   inherited Create;
   DebugLn('Trying to make new pitch list from string: ' + Source);
-  Annotation := CopyXMLElement(Source, 'tempo');
-  if Annotation <> '' then
-  begin
-    Source := Source.Replace(Annotation, '');
-    DebugLn('Found tempo element: ' + Annotation);
-  end;
-
+      
   Notes := Source.Split([' ']);
-  NoteNum := 0;
   for ThisNote in Notes do
   begin
-    NoteStr := ThisNote;
-    if NoteNum = 0 then
-      NoteStr := ThisNote + Annotation;
-
-    DebugLn('Creating new pitch from string: ' + NoteStr);
-    NewPitch := TPitch.CreateFromLy(NoteStr, Key);
+    DebugLn('Creating new pitch from string: ' + ThisNote);
+    NewPitch := TPitch.CreateFromLy(ThisNote, Key);
     if NewPitch.IsValid then
       Self.Add(NewPitch)
     else
@@ -623,7 +616,6 @@ begin
       WriteLn(StdErr, 'Invalid Pitch found in source ''' + ThisNote + '''');
       FreeAndNil(NewPitch);
     end;
-    Inc(NoteNum);
   end;
 end;
 
@@ -639,6 +631,8 @@ begin
       NewPitch.Assign(ThisPitch);
       Self.Add(NewPitch);
     end;
+    FPrefix := Source.FPrefix;
+    FSuffix := Source.FSuffix;
   end;
 end;
 
@@ -648,8 +642,15 @@ var
   MEI: TStringListAAC;
 begin
   MEI := TStringListAAC.Create;
+  if FPrefix <> '' then
+    MEI.Add(FPrefix);
+
   for ThisPitch in Self do
     MEI.Add(ThisPitch.ToMEI);
+
+  if FSuffix <> '' then
+    MEI.Add(FSuffix);
+
   result := MEI;
 end;
 
@@ -666,7 +667,7 @@ constructor TMeasureList.CreateFromLy(Source: String);
 var
   Key: TKeyKind;
   LyLines: TStringListAAC;
-  SearchStr, ThisLine, SectionHead, MeasureStr: String;
+  SearchStr, ThisLine, MeasureStr: String;
 begin
   inherited Create;
   { Find the key signature for this voice }
@@ -675,7 +676,6 @@ begin
 
   { Find measures and parse the notes in them }
   LyLines := TStringListAAC.Create(Source);
-  SectionHead := '';
   for ThisLine in LyLines do
   begin
     { TODO START 
@@ -688,21 +688,18 @@ begin
         Perhaps instead of MeasureList being a list of PitchLists it could be
         a list of some container type, or a heterogenous list if that's
         possible.
+
+        We added prefix and suffix fields to TPitchList and TMeasureList, but
+        how to insert the relevant nodes into the final tree?
       }
     if ThisLine.TrimLeft.StartsWith('\Section ') then
     begin
       DebugLn('Section heading found: ' + ThisLine);
-      SectionHead := MEISectionHead(ThisLine)
+      FPrefix := MEISectionHead(ThisLine);
     end
     else if ThisLine.TrimLeft.StartsWith('|') then
     begin
       MeasureStr := StringDropBefore(ThisLine, '| ');
-      if SectionHead <> '' then
-      begin
-        MeasureStr := SectionHead + MeasureStr;
-        DebugLn('Proceeding with Measure string: ' + MeasureStr);
-        SectionHead := '';
-      end;
 
       DebugLn('Adding new TPitchList to TMeasureList...');
       Self.Add(TPitchList.CreateFromLy(MeasureStr, Key));
@@ -717,12 +714,16 @@ var
 begin
   if Source <> nil then
   begin
+    FPrefix := Source.FPrefix;
+
     for ThisMeasure in Source do
     begin
       NewPitchList := TPitchList.Create;
       NewPitchList.Assign(ThisMeasure);
      Self.Add(NewPitchList);
     end;
+
+    FSuffix := Source.FSuffix;
   end;
 end;
 
@@ -960,6 +961,7 @@ begin
   begin
     Root := TMEIElement.Create(ekMeasure, '', MeasureNum + 1);
     Branch := TMEIElement.Create;
+    { TODO possibly add in MeasureList prefix node here? }
     Branch.AssignTree(Self, mkOneMeasure, MeasureNum);
     Root.FChild := Branch;
     if MeasureNum = 0 then
