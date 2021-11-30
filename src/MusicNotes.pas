@@ -149,13 +149,13 @@ TPitch = class
     var
       FPrefix, FSuffix: String;
   public
-    { Create a new list from the Lilypond input string for a single voice.
-      Find the key for this music and then recursively create all the
-      measures, and in turn all the pitches, it contains. }
-    constructor CreateFromLy(Source: String);
-
     { Deep copy of all measures and pitches in another list to this one. }
     procedure Assign(Source: TMeasureList);
+
+    { Set the contents of a list from the Lilypond input string for a
+      single voice. Find the key for this music and then recursively create
+      all the measures, and in turn all the pitches, it contains. }
+    procedure SetFromLy(Source: String);
   end;
 
   { Label to indicate whether we should assign all measures or just one. Used
@@ -666,13 +666,12 @@ begin
               HeadingText);
 end;
 
-constructor TMeasureList.CreateFromLy(Source: String);
+procedure TMeasureList.SetFromLy(Source: String);
 var
   Key: TKeyKind;
   LyLines: TStringListAAC;
   SearchStr, ThisLine, MeasureStr: String;
 begin
-  inherited Create;
   { Find the key signature for this voice }
   SearchStr := Source.Substring(0, 800); 
   Key := FindLyKey(SearchStr);
@@ -695,9 +694,6 @@ begin
     end;
   end;
   FreeAndNil(LyLines);
-  DebugLn('Created new TMeasureList. Prefix: ' + FPrefix
-    + ', First measure: ' + Self.First.ToMEI.Text
-    + 'Measure count: ' + IntToStr(Self.Count));
 end;
 
 procedure TMeasureList.Assign(Source: TMeasureList);
@@ -752,8 +748,8 @@ begin
   FSibling     := Sibling;
 end;
 
-procedure TMEIElement.AssignNode(Source: TMEIElement; Mode: TMeasureCopyMode =
-  mkAllMeasures; MeasureIndex: Integer = 0); 
+procedure TMEIElement.AssignNode(Source: TMEIElement; Mode: 
+  TMeasureCopyMode = mkAllMeasures; MeasureIndex: Integer = 0); 
 var
   NewMeasure: TPitchList;
 begin
@@ -764,8 +760,10 @@ begin
   if Source.FMeasures <> nil then
   begin
     FMeasures := TMeasureList.Create;
+
     case Mode of 
       mkAllMeasures: FMeasures.Assign(Source.FMeasures);
+
       mkOneMeasure:
       begin
         if MeasureIndex < Source.FMeasures.Count then
@@ -773,6 +771,7 @@ begin
           NewMeasure := TPitchList.Create;
           NewMeasure.Assign(Source.FMeasures[MeasureIndex]);
           FMeasures.Add(NewMeasure);
+
           if MeasureIndex = 0 then
             FMeasures.FPrefix := Source.FMeasures.FPrefix
           else if MeasureIndex = Source.FMeasures.Count - 1 then
@@ -793,7 +792,7 @@ begin
   begin
     if TreeB = nil then
       TreeB := TMEIElement.Create;
-   
+  
     TreeB.AssignNode(TreeA, Mode, MeasureIndex);
 
     if TreeA.FChild <> nil then
@@ -807,7 +806,6 @@ begin
   InnerAssign(Source, Self);
 end;
 
-
 procedure TMEIElement.SetFromLyObject(LyObject: TLyObject);
 begin
   FType     := LyObject.FType;
@@ -819,7 +817,10 @@ begin
   if LyObject.FContents = '' then
     FMeasures := nil
   else
-    FMeasures := TMeasureList.CreateFromLy(LyObject.FContents);
+  begin
+    FMeasures := TMeasureList.Create;
+    FMeasures.SetFromLy(LyObject.FContents);
+  end;
 end;
 
 function TMEIElement.CountMeasures: Integer;
@@ -863,9 +864,11 @@ begin
     case LyNode.FType of
       ekStaff, ekLayer :
       begin
-        { TODO START here, memory leak }
-//        MEINode := TMEIElement.Create;
-//        MEINode.SetFromLyObject(LyNode);
+        if MEINode = nil then
+        begin
+          MEINode := TMEIElement.Create;
+          MEINode.SetFromLyObject(LyNode);
+        end;
       end;
     end;
     { If we haven't made a new node yet, then we are skipping a parent node }
@@ -901,6 +904,7 @@ end;
 
 destructor TMEIElement.Destroy;
 begin
+  FreeAndNil(FMeasures);
   if FChild <> nil then 
     FChild.Destroy;
   if FSibling <> nil then 
@@ -1080,7 +1084,7 @@ begin
     MEIMusicLines := LyObjectTree.ToMEIScoreDef;
 
     MEIStaffTree := LyToMEITree(LyObjectTree, MEIStaffTree);
-    { TODO  fix above function
+    
     if MEIStaffTree <> nil then
     begin
       DebugLn('MEI TREE STAGE 1:' + LineEnding + MEIStaffTree.ToString);
@@ -1092,7 +1096,6 @@ begin
       DebugLn('MEI TREE STAGE 2:' + LineEnding + MEIMeasureTree.ToString);
       MEIScoreLines := MEIMeasureTree.ToMEI;
     end;
-    }
   end;
 
   if MEIMusicLines = nil then
