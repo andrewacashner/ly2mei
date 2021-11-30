@@ -32,10 +32,8 @@ seventeenth-century music.
             MEI: just staves, voices, and notes) ) 
 
   @row( @cell(2021/11/30) 
-        @cell(Fixed major bugs in building the XMl tree that omitted parts of
-            the tree and caused a memory leak; add support for section
-            headings and the outline of support for MEI elements beyond
-            @code(note).) )
+        @cell(Fixed major bugs, memory leak in building the XMl tree; add
+            support for section headings) )
 )
 
 

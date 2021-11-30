@@ -19,7 +19,13 @@ app_out   = $(addprefix $(exec_dir)/,$(notdir $(basename $(app_in))))
 doc_intro = $(wildcard *.txt)
 doc_html  = $(addprefix $(doc_dir)/,$(doc_intro:%.txt=%.html) index.html)
 doc_tex	  = $(build_dir)/$(app_name).tex
-doc_pdf   = $(doc_dir)/$(app_name).pdf
+doc_pdf   = $(doc_dir)/$(app_name)-doc.pdf
+
+src	  = $(app_in) $(units_in)
+src_pdf	  = $(addsuffix .pdf,$(src))
+
+full_pdf  = $(doc_dir)/$(app_name).pdf
+
 
 FPCflagsTest = -vwhine -glh
 FPCflagsDebug = $(FPCflagsTest) -dDEBUG
@@ -31,8 +37,7 @@ ifeq ($(DEBUG),1)
 	FPCflags = $(FPCflagsDebug)
 endif
 
-.PHONY : all full app units docs pdfdoc view view-pdf clean 
-
+.PHONY : all units docs pdfdoc view view-pdf clean 
 
 all : $(app_out)
 
@@ -40,9 +45,7 @@ units : $(objects)
 
 docs : $(doc_html) 
 
-pdfdoc : $(doc_pdf)
-
-full : app docs
+pdfdoc : $(full_pdf)
 
 $(dirs) :
 	mkdir -p $(dirs)
@@ -59,20 +62,30 @@ $(build_dir)/%.o : src/%.pas | $(dirs)
 $(doc_html) : $(doc_intro) $(units_in) | $(dirs) 
 	pasdoc --output=$(doc_dir) --introduction=$(doc_intro) $(units_in)
 
-$(doc_dir)/%.pdf : $(build_dir)/%.pdf
+$(doc_dir)/%-doc.pdf : $(build_dir)/%.pdf
 	cp -u $< $@
 
 $(build_dir)/%.pdf : $(build_dir)/%.tex
 	latexmk -outdir=build -pdf $(basename $<)
+
+$(full_pdf) : $(doc_pdf) $(src_pdf)
+	pdfunite $(doc_pdf) $(src_pdf) $@
+	rm $(src_pdf)
+
+app/%.lpr.pdf : app/%.lpr
+	code2pdf $<
+
+src/%.pas.pdf : src/%.pas
+	code2pdf $<
 
 $(doc_tex) : $(doc_intro) $(units_in) | $(dirs)
 	pasdoc --format latex --name=$(app_name) --output=$(build_dir) \
 		--introduction=$(doc_intro) $(units_in)
 
 view : $(doc_html)
-	firefox $(doc_html) &
+	firefox $< &
 
-view-pdf : $(doc_pdf)
+view-pdf : $(full_pdf)
 	atril $< &
 
 clean :
