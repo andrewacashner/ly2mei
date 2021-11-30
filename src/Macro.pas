@@ -13,7 +13,7 @@ interface
 uses SysUtils, StrUtils, Classes, Generics.Collections, StringTools, Outline;
 
 type
-  { This class is a macro dictionary of key-value pairs. }
+  { @abstract(A macro dictionary of key-value pairs.) }
   TMacroDict = class(specialize TDictionary<String, String>)
   public
 

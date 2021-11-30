@@ -43,7 +43,7 @@ function XMLElement(Tag: String; Attributes: String = '';
 function XMLAttributeIDNum(ID: String; Num: Integer): String;
 
 type 
-  { Custom string list }
+  { @abstract(Custom string-list class with added methods) }
   TStringListAAC = class(TStringList)
   public
     constructor Create;

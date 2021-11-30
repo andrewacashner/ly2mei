@@ -10,9 +10,8 @@ uses SysUtils, Classes, StringTools, Outline;
 
 const ProgramName: String = 'ly2mei';
 
-{ This record stores all the fields required in the Lilypond source file and
-  can write them to MEI.  }
 type
+  { @abstract(All the data needed for an MEI header.) }
   THeader = record
     FTitle, FSubtitle, FComposer, FDates, 
     FPoet, FEditor, FCopyright, FSource: String;

@@ -11,16 +11,12 @@ interface
 uses SysUtils, Classes, StrUtils, StringTools;
 
 type 
-  { This record typestores start and end positions in a string or other sequence. }
+  { @abstract(Stores the start and end positions in a string or other sequence.) }
   TIndexPair = record
-    { Start index }
-    FStart: Integer;
-    { End index }
-    FEnd: Integer;
-    { Distance from start to end }
-    FSpan: Integer;
-    { Was a valid pair found? }
-    FValid: Boolean;
+    FStart: Integer;  {< Start index }
+    FEnd: Integer;    {< End index }
+    FSpan: Integer;   {< Distance from start to end }
+    FValid: Boolean;  {< Was a valid pair found? }
   end;
 
 { Given a string, return a new instance containing the start and end
@@ -28,13 +24,12 @@ type
   invalid.  }
 function FindDelimitedRange(Source, StartDelim, EndDelim: String): TIndexPair; 
 
-{ Mode flags for marking delimited substrings }
 type
+  { Mode flags for marking delimited substrings }
   TRangeMode = (
-    { Include delimiters in the range. }
-    rkInclusive, 
-    { Exclude delimiters. }
-    rkExclusive);
+    rkInclusive,  {< Include delimiters in the range. }
+    rkExclusive   {< Exclude delimiters. }
+  );
 
 { Return the portion of the string between the indices in a @link(TIndexPair).
   The start and end characters of the range are included by default
@@ -58,20 +53,19 @@ function FindMatchedBraces(Source: String): TIndexPair;
 including the braces. }
 function CopyBraceExpr(Source: String): String;
 
-{ Parsing commands and arguments: These flags indicate the type of
-@link(TCommandArg) found. }
 type
+  { Parsing commands and arguments: These flags indicate the type of
+    @link(TCommandArg) found. }
   TStatusCommandArg = (
-    { Found just a command }
-    skCommand, 
-    { Found a command and an argument }
-    skCommandArg, 
-    { Found neither }
-    skInvalid);
+    skCommand,    {< Found just a command }
+    skCommandArg, {< Found a command and an argument }
+    skInvalid     {< Found neither }
+);
  
 type
-  { This record holds a command and its argument. A flag indicates whether it
-  actually holds both command and argument, just one or the other, or neither. }
+  { @abstract(A command and its argument.) 
+    A flag indicates whether it actually holds both command and argument, just
+    one or the other, or neither. }
   TCommandArg = record
     FCommand, FArg: String;
     FStatus: TStatusCommandArg;

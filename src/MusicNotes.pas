@@ -26,41 +26,32 @@ type
 
   { Labels for types of accidentals }
   TAccidType = (
-    { Played but not written if part of the scale in its key }
-    akImplicit, 
-    { Played and written out, not part of the scale }
-    akExplicit, 
-    { Suggested editorially for historical performance practice 
-      (TODO not implemented) }
-    akFicta); 
+    akImplicit, {< Played but not written if part of the scale in its key }
+    akExplicit, {< Played and written out, not part of the scale }
+    akFicta     {< Suggested editorially for historical performance practice
+                    (TODO not implemented) }
+  ); 
 
   { Labels for rhythmic durations }
-  TDuration = (dkNone, 
-    { Double whole note }
-    dkBreve, 
-    { Whole }
-    dkSemibreve, 
-    { Half }
-    dkMinim, 
-    { Quarter }
-    dkSemiminim, 
-    { Eighth }
-    dkFusa,
-    { Sixteenth}
-    dkSemifusa, 
-    { Double whole, dotted }
-    dkBreveDotted, 
-    { Whole, dotted }
-    dkSemibreveDotted, 
-    { Half, dotted }
-    dkMinimDotted,
-    { Quarter, dotted }
-    dkSemiminimDotted, 
-    { Eigth, dotted }
-    dkFusaDotted);
+  TDuration = (
+    dkNone,               {< None set or unrecognized }
+    dkBreve,              {< Double whole note }
+    dkSemibreve,          {< Whole }
+    dkMinim,              {< Half }
+    dkSemiminim,          {< Quarter }
+    dkFusa,               {< Eighth }
+    dkSemifusa,           {< Sixteenth}
+    dkBreveDotted,        {< Double whole, dotted }
+    dkSemibreveDotted,    {< Whole, dotted }
+    dkMinimDotted,        {< Half, dotted }
+    dkSemiminimDotted,    {< Quarter, dotted }
+    dkFusaDotted          {< Eigth, dotted }
+  );
 
 type
-  { Our internal structure for storing data for a pitch, using the labels
+  { @abstract(Internal data structure for a single pitch or rest.)
+
+    Our internal structure for storing data for a pitch, using the labels
     above except for octave, which is an integer in the Helmholtz system (middle
     C is C4). 
 
@@ -69,12 +60,24 @@ type
 TPitch = class
   public
     var
+      { Label for pitch name, e.g., @link(pkC) or if rest, @link(pkRest) }
       FPitchName: TPitchName;
+      
+      { Label for accidental, e.g., @link(akNatural) }
       FAccid: TAccidental;
+     
+      { Label for accidental type (explicitly written out or implied by key
+      signature) }
       FAccidType: TAccidType;
+
+      { Helmholtz octave number }
       FOct: Integer;
+
+      { Label for duration, e.g., @link(dkMinim) }
       FDur: TDuration;
-      { A string with additional text (like an MEI element) paired with this pitch. }
+
+      { A string with additional text (like an MEI element) paired with this
+        pitch. }
       FAnnotation: String;
 
     constructor Create(); 
@@ -97,7 +100,6 @@ TPitch = class
     { A rest is a @code(TPitch) with the pitch name set to @code(pkRest) and
       only the duration. }
     function IsRest: Boolean;
-
 
     { Generate the MEI @code(pname) attribute for the pitch name. }
     function MEIPName: String;
@@ -123,7 +125,8 @@ TPitch = class
     function ToMEI: String;
   end;
  
-  { A list of @link(TPitch) objects, corresponding to one measure of music. }
+  { @abstract(A list of @link(TPitch) objects, corresponding to one measure of
+     music.) }
   TPitchList = class(specialize TObjectList<TPitch>)
   private
     var
@@ -140,10 +143,16 @@ TPitch = class
     { Generate an MEI @code(measure) element, recursively generating the
       @code(note) elements it contains. }
     function ToMEI: TStringListAAC;
+
+    { Return the results of @link(TPitchList.ToMEI) as a string instead of a
+      list. }
+    function ToMEIString: String;
   end;
 
-  { A list of @link(TPitchList) objects, corresponding to a list of all the
-  measures of music for a single voice (Lilypond) or layer (MEI). }
+  { @abstract(A list of @link(TPitchList) objects for a single voice/layer.)
+
+    This list contains a list of all the measures of music for a single voice
+    (Lilypond) or layer (MEI). }
   TMeasureList = class(specialize TObjectList<TPitchList>)
   private
     var
@@ -163,21 +172,28 @@ TPitch = class
   the notes for one measure at the bottom of the tree.}
   TMeasureCopyMode = (mkAllMeasures, mkOneMeasure);
 
-  { Like @link(TLyObject), this class functions as nodes in an LCRS tree. Each
-    node represents one XML element. We will convert the @link(TLyObject) tree
-    taken from Lilypond input into a new tree. }
+  { @abstract(A node in an LCRS tree used to represent MEI structure.)
+
+    Like @link(TLyObject), this class functions as nodes in an
+    left-child/right-sibling tree. Each node represents one XML element. We
+    will convert the @link(TLyObject) tree taken from Lilypond input into a
+    new tree. }
   TMEIElement = class
   private
     var
       { The element must be one of a standard set of types. }
       FType: TMusicTreeElement;
+
       { Name and ID strings }
       FName, FID: String;
+
       { Position in series of same type }
       FNum: Integer;
+
       { Only elements with @code(ekLayer) type contain a list of measures; 
         for all other types this will be @code(nil). }
       FMeasures: TMeasureList;
+
       { Links to rest of tree }
       FChild, FSibling: TMEIElement;
   public
@@ -240,14 +256,16 @@ TPitch = class
   same hierarchy from the Lilypond input. }
 function LyToMEITree(LyNode: TLyObject; MEINode: TMEIElement): TMEIElement;
 
-{ Replace Lilypond/Lirio commands in a single string with their MEI equivalents:
+{ For now, replace section command with MEI equivalent. 
+  Eventually (TODO) replace multiple commands.
+
+  If no commands are found, return the original string.
+ 
   @table(
     @rowHead( @cell(Lilypond) @cell(MEI) )
     @row( @cell(@code(\Section "[ESTRIBILLO] SOLO"))
           @cell(@code(<tempo tstamp="1">[ESTRIBILLO] SOLO</tempo>)) ) 
   )
-
-  If no commands are found, return the original string.
 }
 function MEISectionHead(Source: String): String;
 
@@ -654,6 +672,17 @@ begin
   result := MEI;
 end;
 
+function TPitchList.ToMEIString: String;
+var
+  OutputStr: String;
+  TempLines: TStringListAAC;
+begin
+  TempLines := Self.ToMEI;
+  OutputStr := TempLines.Text;
+  FreeAndNil(TempLines);
+  result := OutputStr;
+end;
+
 function MEISectionHead(Source: String): String;
 var
   HeadingText: String;
@@ -934,7 +963,6 @@ function TMEIElement.ToString: String;
 var
   OutputStr: String = '';
   ThisPitchList: TPitchList;
-  MEIPitchLines: TStringListAAC;
 begin
   OutputStr := OutputStr + FName + ' ' + FID + ' ' + IntToStr(FNum) + LineEnding;
   if FMeasures <> nil then
@@ -943,11 +971,7 @@ begin
                   + FMeasures.FPrefix + '''' + LineEnding; 
 
     for ThisPitchList in FMeasures do
-    begin
-      MEIPitchLines := ThisPitchList.ToMEI;
-      OutputStr := OutputStr + MEIPitchLines.Text;
-      FreeAndNil(MEIPitchLines);
-    end;
+      OutputStr := OutputStr + ThisPitchList.ToMEIString;
 
     OutputStr := OutputStr + 'Measurelist suffix: ''' 
                   + FMeasures.FSuffix + '''' + LineEnding;

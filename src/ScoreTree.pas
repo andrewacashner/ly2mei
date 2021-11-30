@@ -47,8 +47,9 @@ type
     @code(TMEIElement) objects }
   TMusicTreeElement = (ekAnonymous, ekStaffGrp, ekStaff, ekLayer, ekMeasure, ekXML);
 
-  { One node in a tree of Lilypond code objects that were
-  created with @code(\new) commands. }
+  { @abstract(One node in a tree of Lilypond code objects.)
+    These objects were originally created with @code(\new) commands in the
+    @code(\score) expression. }
   TLyObject = class
   public
     var

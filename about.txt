@@ -9,16 +9,33 @@ seventeenth-century music.
 @section(2 changelog History)
 
 @table(
-  @row( @cell(2021/10/07) @cell(Began) )
-  @row( @cell(2021/10/12) @cell(Macro-substitution program complete) )
-  @row( @cell(2021/10/13) @cell(Header conversion program complete) )
-  @row( @cell(2021/10/18) @cell(Macro-substitution functions revised and
-   integrated) )
-  @row( @cell(2021/11/05) @cell(Score-tree program complete) )
-  @row( @cell(2021/11/08) @cell(Restructured into units and documentation
-    revised for PasDoc) )
-  @row( @cell(2021/11/19) @cell(Working proof-of-concept converting sample
-  Lilypond score to MEI: just staves, voices, and notes) )
+  @row( @cell(2021/10/07) 
+        @cell(Began) )
+
+  @row( @cell(2021/10/12) 
+        @cell(Macro-substitution program complete) )
+
+  @row( @cell(2021/10/13) 
+        @cell(Header conversion program complete) )
+
+  @row( @cell(2021/10/18) 
+        @cell(Macro-substitution functions revised and integrated) )
+
+  @row( @cell(2021/11/05) 
+        @cell(Score-tree program complete) )
+
+  @row( @cell(2021/11/08) 
+        @cell(Restructured into units and documentation revised for PasDoc) )
+
+  @row( @cell(2021/11/19) 
+         @cell(Working proof-of-concept converting sample Lilypond score to
+            MEI: just staves, voices, and notes) ) 
+
+  @row( @cell(2021/11/30) 
+        @cell(Fixed major bugs in building the XMl tree that omitted parts of
+            the tree and caused a memory leak; add support for section
+            headings and the outline of support for MEI elements beyond
+            @code(note).) )
 )
 
 
