@@ -35,8 +35,9 @@ function IndentStr(Degree: Integer = 1): String;
 { Create an XML attribute string: @code(key = "value") }
 function XMLAttribute(Tag, Value: String): String;
 
-{ Create an XML element string, with optional attributes }
-function XMLElement(Tag, Contents: String; Attributes: String = ''): String;
+{ Create an XML element string, with optional attributes and content }
+function XMLElement(Tag: String; Attributes: String = ''; 
+  Contents: String = ''): String; 
 
 { Create XML attributes @@xml:id and @@n }
 function XMLAttributeIDNum(ID: String; Num: Integer): String;
@@ -171,7 +172,8 @@ begin
   result := Tag + '="' + Value + '"';
 end;
 
-function XMLElement(Tag, Contents: String; Attributes: String = ''): String;
+function XMLElement(Tag: String; Attributes: String = ''; Contents: String =
+  ''): String; 
 begin
   if Attributes <> '' then
     Attributes := ' ' + Attributes;
