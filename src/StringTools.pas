@@ -76,8 +76,12 @@ type
     function MEIDocStr: String;
   end;
 
-
+{ Extract the complete XML element from a source string with the given tag
+  (from start to close tag, including the tags). }
 function CopyXMLElement(Source, Tag: String): String;
+
+{ Return a string with an automatically generated GUID. }
+function GenerateID: String;
 
 implementation
 
@@ -263,5 +267,17 @@ const
 begin
   result := Self.XMLDocStr('mei', MEINamespace);
 end;
+
+function GenerateID: String;
+var
+  GUID: TGUID;
+  IDStr: String = '';
+begin
+  if CreateGUID(GUID) = 0 then
+    IDStr := GUIDToString(GUID);
+
+  result := IDStr;
+end;
+
 
 end.

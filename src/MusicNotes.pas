@@ -60,6 +60,9 @@ type
 TPitch = class
   public
     var
+      { From automatically generated GUID }
+      FID: String;
+
       { Label for pitch name, e.g., @link(pkC) or if rest, @link(pkRest) }
       FPitchName: TPitchName;
       
@@ -83,8 +86,8 @@ TPitch = class
     constructor Create(); 
 
     { Create from all the fields }
-    constructor Create(Name: TPitchName; Accid: TAccidental; AccidType:
-      TAccidType; Oct: Integer; Dur: TDuration; Annot: String); 
+    constructor Create(ID: String; Name: TPitchName; Accid: TAccidental;
+      AccidType: TAccidType; Oct: Integer; Dur: TDuration; Annot: String); 
 
     { Create from a Lilypond input string; set the accidental relative to the
       given key. }
@@ -224,9 +227,9 @@ TPitch = class
 
     { Create from all fields (default is to create a single node with
       @code(nil) relations) }
-    constructor Create(ElementType: TMusicTreeElement; ID: String; 
-      Num: Integer = 1; Measures: TMeasureList = nil; 
-      Child: TMEIElement = nil; Sibling: TMEIElement = nil);
+    constructor Create(ElementType: TMusicTreeElement; ID: String = ''; Num:
+      Integer = 1; Measures: TMeasureList = nil; Child: TMEIElement = nil;
+      Sibling: TMEIElement = nil); 
 
     { Destroy entire tree }
     destructor Destroy; override;
@@ -459,12 +462,14 @@ end;
 constructor TPitch.Create();
 begin
   inherited Create;
+  FID := GenerateID;
 end;
 
-constructor TPitch.Create(Name: TPitchName; Accid: TAccidental; 
+constructor TPitch.Create(ID: String; Name: TPitchName; Accid: TAccidental; 
   AccidType: TAccidType; Oct: Integer; Dur: TDuration; Annot: String);
 begin
   inherited Create;
+  FID         := ID;
   FPitchName  := Name;
   FAccid      := Accid;
   FAccidType  := AccidType;
@@ -477,7 +482,7 @@ constructor TPitch.CreateFromLy(Source: String; Key: TKeyKind);
 var
   NoteStr, PitchNameLy, OctLy, DurLy, EtcLy, Test: String;
 begin
-  inherited Create;
+  Self.Create;
   NoteStr := Source;
   PitchNameLy := ExtractWord(1, NoteStr, [',', '''', '1', '2', '4', '8', '\']);
   NoteStr := StringDropBefore(NoteStr, PitchNameLy);
@@ -634,14 +639,16 @@ end;
 
 function TPitch.ToMEI: String;
 var
-  Dur, MEI: String;
+  Dur, ID, MEI: String;
 begin
   Dur := MEIDurDots;
+  ID  := XMLAttribute('xml:id', FID);
+
   case FPitchName of
-    pkRest:        MEI := XMLElement('rest', Dur);
-    pkMeasureRest: MEI := XMLElement('mRest', Dur);
+    pkRest:        MEI := XMLElement('rest', ID + ' ' + Dur);
+    pkMeasureRest: MEI := XMLElement('mRest', ID + ' ' + Dur);
     else
-      MEI := XMLElement('note', MEIPname + ' ' + MEIAccid + ' ' 
+      MEI := XMLElement('note', ID + ' ' + MEIPname + ' ' + MEIAccid + ' ' 
         + MEIOct + ' ' + Dur + MEISurplus); 
   end;
   result := MEI;
@@ -794,16 +801,20 @@ end;
 constructor TMEIElement.Create();
 begin
   inherited Create;
+  FID := GenerateID;
 end;
 
-constructor TMEIElement.Create(ElementType: TMusicTreeElement; ID: String;
+constructor TMEIElement.Create(ElementType: TMusicTreeElement; ID: String = '';
   Num: Integer = 1; Measures: TMeasureList = nil; Child: TMEIElement = nil;
   Sibling: TMEIElement = nil); 
 begin
   inherited Create;
   FType        := ElementType;
   FName        := TypeToName(ElementType);
-  FID          := ID;
+
+  if ID <> '' then
+    FID := ID;
+
   FNum         := Num;
   FMeasures    := Measures;
   FChild       := Child;
@@ -872,7 +883,10 @@ procedure TMEIElement.SetFromLyObject(LyObject: TLyObject);
 begin
   FType     := LyObject.FType;
   FName     := TypeToName(LyObject.FType);
-  FID       := LyObject.FID;
+
+  if LyObject.FID <> '' then
+    FID       := LyObject.FID;
+
   FNum      := LyObject.FNum;
   FChild    := nil;
   FSibling  := nil;
