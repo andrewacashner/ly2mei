@@ -116,11 +116,34 @@ TPitch = class
       duration. }
     function MEIDurDots: String;
 
-    { Process any additional MEI elements included in the @code(FAnnotation)
-      field; if there is non-MEI text in that field, put it in an
-      @code(unclear) element. } 
-    function MEISurplus: String;
+    { Look in the @code(FAnnotation) field for additional commands that were
+      included after the duration and convert these to MEI attributes of the
+      @code(note) element, for example ties. If none are recognized,
+      return an empty string. 
 
+      For ties, we are requiring an extension of the original Lilypond syntax
+      to specify whether a note begins, continues, or ends a tie. Lilypond
+      appears to just ignore these extra notations.
+      
+      @table( 
+        @row( @cell(Start tie)    @cell(@code(f'4~)) )
+        @row( @cell(Continue tie) @cell(@code(f'4~~)) )
+        @row( @cell(End tie)      @cell(@code(f'4\~)) )
+      ) 
+      
+      TODO: The other option would be to set the @code(tie="i") attribute only
+      for start ties (@code(f'4~)), then once all the pitches have been
+      created, go back through each voice, find start ties, then look for the
+      next note of the same pitch and mark it as the conclusion; or if it has
+      a tie symbol, as a continuation. 
+
+      For slurs, this approach is necessary because Verovio does not use the
+      @@slur attribute, but only an element with @@startid and @@endid, so we
+      must mark the start and end notes with ids and then afterwards create a
+      slur at the measure level using this data. 
+    }
+    function MEISurplus: String;
+    
     { Generate a complete MEI @code(note) element for this pitch. }
     function ToMEI: String;
   end;
@@ -589,13 +612,24 @@ end;
 
 function TPitch.MEISurplus: String;
 var 
-  MEIUnclear: String;
+  InputStr, OutputStr: String;
 begin
-  MEIUnclear := FAnnotation.Trim;
-  if MEIUnclear <> '' then
-    MEIUnclear := XMLElement('unclear', '', MEIUnclear);
+  InputStr := FAnnotation.Trim;
 
-  result := MEIUnclear;
+  case InputStr of
+    '~'  : OutputStr := XMLAttribute('tie', 'i');
+    
+    '~~' : OutputStr := XMLAttribute('tie', 'm');
+
+    '\~' : OutputStr := XMLAttribute('tie', 't');
+    else
+      OutputStr := '';
+  end;
+
+  if OutputStr <> '' then
+    OutputStr := ' ' + OutputStr;
+
+  result := OutputStr;
 end;
 
 function TPitch.ToMEI: String;
@@ -608,9 +642,8 @@ begin
     pkMeasureRest: MEI := XMLElement('mRest', Dur);
     else
       MEI := XMLElement('note', MEIPname + ' ' + MEIAccid + ' ' 
-        + MEIOct + ' ' + Dur); 
+        + MEIOct + ' ' + Dur + MEISurplus); 
   end;
-  MEI := MEI + MEISurplus;
   result := MEI;
 end;
 
