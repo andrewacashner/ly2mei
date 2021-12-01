@@ -227,9 +227,8 @@ TPitch = class
 
     { Create from all fields (default is to create a single node with
       @code(nil) relations) }
-    constructor Create(ElementType: TMusicTreeElement; ID: String = ''; Num:
-      Integer = 1; Measures: TMeasureList = nil; Child: TMEIElement = nil;
-      Sibling: TMEIElement = nil); 
+    constructor Create(ElementType: TMusicTreeElement; ID: String = '';
+        Num: Integer = 1);
 
     { Destroy entire tree }
     destructor Destroy; override;
@@ -528,6 +527,7 @@ procedure TPitch.Assign(Source: TPitch);
 begin
   if Source <> nil then
   begin
+    FID         := Source.FID;
     FPitchName  := Source.FPitchName;
     FAccid      := Source.FAccid;
     FAccidType  := Source.FAccidType;
@@ -714,8 +714,8 @@ end;
 
 function TPitchList.ToMEIString: String;
 var
-  OutputStr: String;
   TempLines: TStringListAAC;
+  OutputStr: String;
 begin
   TempLines := Self.ToMEI;
   OutputStr := TempLines.Text;
@@ -805,8 +805,7 @@ begin
 end;
 
 constructor TMEIElement.Create(ElementType: TMusicTreeElement; ID: String = '';
-  Num: Integer = 1; Measures: TMeasureList = nil; Child: TMEIElement = nil;
-  Sibling: TMEIElement = nil); 
+  Num: Integer = 1);
 begin
   inherited Create;
   FType        := ElementType;
@@ -816,9 +815,9 @@ begin
     FID := ID;
 
   FNum         := Num;
-  FMeasures    := Measures;
-  FChild       := Child;
-  FSibling     := Sibling;
+  FMeasures    := nil;
+  FChild       := nil;
+  FSibling     := nil;
 end;
 
 procedure TMEIElement.AssignNode(Source: TMEIElement; Mode: 
@@ -1034,8 +1033,9 @@ end;
 function TMEIElement.StaffToMeasureTree: TMEIElement;
 var
   MeasureCount, MeasureNum: Integer;
-  MeasureTree, Root, Prefix, Branch: TMEIElement;
+  MeasureTree, Root, Branch, Prefix, Suffix: TMEIElement;
   PrefixStr: String;
+  SuffixStr: String = '';
 begin
   MeasureCount := Self.CountMeasures;
   DebugLn('MEASURE COUNT: ' + IntToStr(MeasureCount));
@@ -1068,6 +1068,20 @@ begin
       end;
 
       MeasureTree := Root
+    end
+    else if MeasureNum = MeasureCount - 1 then
+    begin
+      SuffixStr := Branch.LastChild.FMeasures.FSuffix;
+      if SuffixStr <> '' then
+      begin
+        DebugLn('Found measurelist suffix' + SuffixStr);
+        Suffix := TMEIElement.Create(ekXML, SuffixStr);
+        Root.FChild.LastSibling.FSibling := Suffix;
+      end;
+      { TODO need to add suffix strings together if there is more than one
+      slur. But this is a bad way to do this! }
+      
+      MeasureTree.LastSibling.FSibling := Root;
     end
     else
       MeasureTree.LastSibling.FSibling := Root;
@@ -1136,6 +1150,68 @@ begin
   result := MasterMEI;
 end;
 
+function AddSlurs(Measures: TMeasureList): TMeasureList;
+var 
+  ThisMeasure: TPitchList;
+  ThisPitch: TPitch;
+  FoundSlurStart, FoundSlurEnd: Boolean;
+  StartID, EndID: String;
+begin
+  FoundSlurStart := False;
+  FoundSlurEnd := False;
+  for ThisMeasure in Measures do
+  begin
+    for ThisPitch in ThisMeasure do 
+    begin
+      if ThisPitch.FAnnotation.Contains('(') and (not FoundSlurStart) then
+      begin
+        FoundSlurStart := True;
+        StartID := ThisPitch.FID;
+        DEBUGLN('Found slur start on ID ' + StartID);
+      end
+      else if ThisPitch.FAnnotation.Contains(')') and FoundSlurStart then
+      begin
+        FoundSlurEnd := True;
+        EndID := ThisPitch.FID;
+        DEBUGLN('Found slur end on ID ' + EndID);
+        FoundSlurStart := False;
+      end;
+      if FoundSlurEnd then
+      begin
+        DebugLn('FOUND A SLUR');
+        if Measures.FSuffix <> '' then
+          Measures.FSuffix := Measures.FSuffix + ' ';
+
+        Measures.FSuffix := Measures.FSuffix 
+          + XMLElement('slur', XMLAttribute('startid', '#' + StartID) + ' ' 
+            + XMLAttribute('endid', '#' + EndID));
+        FoundSlurEnd := False;
+      end;
+    end;
+  end;
+
+  result := Measures;
+end;
+
+function AddAnalyticalMarkup(Tree: TMEIElement): TMEIElement;
+begin
+  if Tree <> nil then
+  begin
+    if (Tree.FType = ekLayer) and (Tree.FMeasures <> nil) then
+    begin
+      DebugLn('Adding SLURS');
+      Tree.FMeasures := AddSlurs(Tree.FMeasures);
+    end;
+
+    if Tree.FChild <> nil then
+      Tree.FChild := AddAnalyticalMarkup(Tree.FChild);
+
+    if Tree.FSibling <> nil then
+      Tree.FSibling := AddAnalyticalMarkup(Tree.FSibling);
+  end;
+  result := Tree;
+end;
+
 function CreateMEIMusic(SourceLines: TStringListAAC): TStringListAAC; 
 var
   LyScoreStr: String;
@@ -1160,11 +1236,16 @@ begin
     begin
       DebugLn('MEI TREE STAGE 1:' + LineEnding + MEIStaffTree.ToString);
 
+      MEIStaffTree := AddAnalyticalMarkup(MEIStaffTree);
+      DebugLn('MEI TREE STAGE 1.5, analytical markup:' 
+          + LineEnding + MEIStaffTree.ToString);
+
       MEIMeasureTree := MEIStaffTree.StaffToMeasureTree;
     end;
     if MEIMeasureTree <> nil then
     begin
       DebugLn('MEI TREE STAGE 2:' + LineEnding + MEIMeasureTree.ToString);
+      
       MEIScoreLines := MEIMeasureTree.ToMEI;
     end;
   end;

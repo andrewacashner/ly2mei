@@ -26,11 +26,11 @@ MusicA = {
   \clef "treble"
   \time 4/4
   \key f\major
-  | c'4 d'4 e'4 f'4~
+  | c'4( d'4) e'4 f'4~
   | f'4\~ e'4 d'4 c'4
 }
 LyricsA = \lyricmode {
-  Ri -- sing notes tied __ go back down
+  Ri -- sing tied __ notes go down
 }
 
 MusicT = {
