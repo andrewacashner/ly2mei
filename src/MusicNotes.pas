@@ -259,6 +259,8 @@ TPitch = class
     { Convert the tree to a simple string representation for debugging. }
     function ToString: String; override;
 
+    function ConcatMeasureSuffixes(MeasureIndex: Integer): String;
+
     { First we copy a @link(TLyObject) tree to a @link(TMEIElement) tree,
       preserving its structure (score/staff/voice/measures). With this
       function we create a new tree that is organized in the MEI hierarchy
@@ -710,7 +712,6 @@ begin
  
   { TODO we are pulling in these suffixes when converting to MEI measurewise
   structure, so we get all the measure suffixes for each staff/voice together
-  
   if FSuffix <> '' then
     MEI.Add(FSuffix);
   }
@@ -1026,7 +1027,11 @@ begin
                   + FMeasures.FPrefix + '''' + LineEnding; 
 
     for ThisPitchList in FMeasures do
+    begin
       OutputStr := OutputStr + ThisPitchList.ToMEIString;
+      OutputStr := OutputStr + 'PitchList SUFFIX: ''' 
+                    + ThisPitchList.FSuffix + '''' + LineEnding; 
+    end;
 
     OutputStr := OutputStr + 'Measurelist suffix: ''' 
                   + FMeasures.FSuffix + '''' + LineEnding;
@@ -1037,6 +1042,36 @@ begin
     OutputStr := OutputStr + 'SIBLING (to ' + Fname + ' ' + IntToStr(FNum) +
         '): ' + FSibling.ToString; 
   result := OutputStr;
+end;
+
+function TMEIElement.ConcatMeasureSuffixes(MeasureIndex: Integer): String;
+function InnerConcat(Node: TMEIElement; SuffixStr: String): String;
+var
+  ThisMeasure: TPitchList;
+  NewString: String = '';
+begin
+  if Node <> nil then
+  begin
+    if (Node.FType = ekLayer) and (Node.FMeasures <> nil) then
+    begin
+      ThisMeasure := Node.FMeasures[MeasureIndex];
+      if (ThisMeasure.FSuffix <> '') then
+          SuffixStr := SuffixStr + ThisMeasure.FSuffix + LineEnding;
+      { TODO using a stringlist would be better, but using data objects for
+      slur elements would be better yet }
+    end;
+
+    if Node.FChild <> nil then
+      SuffixStr := InnerConcat(Node.FChild, SuffixStr);
+    
+    if Node.FSibling <> nil then
+      SuffixStr := InnerConcat(Node.FSibling, SuffixStr);
+  end;
+  DebugLn('PitchList SUFFIX string currently: ' + SuffixStr);
+  result := SuffixStr;
+end;
+begin
+  result := InnerConcat(Self, '');
 end;
 
 function TMEIElement.StaffToMeasureTree: TMEIElement;
@@ -1062,10 +1097,9 @@ begin
     Branch.AssignTree(Self, mkOneMeasure, MeasureNum);
 
     { TODO implement: go through every staff/layer in the branch and get the
-    suffixes of the pitchlists 
-    BeforeEndMeasureStr := ConcatMeasureSuffixes(Branch);
-    Branch.FChild.LastSibling.FSibling := TMEIElement.Create(ekXML, BeforeEndMeasureStr);
-    }
+    suffixes of the pitchlists  }
+    BeforeEndMeasureStr := Self.ConcatMeasureSuffixes(MeasureNum);
+    Branch.LastSibling.FSibling := TMEIElement.Create(ekXML, BeforeEndMeasureStr);
 
     Root.FChild := Branch;
 
