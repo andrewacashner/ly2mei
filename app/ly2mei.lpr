@@ -16,7 +16,7 @@ begin
   try
     if ParamCount <> 1 then
     begin
-      WriteLn(stderr, 'Usage: header INFILE.ly');
+      WriteLn(stderr, 'Usage: ly2mei INFILE.ly');
       exit;
     end
     else

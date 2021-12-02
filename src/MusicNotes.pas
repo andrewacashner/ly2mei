@@ -700,15 +700,20 @@ var
   MEI: TStringListAAC;
 begin
   MEI := TStringListAAC.Create;
+  { TODO unused
   if FPrefix <> '' then
     MEI.Add(FPrefix);
+  }
 
   for ThisPitch in Self do
     MEI.Add(ThisPitch.ToMEI);
-
+ 
+  { TODO we are pulling in these suffixes when converting to MEI measurewise
+  structure, so we get all the measure suffixes for each staff/voice together
+  
   if FSuffix <> '' then
     MEI.Add(FSuffix);
-
+  }
   result := MEI;
 end;
 
@@ -844,10 +849,14 @@ begin
           NewMeasure.Assign(Source.FMeasures[MeasureIndex]);
           FMeasures.Add(NewMeasure);
 
+          {
           if MeasureIndex = 0 then
             FMeasures.FPrefix := Source.FMeasures.FPrefix
           else if MeasureIndex = Source.FMeasures.Count - 1 then
             FMeasures.FSuffix := Source.FMeasures.FSuffix;
+          }
+          FMeasures.FPrefix := Source.FMeasures.FPrefix;
+          FMeasures.FSuffix := Source.FMeasures.FSuffix;
         end;
       end;
     end;
@@ -1036,6 +1045,7 @@ var
   MeasureTree, Root, Branch, Prefix, Suffix: TMEIElement;
   PrefixStr: String;
   SuffixStr: String = '';
+  BeforeEndMeasureStr: String = '';
 begin
   MeasureCount := Self.CountMeasures;
   DebugLn('MEASURE COUNT: ' + IntToStr(MeasureCount));
@@ -1050,6 +1060,12 @@ begin
 
     Branch := TMEIElement.Create;
     Branch.AssignTree(Self, mkOneMeasure, MeasureNum);
+
+    { TODO implement: go through every staff/layer in the branch and get the
+    suffixes of the pitchlists 
+    BeforeEndMeasureStr := ConcatMeasureSuffixes(Branch);
+    Branch.FChild.LastSibling.FSibling := TMEIElement.Create(ekXML, BeforeEndMeasureStr);
+    }
 
     Root.FChild := Branch;
 
@@ -1071,15 +1087,16 @@ begin
     end
     else if MeasureNum = MeasureCount - 1 then
     begin
-      SuffixStr := Branch.LastChild.FMeasures.FSuffix;
-      if SuffixStr <> '' then
+      if Branch.LastChild.FMeasures <> nil then
       begin
-        DebugLn('Found measurelist suffix' + SuffixStr);
-        Suffix := TMEIElement.Create(ekXML, SuffixStr);
-        Root.FChild.LastSibling.FSibling := Suffix;
+        SuffixStr := Branch.LastChild.FMeasures.FSuffix;
+        if SuffixStr <> '' then
+        begin
+          DebugLn('Found measurelist suffix' + SuffixStr);
+          Suffix := TMEIElement.Create(ekXML, SuffixStr);
+          Root.LastSibling.FSibling := Suffix;
+        end;
       end;
-      { TODO need to add suffix strings together if there is more than one
-      slur. But this is a bad way to do this! }
       
       MeasureTree.LastSibling.FSibling := Root;
     end
@@ -1156,9 +1173,11 @@ var
   ThisPitch: TPitch;
   FoundSlurStart, FoundSlurEnd: Boolean;
   StartID, EndID: String;
+  MeasureNum: Integer;
 begin
   FoundSlurStart := False;
   FoundSlurEnd := False;
+  MeasureNum := 0;
   for ThisMeasure in Measures do
   begin
     for ThisPitch in ThisMeasure do 
@@ -1179,15 +1198,16 @@ begin
       if FoundSlurEnd then
       begin
         DebugLn('FOUND A SLUR');
-        if Measures.FSuffix <> '' then
-          Measures.FSuffix := Measures.FSuffix + ' ';
-
-        Measures.FSuffix := Measures.FSuffix 
-          + XMLElement('slur', XMLAttribute('startid', '#' + StartID) + ' ' 
+        with Measures[MeasureNum] do
+        begin
+          FSuffix := FSuffix + XMLElement('slur',
+            XMLAttribute('startid', '#' + StartID) + ' ' 
             + XMLAttribute('endid', '#' + EndID));
+        end;
         FoundSlurEnd := False;
       end;
     end;
+    Inc(MeasureNum)
   end;
 
   result := Measures;
