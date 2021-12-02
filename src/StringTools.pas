@@ -173,7 +173,7 @@ end;
 
 function XMLAttribute(Tag, Value: String): String;
 begin
-  result := Tag + '="' + Value + '"';
+  result := Format('%s="%s"', [Tag, Value]);
 end;
 
 function XMLElement(Tag: String; Attributes: String = ''; Contents: String =
@@ -182,7 +182,7 @@ begin
   if Attributes <> '' then
     Attributes := ' ' + Attributes;
 
-  result := '<' + Tag + Attributes + '>' + Contents + '</' + Tag + '>';
+  result := Format('<%s%s>%s</%s>', [Tag, Attributes, Contents, Tag]);
 end;
 
 function XMLAttributeIDNum(ID: String; Num: Integer): String;
@@ -193,6 +193,7 @@ begin
     IDStr := ''
   else 
     IDStr := XMLAttribute('xml:id', ID) + ' ';
+
   result := IDStr + XMLAttribute('n', IntToStr(Num));
 end;
 
@@ -242,13 +243,13 @@ var
 begin
   HeadTag := Tag;
   if Attributes <> '' then
-    HeadTag := Tag + ' ' + Attributes;
+    HeadTag := Format('%s %s', [Tag, Attributes]);
   
   for Index := Count -1 downto 0 do
     Self[Index] := IndentStr + Self[Index];
  
-  Self.Insert(0, '<' + HeadTag + '>');
-  Self.Add('</' + Tag + '>');
+  Self.Insert(0, Format('<%s>', [HeadTag]));
+  Self.Add(Format('</%s>', [Tag]));
 end;
 
 function TStringListAAC.XMLDocStr(RootElement: String = 'xml';

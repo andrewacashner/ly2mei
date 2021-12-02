@@ -27,7 +27,7 @@ MusicA = {
   \time 4/4
   \key f\major
   | c'4( d'4) e'4 f'4~
-  | f'4\~ e'4 d'4 c'4
+  | f'4 e'4 d'4 c'4
 }
 LyricsA = \lyricmode {
   Ri -- sing tied __ notes go down
@@ -38,7 +38,7 @@ MusicT = {
   \time 4/4
   \key f\major
   | a4 b4 c'4 d'4~
-  | d'4~~ d'4\~ bes4 a4
+  | d'4 d'4 bes4 a4
 }
 LyricsT = \lyricmode {
   Ri -- sing notes tied __ back down

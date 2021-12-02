@@ -47,23 +47,28 @@ begin
     MEI.Add('<meiHead>');
     MEI.Add(IndentStr(1) + '<fileDesc>');
     MEI.Add(IndentStr(2) + '<titleStmt>');
-    MEI.Add(IndentStr(3) + '<title type="main">' + FTitle + '</title>');
+    MEI.Add(IndentStr(3) + XMLElement('title',
+      XMLAttribute('type', 'main'), FTitle));
 
     if not FSubtitle.IsEmpty then
-      MEI.Add(IndentStr(3) + '<title type="subtitle">' + FSubtitle + '</title>');
+      MEI.Add(IndentStr(3) + XMLElement('title',
+        XMLAttribute('type', 'subtitle'), FSubtitle));
 
     MEI.Add(IndentStr(3) + '<respStmt>');
 
     if not FDates.IsEmpty then
-      MEI.Add(IndentStr(4) + '<composer>' + FComposer + ' ' + FDates + '</composer>')
+    begin
+      MEI.Add(IndentStr(4) + XMLElement('composer', '', 
+        Format('%s %s', [FComposer, FDates])));
+    end
     else
-      MEI.Add(IndentStr(4) + '<composer>' + FComposer + '</composer>');
+      MEI.Add(IndentStr(4) + XMLElement('composer', '', FComposer));
 
     if not FPoet.IsEmpty then
-      MEI.Add(IndentStr(4) + '<lyricist>' + FPoet + '</lyricist>');
+      MEI.Add(IndentStr(4) + XMLElement('lyricist', '', FPoet));
 
     if not FEditor.IsEmpty then
-      MEI.Add(IndentStr(4) + '<editor>' + FEditor + '</editor>');
+      MEI.Add(IndentStr(4) + XMLElement('editor', '', FEditor));
 
     MEI.Add(IndentStr(3) + '</respStmt>');
     MEI.Add(IndentStr(2) + '</titleStmt>');
@@ -71,26 +76,30 @@ begin
     if not FEditor.IsEmpty then
     begin
       MEI.Add(IndentStr(2) + '<editionStmt>');
-      MEI.Add(IndentStr(3) + '<respStmt><p>Edited by ' + FEditor + '</p></respStmt>');
+      MEI.Add(IndentStr(3) + XMLElement('respStmt', '',
+        XMLElement('p', '', Format('Edited by %s', [FEditor]))));
       MEI.Add(IndentStr(2) + '</editionStmt>');
     end;
 
     if not FCopyright.IsEmpty then
     begin
       MEI.Add(IndentStr(2) + '<pubStmt>');
-      MEI.Add(IndentStr(3) + '<availability><p>' + FCopyright + '</p></availability>');
+      MEI.Add(IndentStr(3) + XMLElement('availability', '',
+        XMLElement('p', '', FCopyright)));
       MEI.Add(IndentStr(2) + '</pubStmt>');
     end;
 
     MEI.Add(IndentStr(1) + '</fileDesc>');
     MEI.Add(IndentStr(1) + '<encodingDesc>');
     MEI.Add(IndentStr(2) + '<appInfo>');
-    MEI.Add(IndentStr(3) + '<application><name>' + ProgramName + '</name></application>');
+    MEI.Add(IndentStr(3) + XMLElement('application', '',
+      XMLElement('name', '', ProgramName)));
     MEI.Add(IndentStr(2) + '</appInfo>');
     MEI.Add(IndentStr(1) + '</encodingDesc>');
     
     if not FSource.IsEmpty then
-      MEI.Add(IndentStr(1) + '<sourceDesc><source>' + FSource + '</source></sourceDesc>');
+      MEI.Add(IndentStr(1) + XMLElement('sourceDesc', '',
+        XMLElement('source', '', FSource)));
 
     MEI.Add('</meiHead>'); 
   end;

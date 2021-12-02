@@ -48,6 +48,15 @@ type
     dkFusaDotted          {< Eigth, dotted }
   );
 
+  { Label for position of a note in a markup such a tie or slur }
+  TMarkupPosition = (
+    mkNone,
+    mkStart,
+    mkMiddle,
+    mkEnd,
+    mkEndStart {< end one and start another on same note }
+  );
+
 type
   { @abstract(Internal data structure for a single pitch or rest.)
 
@@ -58,7 +67,7 @@ type
     This class also represents rests, when the @code(FPitchName) field is set
     to @code(pkRest) or @code(pkMeasureRest). } 
 TPitch = class
-  public
+  private 
     var
       { From automatically generated GUID }
       FID: String;
@@ -79,30 +88,16 @@ TPitch = class
       { Label for duration, e.g., @link(dkMinim) }
       FDur: TDuration;
 
-      { A string with additional text (like an MEI element) paired with this
-        pitch. }
+      { Label indicates whether tied or not, and if so, what is the position
+        (start/middle/end)? }
+      FTie: TMarkupPosition;
+
+      { Label indicated whether a slur is connected to this note, and if so,
+         its position }
+      FSlur: TMarkupPosition;
+
+      { A string with additional text paired with this pitch. }
       FAnnotation: String;
-
-    constructor Create(); 
-
-    { Create from all the fields }
-    constructor Create(ID: String; Name: TPitchName; Accid: TAccidental;
-      AccidType: TAccidType; Oct: Integer; Dur: TDuration; Annot: String); 
-
-    { Create from a Lilypond input string; set the accidental relative to the
-      given key. }
-    constructor CreateFromLy(Source: String; Key: TKeyKind);
-
-    { Copy all the fields from an existing pitch to this one. }
-    procedure Assign(Source: TPitch); 
-
-    { When we find invalid input, we construct invalid pitches, with the
-      fields set to "none" or negative values. Did we find a valid pitch? }
-    function IsValid: Boolean;
-
-    { A rest is a @code(TPitch) with the pitch name set to @code(pkRest) and
-      only the duration. }
-    function IsRest: Boolean;
 
     { Generate the MEI @code(pname) attribute for the pitch name. }
     function MEIPName: String;
@@ -119,44 +114,50 @@ TPitch = class
       duration. }
     function MEIDurDots: String;
 
-    { Look in the @code(FAnnotation) field for additional commands that were
-      included after the duration and convert these to MEI attributes of the
-      @code(note) element, for example ties. If none are recognized,
-      return an empty string. 
+    function MEITie: String;
 
-      For ties, we are requiring an extension of the original Lilypond syntax
-      to specify whether a note begins, continues, or ends a tie. Lilypond
-      appears to just ignore these extra notations.
-      
-      @table( 
-        @row( @cell(Start tie)    @cell(@code(f'4~)) )
-        @row( @cell(Continue tie) @cell(@code(f'4~~)) )
-        @row( @cell(End tie)      @cell(@code(f'4\~)) )
-      ) 
-      
-      TODO: The other option would be to set the @code(tie="i") attribute only
-      for start ties (@code(f'4~)), then once all the pitches have been
-      created, go back through each voice, find start ties, then look for the
-      next note of the same pitch and mark it as the conclusion; or if it has
-      a tie symbol, as a continuation. 
+  public
+    constructor Create(); 
 
-      For slurs, this approach is necessary because Verovio does not use the
-      @@slur attribute, but only an element with @@startid and @@endid, so we
-      must mark the start and end notes with ids and then afterwards create a
-      slur at the measure level using this data. 
-    }
-    function MEISurplus: String;
-    
+    { Create from all the fields }
+    constructor Create(ID: String; Name: TPitchName; Accid: TAccidental;
+      AccidType: TAccidType; Oct: Integer; Dur: TDuration; 
+      Tie: TMarkupPosition = mkNone; Slur: TMarkupPosition = mkNone; 
+      Annot: String = ''); 
+
+    { Create from a Lilypond input string; set the accidental relative to the
+      given key. }
+    constructor CreateFromLy(Source: String; Key: TKeyKind);
+
+    { Copy all the fields from an existing pitch to this one. }
+    procedure Assign(Source: TPitch); 
+
+    { When we find invalid input, we construct invalid pitches, with the
+      fields set to "none" or negative values. Did we find a valid pitch? }
+    function IsValid: Boolean;
+
+    { A rest is a @code(TPitch) with the pitch name set to @code(pkRest) and
+      only the duration. }
+    function IsRest: Boolean;
+
+    { Is the pitch class and accidental the same as another? (Ignoring
+      duration and other fields) }
+    function PitchEq(P2: TPitch): Boolean;
+
     { Generate a complete MEI @code(note) element for this pitch. }
     function ToMEI: String;
   end;
- 
+
+
   { @abstract(A list of @link(TPitch) objects, corresponding to one measure of
      music.) }
   TPitchList = class(specialize TObjectList<TPitch>)
   private
     var
-      FPrefix, FSuffix: String;
+      { TODO make a slur class and use a list of these instead of FSuffix as
+      string }
+      FPrefix: String;
+      FSuffix: String;
   public
     { Create a new list of pitches from the Lilypond input string for a single
       measure of music, and the key relevant to this music. Recursively create
@@ -191,6 +192,15 @@ TPitch = class
       single voice. Find the key for this music and then recursively create
       all the measures, and in turn all the pitches, it contains. }
     procedure SetFromLy(Source: String);
+
+    { Go through measure list in which only tie starts have been set (from
+      Lilypond input), and set attributes for notes in the middle and ending
+      of the tie. }
+    procedure AddTies;
+    
+    { Go through measure list in which only slur starts and ends have been
+      marked, and create slur elements connecting those notes. }
+    procedure AddSlurs;
   end;
 
   { Label to indicate whether we should assign all measures or just one. Used
@@ -259,6 +269,10 @@ TPitch = class
     { Convert the tree to a simple string representation for debugging. }
     function ToString: String; override;
 
+    { Fill in ties and slurs from the markers taken from Lilypond input. }
+    procedure AddAnalyticalMarkup;
+   
+    { Combine all the @link(TMeasureList) suffixes in each measure element. }
     function ConcatMeasureSuffixes(MeasureIndex: Integer): String;
 
     { First we copy a @link(TLyObject) tree to a @link(TMEIElement) tree,
@@ -460,14 +474,48 @@ begin
   result := AccidType;
 end;
 
+function GetTie(Source: String): TMarkupPosition;
+var
+  Position: TMarkupPosition = mkNone;
+begin
+  if Source.Contains('~') then
+    Position := mkStart;
+
+  result := Position;
+end;
+
+{ TODO this does not enable us to deal with multiple layers of slurs }
+function GetSlur(Source: String): TMarkupPosition;
+var
+  StartParensIndex, EndParensIndex: Integer;
+  Position: TMarkupPosition = mkNone;
+begin
+  StartParensIndex := Source.IndexOf('(');
+  EndParensIndex := Source.IndexOf(')');
+
+  if (StartParensIndex <> -1) and (EndParensIndex <> -1) then
+    Position := mkEndStart
+  else if StartParensIndex <> -1 then
+    Position := mkStart
+  else if EndParensIndex <> -1 then
+    Position := mkEnd
+  else
+    Position := mkNone;
+
+  result := Position;
+end;
+
+
 constructor TPitch.Create();
 begin
   inherited Create;
   FID := GenerateID;
 end;
 
-constructor TPitch.Create(ID: String; Name: TPitchName; Accid: TAccidental; 
-  AccidType: TAccidType; Oct: Integer; Dur: TDuration; Annot: String);
+constructor TPitch.Create(ID: String; Name: TPitchName; Accid: TAccidental;
+  AccidType: TAccidType; Oct: Integer; Dur: TDuration; 
+  Tie: TMarkupPosition = mkNone; Slur: TMarkupPosition = mkNone; 
+  Annot: String = ''); 
 begin
   inherited Create;
   FID         := ID;
@@ -476,6 +524,8 @@ begin
   FAccidType  := AccidType;
   FOct        := Oct;
   FDur        := Dur;
+  FTie        := Tie;
+  FSlur       := Slur;
   FAnnotation := Annot;
 end;
 
@@ -521,8 +571,10 @@ begin
     FAccidType := GetAccidType(FPitchName, FAccid, Key);
   end;
 
-  FAnnotation := EtcLy;
-  DebugLn('FAnnotation = ' + FAnnotation);
+  FTie  := GetTie(EtcLy);
+  FSlur := GetSlur(EtcLy); 
+
+  FAnnotation := EtcLy; { TODO just holding surplus text in case we need it }
 end;
 
 procedure TPitch.Assign(Source: TPitch);
@@ -535,6 +587,8 @@ begin
     FAccidType  := Source.FAccidType;
     FOct        := Source.FOct;
     FDur        := Source.FDur;
+    FTie        := Source.FTie;
+    FSlur       := Source.FSlur;
     FAnnotation := Source.FAnnotation;
   end;
 end;
@@ -607,36 +661,40 @@ begin
     dkSemiminimDotted : DurBase := '4';
     dkFusaDotted      : DurBase := '8';
   end;
+
   case FDur of
     dkBreve .. dkSemifusa         : Dots := False;
     dkBreveDotted .. dkFusaDotted : Dots := True;
   end;
+ 
   Dur := XMLAttribute('dur', DurBase);
+
   if Dots then
-    Dur := Dur + ' ' + XMLAttribute('dots', '1');
+    Dur := Format('%s %s', [Dur, XMLAttribute('dots', '1')]);
+
   result := Dur;
 end;
 
-function TPitch.MEISurplus: String;
+function TPitch.MEITie: String;
 var 
-  InputStr, OutputStr: String;
+  Position: String;
+  MEI: String = '';
 begin
-  InputStr := FAnnotation.Trim;
-
-  case InputStr of
-    '~'  : OutputStr := XMLAttribute('tie', 'i');
-    
-    '~~' : OutputStr := XMLAttribute('tie', 'm');
-
-    '\~' : OutputStr := XMLAttribute('tie', 't');
-    else
-      OutputStr := '';
+  if FTie <> mkNone then
+  begin
+    case FTie of
+      mkStart    : Position := 'i';
+      mkMiddle   : Position := 'm';
+      mkEnd      : Position := 't';
+    end;
+    MEI := ' ' + XMLAttribute('tie', Position);
   end;
+  result := MEI;
+end;
 
-  if OutputStr <> '' then
-    OutputStr := ' ' + OutputStr;
-
-  result := OutputStr;
+function TPitch.PitchEq(P2: TPitch): Boolean;
+begin
+  result := (FPitchName = P2.FPitchName) and (FAccid = P2.FAccid);
 end;
 
 function TPitch.ToMEI: String;
@@ -647,11 +705,13 @@ begin
   ID  := XMLAttribute('xml:id', FID);
 
   case FPitchName of
-    pkRest:        MEI := XMLElement('rest', ID + ' ' + Dur);
-    pkMeasureRest: MEI := XMLElement('mRest', ID + ' ' + Dur);
+    pkRest:        MEI := XMLElement('rest', Format('%s %s', [ID, Dur]));
+    pkMeasureRest: MEI := XMLElement('mRest', Format('%s %s', [ID, Dur]));
     else
-      MEI := XMLElement('note', ID + ' ' + MEIPname + ' ' + MEIAccid + ' ' 
-        + MEIOct + ' ' + Dur + MEISurplus); 
+    begin
+      MEI := XMLElement('note', Format('%s %s %s %s %s%s', 
+                [ID, MEIPname, MEIAccid, MEIOct, Dur, MEITie])); 
+    end;
   end;
   result := MEI;
 end;
@@ -734,10 +794,10 @@ var
   HeadingText: String;
 begin
   HeadingText := CopyStringBetween(Source, '\Section "', '"');
-  result := XMLElement('tempo', 
-              XMLAttribute('place', 'above') + ' ' 
-              + XMLAttribute('staff', '1') + ' '
-              + XMLAttribute('tstamp', '1'),
+  result := XMLElement('tempo', Format('%s %s %s',
+              [XMLAttribute('place', 'above'), 
+               XMLAttribute('staff', '1'), 
+               XMLAttribute('tstamp', '1')]),
               HeadingText);
 end;
 
@@ -1020,27 +1080,29 @@ var
   OutputStr: String = '';
   ThisPitchList: TPitchList;
 begin
-  OutputStr := OutputStr + FName + ' ' + FID + ' ' + IntToStr(FNum) + LineEnding;
+  OutputStr := OutputStr + Format('%s %s %d', [FName, FID, FNum]) + LineEnding;
   if FMeasures <> nil then
   begin
-    OutputStr := OutputStr + 'Measurelist prefix: ''' 
-                  + FMeasures.FPrefix + '''' + LineEnding; 
+    OutputStr := OutputStr + Format('Measurelist prefix: ''%s''', 
+                    [FMeasures.FPrefix]) + LineEnding; 
 
     for ThisPitchList in FMeasures do
     begin
       OutputStr := OutputStr + ThisPitchList.ToMEIString;
-      OutputStr := OutputStr + 'PitchList SUFFIX: ''' 
-                    + ThisPitchList.FSuffix + '''' + LineEnding; 
+      OutputStr := OutputStr + Format('PitchList SUFFIX: ''%s''', 
+                    [ThisPitchList.FSuffix]) + LineEnding; 
     end;
 
-    OutputStr := OutputStr + 'Measurelist suffix: ''' 
-                  + FMeasures.FSuffix + '''' + LineEnding;
+    OutputStr := OutputStr + Format('Measurelist suffix: ''%s''',
+                  [FMeasures.FSuffix]) + LineEnding;
   end;
   if FChild <> nil then
-    OutputStr := OutputStr + 'CHILD (to ' + Fname + ' ' + IntToStr(FNum) +
-        '): ' + FChild.ToString; if FSibling <> nil then
-    OutputStr := OutputStr + 'SIBLING (to ' + Fname + ' ' + IntToStr(FNum) +
-        '): ' + FSibling.ToString; 
+    OutputStr := OutputStr + Format('CHILD (to %s %d): %s', 
+                  [Fname, FNum, FChild.ToString]); 
+
+  if FSibling <> nil then
+    OutputStr := OutputStr + Format('SIBLING (to %s %d): %s',
+                  [Fname, FNum, FSibling.ToString]); 
   result := OutputStr;
 end;
 
@@ -1048,7 +1110,6 @@ function TMEIElement.ConcatMeasureSuffixes(MeasureIndex: Integer): String;
 function InnerConcat(Node: TMEIElement; SuffixStr: String): String;
 var
   ThisMeasure: TPitchList;
-  NewString: String = '';
 begin
   if Node <> nil then
   begin
@@ -1056,7 +1117,7 @@ begin
     begin
       ThisMeasure := Node.FMeasures[MeasureIndex];
       if (ThisMeasure.FSuffix <> '') then
-          SuffixStr := SuffixStr + ThisMeasure.FSuffix + LineEnding;
+          SuffixStr := SuffixStr + LineEnding + ThisMeasure.FSuffix;
       { TODO using a stringlist would be better, but using data objects for
       slur elements would be better yet }
     end;
@@ -1096,8 +1157,6 @@ begin
     Branch := TMEIElement.Create;
     Branch.AssignTree(Self, mkOneMeasure, MeasureNum);
 
-    { TODO implement: go through every staff/layer in the branch and get the
-    suffixes of the pitchlists  }
     BeforeEndMeasureStr := Self.ConcatMeasureSuffixes(MeasureNum);
     Branch.LastSibling.FSibling := TMEIElement.Create(ekXML, BeforeEndMeasureStr);
 
@@ -1178,9 +1237,15 @@ begin
     begin
       Attributes := XMLAttribute('n', IntToStr(Node.FNum));
       if Node.FType = ekStaff then
-        Attributes := Attributes + ' ' + XMLAttribute('def', '#' + Node.FID)
+      begin
+        Attributes := format('%s %s', 
+          [Attributes,  XMLAttribute('def', '#' + Node.FID)]);
+      end
       else if Node.FID <> '' then
-        Attributes := Attributes + ' ' + XMLAttribute('xml:id', Node.FID);
+      begin
+        Attributes := format('%s %s', 
+          [Attributes, XMLAttribute('xml:id', Node.FID)]);
+      end;
       
       NewElement.EncloseInXML(Node.FName, Attributes);
     end;
@@ -1201,7 +1266,42 @@ begin
   result := MasterMEI;
 end;
 
-function AddSlurs(Measures: TMeasureList): TMeasureList;
+procedure TMeasureList.AddTies;
+var
+  ThisMeasure: TPitchList;
+  ThisPitch, TiedPitch: TPitch;
+  PitchIndex: Integer;
+  FoundTie: Boolean = False;
+begin
+  for ThisMeasure in Self do
+  begin
+    PitchIndex := 0;
+    while PitchIndex < ThisMeasure.Count do
+    begin
+      ThisPitch := ThisMeasure[PitchIndex];
+
+      if ThisPitch.FTie = mkStart then
+      begin
+        TiedPitch := ThisPitch; 
+        FoundTie := True;
+      end
+      else if FoundTie then
+      begin
+        if ThisPitch.PitchEq(TiedPitch) then
+          ThisPitch.FTie := mkMiddle
+        else
+        begin
+          ThisMeasure[PitchIndex - 1].FTie := mkEnd;
+          FoundTie := False;
+          Dec(PitchIndex);
+        end;
+      end;
+      Inc(PitchIndex);
+    end;
+  end;
+end;
+
+procedure TMeasureList.AddSlurs;
 var 
   ThisMeasure: TPitchList;
   ThisPitch: TPitch;
@@ -1211,59 +1311,72 @@ var
 begin
   FoundSlurStart := False;
   FoundSlurEnd := False;
-  MeasureNum := 0;
-  for ThisMeasure in Measures do
+  for MeasureNum := 0 to Self.Count - 1 do
   begin
+    ThisMeasure := Self[MeasureNum];
+    
     for ThisPitch in ThisMeasure do 
     begin
-      if ThisPitch.FAnnotation.Contains('(') and (not FoundSlurStart) then
-      begin
-        FoundSlurStart := True;
-        StartID := ThisPitch.FID;
-        DEBUGLN('Found slur start on ID ' + StartID);
-      end
-      else if ThisPitch.FAnnotation.Contains(')') and FoundSlurStart then
-      begin
-        FoundSlurEnd := True;
-        EndID := ThisPitch.FID;
-        DEBUGLN('Found slur end on ID ' + EndID);
-        FoundSlurStart := False;
+      case ThisPitch.FSlur of
+        mkStart :
+        begin
+          if not FoundSlurStart then
+          begin
+            FoundSlurStart := True;
+            StartID := ThisPitch.FID;
+            DEBUGLN('Found slur start on ID ' + StartID);
+          end;
+        end;
+
+        mkEnd :
+        begin
+          if FoundSlurStart then
+          begin
+            FoundSlurEnd := True;
+            EndID := ThisPitch.FID;
+            DEBUGLN('Found slur end on ID ' + EndID);
+            FoundSlurStart := False;
+          end;
+        end;
       end;
+
       if FoundSlurEnd then
       begin
         DebugLn('FOUND A SLUR');
-        with Measures[MeasureNum] do
+        with ThisMeasure do
         begin
+          { TODO use an object instead of XML string? }
           FSuffix := FSuffix + XMLElement('slur',
-            XMLAttribute('startid', '#' + StartID) + ' ' 
-            + XMLAttribute('endid', '#' + EndID));
+            format('%s %s', [XMLAttribute('startid', '#' + StartID), 
+                             XMLAttribute('endid', '#' + EndID)]));
         end;
         FoundSlurEnd := False;
       end;
     end;
-    Inc(MeasureNum)
   end;
-
-  result := Measures;
 end;
 
-function AddAnalyticalMarkup(Tree: TMEIElement): TMEIElement;
+procedure TMEIElement.AddAnalyticalMarkup;
+function InnerMarkup(Tree: TMEIElement): TMEIElement;
 begin
   if Tree <> nil then
   begin
     if (Tree.FType = ekLayer) and (Tree.FMeasures <> nil) then
     begin
-      DebugLn('Adding SLURS');
-      Tree.FMeasures := AddSlurs(Tree.FMeasures);
+      Tree.FMeasures.AddTies;
+      Tree.FMeasures.AddSlurs;
     end;
 
     if Tree.FChild <> nil then
-      Tree.FChild := AddAnalyticalMarkup(Tree.FChild);
+      Tree.FChild := InnerMarkup(Tree.FChild);
 
     if Tree.FSibling <> nil then
-      Tree.FSibling := AddAnalyticalMarkup(Tree.FSibling);
+      Tree.FSibling := InnerMarkup(Tree.FSibling);
   end;
   result := Tree;
+end;
+begin
+  InnerMarkup(Self);
 end;
 
 function CreateMEIMusic(SourceLines: TStringListAAC): TStringListAAC; 
@@ -1290,7 +1403,7 @@ begin
     begin
       DebugLn('MEI TREE STAGE 1:' + LineEnding + MEIStaffTree.ToString);
 
-      MEIStaffTree := AddAnalyticalMarkup(MEIStaffTree);
+      MEIStaffTree.AddAnalyticalMarkup;
       DebugLn('MEI TREE STAGE 1.5, analytical markup:' 
           + LineEnding + MEIStaffTree.ToString);
 

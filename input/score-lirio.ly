@@ -11,7 +11,7 @@ MusicS = {
   \CantusMollis
   \Section "DEMONSTRACIÓN"
   | c'4 d'4( e'4 f'4~
-  | f'4\~ e'4) d'4 c'4
+  | f'4 e'4) d'4 c'4
 }
 LyricsS = \lyricmode {
   Me -- lis -- ma --ta 
@@ -29,7 +29,7 @@ MusicA = {
   \MeterDuple
   \CantusMollis
   | c'4( d'4 e'4) f'4~
-  | f'4\~ e'4 d'4 c'4
+  | f'4 e'4 d'4 c'4
 }
 LyricsA = \lyricmode {
   Can -- ción de no -- tas

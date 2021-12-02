@@ -186,18 +186,17 @@ function TLyObject.ToString: String;
 function TreeToString(Parent: TLyObject; Generation: Integer): String;
 var
   Indent: String;
-  ParentStr, ChildStr, SibStr, IDStr: String;
+  ParentStr, ChildStr, SibStr: String;
 begin
   if Parent <> nil then
   begin
     Indent := IndentStr(Generation);
-
-    if Parent.FID <> '' then 
-      IDStr := ' ' + XMLAttribute('id', Parent.FID);
     
-    ParentStr := '<lyobject ' + XMLAttribute('type', Parent.FName) + IDStr 
-                  + ' ' + XMLAttribute('n', IntToStr(Parent.FNum)) + '>' 
-                  + Parent.FContents;
+    ParentStr := Format('<lyobject %s %s %s>%s', 
+        [XMLAttribute('type', Parent.FName),
+         XMLAttribute('id', Parent.FID),
+         XMLAttribute('n', IntToStr(Parent.FNum)), 
+         Parent.FContents]);
 
     if Parent.FChild <> nil then
       ChildStr := LineEnding + TreeToString(Parent.FChild, Generation + 1) + Indent;
@@ -362,14 +361,16 @@ begin
   end;
 
   case Clef of
-    ckTreble8va : ClefDis := ' ' + XMLAttribute('clef.dis', '8') + ' '
-                              + XMLAttribute('clef.dis.place', 'below');
+    ckTreble8va : 
+      ClefDis := Format(' %s %s', [XMLAttribute('clef.dis', '8'),
+                                   XMLAttribute('clef.dis.place', 'below')]);
     else
       ClefDis := '';
   end;
 
-  XML := XMLAttribute('clef.line', IntToStr(ClefLine)) + ' '
-            + XMLAttribute('clef.shape', ClefLetter) + ClefDis;
+  XML := Format(' %s %s%s', [XMLAttribute('clef.line', IntToStr(ClefLine)),
+                            XMLAttribute('clef.shape', ClefLetter),
+                            ClefDis]);
 
   result := XML;
 end;
@@ -506,7 +507,7 @@ begin
     Meter.FKind := mkModern;
     SearchStr := StringDropBefore(MeterStr, '\time ');
     NumStr := ExtractWord(1, SearchStr, [' ', LineEnding]);
-    DebugLn('Looking for meter in string: ''' + NumStr + '''');
+    DebugLn(Format('Looking for meter in string: ''%s''', [NumStr]));
 
     MeterNums := NumStr.Split(['/'], 2);
     Meter.FCount := StrToInt(MeterNums[0]);
@@ -514,8 +515,7 @@ begin
   end;
 
   DebugLn('METER Kind: '); {$ifdef DEBUG}WriteLn(Meter.FKind);{$endif}
-  DebugLn('METER Count: ' + IntToStr(Meter.FCount) + ', Unit: ' +
-    IntToStr(Meter.FUnit)); 
+  DebugLn(Format('METER Count: %d, Unit: %d', [Meter.FCount, Meter.FUnit])); 
 
   result := Meter;
 end;
@@ -524,8 +524,8 @@ function MEIMeter(Meter: TMeter): String;
 var
   MEI, TempusImperfectum: String;
 begin
-  TempusImperfectum := XMLAttribute('mensur.sign', 'C') + ' '
-                        + XMLAttribute('mensur.tempus', '2'); 
+  TempusImperfectum := Format('%s %s', [XMLAttribute('mensur.sign', 'C'),
+                                        XMLAttribute('mensur.tempus', '2')]);
   with Meter do
   begin
     case FKind of
@@ -533,11 +533,12 @@ begin
         MEI := TempusImperfectum;
 
       mkMensuralProportioMinor : 
-        MEI := TempusImperfectum + ' ' + XMLAttribute('proport.num', '3');
+        MEI := Format('%s %s', [TempusImperfectum, 
+                                XMLAttribute('proport.num', '3')]);
 
       mkModern : 
-        MEI := XMLAttribute('meter.count', IntToStr(FCount)) + ' ' 
-                + XMLAttribute('meter.unit', IntToStr(FUnit));
+        MEI := Format('%s %s', [XMLAttribute('meter.count', IntToStr(FCount)),
+                                XMLAttribute('meter.unit', IntToStr(FUnit))]);
       else
         MEI := '';
     end;
@@ -554,19 +555,19 @@ begin
   KeyStr    := MEIKEy(Key);
   MeterStr  := MEIMeter(Meter);
 
-  result := OutputStr + ' ' + ClefStr + ' ' + KeyStr + ' ' + MeterStr;
+  result := OutputStr + Format('%s %s %s', [ClefStr, KeyStr, MeterStr]);
 end;
 
 function StaffGrpAttributes(): String;
 begin
-  result := ' ' + XMLAttribute('bar.thru', 'false') + ' '
-            + XMLAttribute('symbol', 'bracket');
+  result := Format(' %s %s', [XMLAttribute('bar.thru', 'false'),
+                              XMLAttribute('symbol', 'bracket')]);
 end;
 
 function StaffNumID(Node: TLyObject): String;
 begin
-  result := XMLAttribute('n', IntToStr(Node.FNum)) 
-            + XMLAttribute(' def', '#' + Node.FID);
+  result := Format('%s %s', [XMLAttribute('n', IntToStr(Node.FNum)),
+                             XMLAttribute('def', '#' + Node.FID)]);
 end;
 
 function TLyObject.ToMEIScoreDef: TStringListAAC;
@@ -582,8 +583,8 @@ begin
   TempLines := TStringListAAC.Create;
   ThisTag := '';
   
-  Attributes := XMLAttribute('n', IntToStr(Node.FNum)) + ' ' 
-                  + XMLAttribute('xml:id', Node.FID);
+  Attributes := Format('%s %s', [XMLAttribute('n', IntToStr(Node.FNum)),
+                                 XMLAttribute('xml:id', Node.FID)]);
   case Node.FType of
     ekStaffGrp:
     begin
@@ -605,7 +606,9 @@ begin
         Key   := FindLyKey(SearchStr);
         Meter := FindLyMeter(SearchStr);
       end;
-      Attributes := Attributes + ' ' + StaffDefAttributes(Clef, Key, Meter);
+
+      Attributes := Format('%s %s', [Attributes, 
+        StaffDefAttributes(Clef, Key, Meter)]);;
     end;
   end;
 

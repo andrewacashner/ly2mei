@@ -89,10 +89,10 @@ begin
   begin
     for Macro in Dict do
     begin
-      OutputStr := StringReplace(OutputStr, 
-        Macro.Key + ' ', Macro.Value + ' ', [rfReplaceAll]);
-      OutputStr := StringReplace(OutputStr, 
-        Macro.Key + LineEnding, Macro.Value + LineEnding, [rfReplaceAll]);
+      OutputStr := OutputStr.Replace(Macro.Key + ' ', 
+        Macro.Value + ' ', [rfReplaceAll]);
+      OutputStr := OutputStr.Replace(Macro.Key + LineEnding, 
+        Macro.Value + LineEnding, [rfReplaceAll]);
     end;
     HasMacros := False;
     for Macro in Dict do
@@ -165,7 +165,7 @@ begin
           { Found a command and a brace-delimited argument }
           skCommandArg:
             begin
-              Value := CommandArg.FCommand + ' ' + CommandArg.FArg;
+              Value := Format('%s %s', [CommandArg.FCommand, CommandArg.FArg]);
               Found := True;
             end;
           end;
