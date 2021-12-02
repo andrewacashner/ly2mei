@@ -223,6 +223,9 @@ TPitch = class
       { Name and ID strings }
       FName, FID: String;
 
+      { Any kind of text }
+      FText: String;
+      
       { Position in series of same type }
       FNum: Integer;
 
@@ -238,7 +241,7 @@ TPitch = class
     { Create from all fields (default is to create a single node with
       @code(nil) relations) }
     constructor Create(ElementType: TMusicTreeElement; ID: String = '';
-        Num: Integer = 1);
+      TextStr: String = ''; Num: Integer = 1);
 
     { Destroy entire tree }
     destructor Destroy; override;
@@ -871,7 +874,7 @@ begin
 end;
 
 constructor TMEIElement.Create(ElementType: TMusicTreeElement; ID: String = '';
-  Num: Integer = 1);
+  TextStr: String = ''; Num: Integer = 1);
 begin
   inherited Create;
   FType        := ElementType;
@@ -880,6 +883,7 @@ begin
   if ID <> '' then
     FID := ID;
 
+  FText        := TextStr;
   FNum         := Num;
   FMeasures    := nil;
   FChild       := nil;
@@ -894,6 +898,7 @@ begin
   FType := Source.FType;
   FName := Source.FName;
   FID   := Source.FID;
+  FText := Source.FText;
   FNum  := Source.FNum;
   if Source.FMeasures <> nil then
   begin
@@ -1107,7 +1112,7 @@ begin
 end;
 
 function TMEIElement.ConcatMeasureSuffixes(MeasureIndex: Integer): String;
-function InnerConcat(Node: TMEIElement; SuffixStr: String): String;
+function InnerConcat(Node: TMEIElement; SuffixStr: String = ''): String;
 var
   ThisMeasure: TPitchList;
 begin
@@ -1116,8 +1121,8 @@ begin
     if (Node.FType = ekLayer) and (Node.FMeasures <> nil) then
     begin
       ThisMeasure := Node.FMeasures[MeasureIndex];
-      if (ThisMeasure.FSuffix <> '') then
-          SuffixStr := SuffixStr + LineEnding + ThisMeasure.FSuffix;
+      if ThisMeasure.FSuffix <> '' then
+          SuffixStr := Format('%s %s', [SuffixStr, ThisMeasure.FSuffix]);
       { TODO using a stringlist would be better, but using data objects for
       slur elements would be better yet }
     end;
@@ -1132,7 +1137,7 @@ begin
   result := SuffixStr;
 end;
 begin
-  result := InnerConcat(Self, '');
+  result := InnerConcat(Self);
 end;
 
 function TMEIElement.StaffToMeasureTree: TMEIElement;
@@ -1152,13 +1157,13 @@ begin
   end;
   for MeasureNum := 0 to MeasureCount - 1 do
   begin
-    Root := TMEIElement.Create(ekMeasure, '', MeasureNum + 1);
+    Root := TMEIElement.Create(ekMeasure, '', '', MeasureNum + 1);
 
     Branch := TMEIElement.Create;
     Branch.AssignTree(Self, mkOneMeasure, MeasureNum);
 
     BeforeEndMeasureStr := Self.ConcatMeasureSuffixes(MeasureNum);
-    Branch.LastSibling.FSibling := TMEIElement.Create(ekXML, BeforeEndMeasureStr);
+    Branch.LastSibling.FSibling := TMEIElement.Create(ekXML, '', BeforeEndMeasureStr);
 
     Root.FChild := Branch;
 
@@ -1170,7 +1175,7 @@ begin
         if PrefixStr <> '' then
         begin
           DebugLn('Found measurelist prefix' + PrefixStr);
-          Prefix := TMEIElement.Create(ekXML, PrefixStr);
+          Prefix := TMEIElement.Create(ekXML, '', PrefixStr);
           Prefix.FSibling := Branch;
           Root.FChild := Prefix;
         end;
@@ -1186,7 +1191,7 @@ begin
         if SuffixStr <> '' then
         begin
           DebugLn('Found measurelist suffix' + SuffixStr);
-          Suffix := TMEIElement.Create(ekXML, SuffixStr);
+          Suffix := TMEIElement.Create(ekXML, '', SuffixStr);
           Root.LastSibling.FSibling := Suffix;
         end;
       end;
@@ -1232,7 +1237,7 @@ begin
       NewElement := InnerAddNewElement(Node.FChild, NewElement);
 
     if Node.FType = ekXML then
-      NewElement.Add(Node.FID)
+      NewElement.Add(Node.FText)
     else
     begin
       Attributes := XMLAttribute('n', IntToStr(Node.FNum));
