@@ -57,6 +57,11 @@ type
     mkEndStart {< end one and start another on same note }
   );
 
+  TArticulationSpec = record
+    FFermata, FStaccato, FAccent: Boolean;
+    { TODO etc}
+  end; 
+
 type
   { @abstract(Internal data structure for a single pitch or rest.)
 
@@ -96,6 +101,9 @@ TPitch = class
          its position }
       FSlur: TMarkupPosition;
 
+      { Record with boolean flags for possible articulation labels }
+      FArticulations: TArticulationSpec;
+
       { A string with additional text paired with this pitch. }
       FAnnotation: String;
 
@@ -115,15 +123,10 @@ TPitch = class
     function MEIDurDots: String;
 
     function MEITie: String;
+    function MEIArtic: String;
 
   public
     constructor Create(); 
-
-    { Create from all the fields }
-    constructor Create(ID: String; Name: TPitchName; Accid: TAccidental;
-      AccidType: TAccidType; Oct: Integer; Dur: TDuration; 
-      Tie: TMarkupPosition = mkNone; Slur: TMarkupPosition = mkNone; 
-      Annot: String = ''); 
 
     { Create from a Lilypond input string; set the accidental relative to the
       given key. }
@@ -154,10 +157,8 @@ TPitch = class
   TPitchList = class(specialize TObjectList<TPitch>)
   private
     var
-      { TODO make a slur class and use a list of these instead of FSuffix as
-      string }
-      FPrefix: String;
-      FSuffix: String;
+      FSlurs: String; { TODO make a slur class }
+      FFermata: String; { TODO make a fermata class }
   public
     { Create a new list of pitches from the Lilypond input string for a single
       measure of music, and the key relevant to this music. Recursively create
@@ -201,6 +202,8 @@ TPitch = class
     { Go through measure list in which only slur starts and ends have been
       marked, and create slur elements connecting those notes. }
     procedure AddSlurs;
+
+    procedure AddFermatas;
   end;
 
   { Label to indicate whether we should assign all measures or just one. Used
@@ -332,6 +335,7 @@ begin
     'b': PitchName := pkB;
     'r': PitchName := pkRest;
     'R': PitchName := pkMeasureRest;
+    '' : PitchName  := pkNone;
     else 
     begin
       WriteLn(StdErr, 'Unrecognized pitch name, substituting C: input was ' + LyName);
@@ -375,6 +379,7 @@ begin
     '2.'      : Dur := dkMinimDotted;
     '4.'      : Dur := dkSemiminimDotted;
     '8.'      : Dur := dkFusaDotted;
+    ''        : Dur := dkNone;
     else
     begin
       WriteLn(StdErr, 'Unrecognized duration: ' + DurLy);
@@ -508,28 +513,26 @@ begin
   result := Position;
 end;
 
+function GetArticulations(Source: String): TArticulationSpec;
+var
+  Spec: TArticulationSpec = (FFermata: False; FStaccato: False; FAccent: False);
+begin
+  if Source.Contains('\fermata') then
+    Spec.FFermata := True;
+  if Source.Contains('\staccato') or Source.Contains('-.') then
+    Spec.FStaccato := True;
+  if Source.Contains('\accent') or Source.Contains('->') then
+    Spec.FAccent := True;
+  result := Spec;
+end;
 
 constructor TPitch.Create();
+var
+  Spec: TArticulationSpec = (FFermata: False; FStaccato: False; FAccent: False);
 begin
   inherited Create;
   FID := GenerateID;
-end;
-
-constructor TPitch.Create(ID: String; Name: TPitchName; Accid: TAccidental;
-  AccidType: TAccidType; Oct: Integer; Dur: TDuration; 
-  Tie: TMarkupPosition = mkNone; Slur: TMarkupPosition = mkNone; 
-  Annot: String = ''); 
-begin
-  inherited Create;
-  FID         := ID;
-  FPitchName  := Name;
-  FAccid      := Accid;
-  FAccidType  := AccidType;
-  FOct        := Oct;
-  FDur        := Dur;
-  FTie        := Tie;
-  FSlur       := Slur;
-  FAnnotation := Annot;
+  FArticulations := Spec;
 end;
 
 constructor TPitch.CreateFromLy(Source: String; Key: TKeyKind);
@@ -556,7 +559,7 @@ begin
   case Test of
     '1', '2', '4', '8' :
     begin
-      DurLy := ExtractWord(1, NoteStr, ['(', ')', '~', '\', '[', ']', '*', '<']);
+      DurLy := ExtractWord(1, NoteStr, ['(', ')', '~', '\', '[', ']', '*', '<', '-']);
       NoteStr := StringDropBefore(NoteStr, DurLy);
       EtcLy := NoteStr; 
     end;
@@ -575,7 +578,8 @@ begin
   end;
 
   FTie  := GetTie(EtcLy);
-  FSlur := GetSlur(EtcLy); 
+  FSlur := GetSlur(EtcLy);
+  FArticulations := GetArticulations(EtcLy); 
 
   FAnnotation := EtcLy; { TODO just holding surplus text in case we need it }
 end;
@@ -584,15 +588,16 @@ procedure TPitch.Assign(Source: TPitch);
 begin
   if Source <> nil then
   begin
-    FID         := Source.FID;
-    FPitchName  := Source.FPitchName;
-    FAccid      := Source.FAccid;
-    FAccidType  := Source.FAccidType;
-    FOct        := Source.FOct;
-    FDur        := Source.FDur;
-    FTie        := Source.FTie;
-    FSlur       := Source.FSlur;
-    FAnnotation := Source.FAnnotation;
+    FID            := Source.FID;
+    FPitchName     := Source.FPitchName;
+    FAccid         := Source.FAccid;
+    FAccidType     := Source.FAccidType;
+    FOct           := Source.FOct;
+    FDur           := Source.FDur;
+    FTie           := Source.FTie;
+    FSlur          := Source.FSlur;
+    FArticulations := Source.FArticulations;
+    FAnnotation    := Source.FAnnotation;
   end;
 end;
 
@@ -695,6 +700,23 @@ begin
   result := MEI;
 end;
 
+function TPitch.MEIArtic: String;
+  function Artic(Kind: String): String;
+  begin
+    result := XMLElement('artic', XMLAttribute('artic', Kind));
+  end;
+
+var
+  MEI: String = '';
+begin
+  { Fermata is handled separately in TMeasureList.AddFermatas }
+  if FArticulations.FStaccato then
+    MEI := MEI + Artic('stacc');
+  if FArticulations.FAccent then
+    MEI := MEI + Artic('acc');
+  result := MEI;
+end;
+
 function TPitch.PitchEq(P2: TPitch): Boolean;
 begin
   result := (FPitchName = P2.FPitchName) and (FAccid = P2.FAccid);
@@ -713,7 +735,8 @@ begin
     else
     begin
       MEI := XMLElement('note', Format('%s %s %s %s %s%s', 
-                [ID, MEIPname, MEIAccid, MEIOct, Dur, MEITie])); 
+                [ID, MEIPname, MEIAccid, MEIOct, Dur, MEITie]),
+                MEIArtic); 
     end;
   end;
   result := MEI;
@@ -727,7 +750,10 @@ var
 begin
   inherited Create;
   DebugLn('Trying to make new pitch list from string: ' + Source);
-      
+
+  { TODO replace full command strings }
+  Source := Source.Replace('\break', '');
+
   Notes := Source.Split([' ']);
   for ThisNote in Notes do
   begin
@@ -736,7 +762,7 @@ begin
       Self.Add(NewPitch)
     else
     begin
-      WriteLn(StdErr, 'Invalid Pitch found in source ''' + ThisNote + '''');
+      DebugLn('Invalid Pitch found in source ''' + ThisNote + '''');
       FreeAndNil(NewPitch);
     end;
   end;
@@ -754,8 +780,8 @@ begin
       NewPitch.Assign(ThisPitch);
       Self.Add(NewPitch);
     end;
-    FPrefix := Source.FPrefix;
-    FSuffix := Source.FSuffix;
+    FSlurs := Source.FSlurs;
+    FFermata := Source.FFermata;
   end;
 end;
 
@@ -765,18 +791,11 @@ var
   MEI: TStringListAAC;
 begin
   MEI := TStringListAAC.Create;
-  { TODO unused
-  if FPrefix <> '' then
-    MEI.Add(FPrefix);
-  }
-
   for ThisPitch in Self do
     MEI.Add(ThisPitch.ToMEI);
- 
-  { TODO we are pulling in these suffixes when converting to MEI measurewise
-  structure, so we get all the measure suffixes for each staff/voice together
-  if FSuffix <> '' then
-    MEI.Add(FSuffix);
+  { 
+  if FFermata <> '' then
+    MEI.Add(FFermata);
   }
   result := MEI;
 end;
@@ -1094,8 +1113,10 @@ begin
     for ThisPitchList in FMeasures do
     begin
       OutputStr := OutputStr + ThisPitchList.ToMEIString;
-      OutputStr := OutputStr + Format('PitchList SUFFIX: ''%s''', 
-                    [ThisPitchList.FSuffix]) + LineEnding; 
+      OutputStr := OutputStr + Format('PitchList slur SUFFIX: ''%s''', 
+                    [ThisPitchList.FSlurs]) + LineEnding; 
+      OutputStr := OutputStr + Format('PitchList fermata SUFFIX: ''%s''', 
+                    [ThisPitchList.FFermata]) + LineEnding; 
     end;
 
     OutputStr := OutputStr + Format('Measurelist suffix: ''%s''',
@@ -1121,8 +1142,10 @@ begin
     if (Node.FType = ekLayer) and (Node.FMeasures <> nil) then
     begin
       ThisMeasure := Node.FMeasures[MeasureIndex];
-      if ThisMeasure.FSuffix <> '' then
-          SuffixStr := Format('%s %s', [SuffixStr, ThisMeasure.FSuffix]);
+      if ThisMeasure.FSlurs <> '' then
+          SuffixStr := Format('%s %s', [SuffixStr, ThisMeasure.FSlurs]);
+      if ThisMeasure.FFermata <> '' then
+          SuffixStr := Format('%s %s', [SuffixStr, ThisMeasure.FFermata]);
       { TODO using a stringlist would be better, but using data objects for
       slur elements would be better yet }
     end;
@@ -1271,6 +1294,27 @@ begin
   result := MasterMEI;
 end;
 
+procedure TMeasureList.AddFermatas;
+var
+  ThisMeasure: TPitchList;
+  ThisPitch: TPitch;
+  PitchIndex: Integer;
+begin
+  for ThisMeasure in Self do
+  begin
+    PitchIndex := 0;
+    for PitchIndex := 0 to ThisMeasure.Count - 1 do
+    begin
+      ThisPitch := ThisMeasure[PitchIndex];
+      if ThisPitch.FArticulations.FFermata then
+      begin
+        ThisMeasure.FFermata:= ThisMeasure.FFermata + XMLElement('fermata',
+          XMLAttribute('startid', ThisPitch.FID)); 
+      end;
+    end;
+  end;
+end;
+
 procedure TMeasureList.AddTies;
 var
   ThisMeasure: TPitchList;
@@ -1351,7 +1395,7 @@ begin
         with ThisMeasure do
         begin
           { TODO use an object instead of XML string? }
-          FSuffix := FSuffix + XMLElement('slur',
+          FSlurs := FSlurs + XMLElement('slur',
             format('%s %s', [XMLAttribute('startid', '#' + StartID), 
                              XMLAttribute('endid', '#' + EndID)]));
         end;
@@ -1370,6 +1414,7 @@ begin
     begin
       Tree.FMeasures.AddTies;
       Tree.FMeasures.AddSlurs;
+      Tree.FMeasures.AddFermatas;
     end;
 
     if Tree.FChild <> nil then
@@ -1464,8 +1509,8 @@ begin
     '\RepeatBarEnd'   :
     '\Fine'           :
     '\FineEd'         :
-    '\break'          :
-    '\fermata'        :
+x    '\break'          :
+x    '\fermata'        :
   else
   end;
   
