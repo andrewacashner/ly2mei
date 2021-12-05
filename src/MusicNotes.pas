@@ -57,9 +57,10 @@ type
     mkEndStart {< end one and start another on same note }
   );
 
+  { Records which articulations a pitch has (correspond to MEI
+    @code(data.ARTICULATION) }
   TArticulationSpec = record
-    FFermata, FStaccato, FAccent: Boolean;
-    { TODO etc}
+    FFermata, FAccent, FStaccato, FTenuto, FStaccatissimo, FMarcato: Boolean;
   end; 
 
 type
@@ -122,7 +123,10 @@ TPitch = class
       duration. }
     function MEIDurDots: String;
 
+    { Generate the MEI @code(tie) attribute. }
     function MEITie: String;
+
+    { Generate one or more MEI @code(artic) elements within a @code(note). }
     function MEIArtic: String;
 
   public
@@ -203,6 +207,8 @@ TPitch = class
       marked, and create slur elements connecting those notes. }
     procedure AddSlurs;
 
+    { Go through measure list and add fermata elements within the MEI
+      @code(measure) linked to their notes by the @code(startid). }
     procedure AddFermatas;
   end;
 
@@ -275,7 +281,8 @@ TPitch = class
     { Convert the tree to a simple string representation for debugging. }
     function ToString: String; override;
 
-    { Fill in ties and slurs from the markers taken from Lilypond input. }
+    { Fill in ties, slurs, and fermatas from the markers taken from Lilypond
+      input. }
     procedure AddAnalyticalMarkup;
    
     { Combine all the @link(TMeasureList) suffixes in each measure element. }
@@ -495,17 +502,13 @@ end;
 { TODO this does not enable us to deal with multiple layers of slurs }
 function GetSlur(Source: String): TMarkupPosition;
 var
-  StartParensIndex, EndParensIndex: Integer;
   Position: TMarkupPosition = mkNone;
 begin
-  StartParensIndex := Source.IndexOf('(');
-  EndParensIndex := Source.IndexOf(')');
-
-  if (StartParensIndex <> -1) and (EndParensIndex <> -1) then
+  if Source.Contains('(') and Source.Contains(')') then
     Position := mkEndStart
-  else if StartParensIndex <> -1 then
+  else if Source.Contains('(') then 
     Position := mkStart
-  else if EndParensIndex <> -1 then
+  else if Source.Contains(')') then
     Position := mkEnd
   else
     Position := mkNone;
@@ -515,20 +518,37 @@ end;
 
 function GetArticulations(Source: String): TArticulationSpec;
 var
-  Spec: TArticulationSpec = (FFermata: False; FStaccato: False; FAccent: False);
+  Spec: TArticulationSpec = (
+    FFermata:   False; 
+    FAccent:    False; 
+    FStaccato:  False; 
+    FTenuto:    False; 
+    FStaccatissimo: False; 
+    FMarcato:   False; 
+  ); 
 begin
-  if Source.Contains('\fermata') then
-    Spec.FFermata := True;
-  if Source.Contains('\staccato') or Source.Contains('-.') then
-    Spec.FStaccato := True;
-  if Source.Contains('\accent') or Source.Contains('->') then
-    Spec.FAccent := True;
+  with Spec do
+  begin
+    FFermata  := Source.Contains('\fermata');
+    FAccent   := Source.Contains('\accent')   or Source.Contains('->');
+    FStaccato := Source.Contains('\staccato') or Source.Contains('-.');
+    FTenuto   := Source.Contains('\tenuto')   or Source.Contains('--');
+    FStaccatissimo := Source.Contains('\staccatissimo') or Source.Contains('-!');
+    FMarcato := Source.Contains('\marcato')   or Source.Contains('-^');
+  end;
   result := Spec;
 end;
 
 constructor TPitch.Create();
 var
-  Spec: TArticulationSpec = (FFermata: False; FStaccato: False; FAccent: False);
+ Spec: TArticulationSpec = (
+    FFermata:   False; 
+    FAccent:    False; 
+    FStaccato:  False; 
+    FTenuto:    False; 
+    FStaccatissimo: False; 
+    FMarcato:   False; 
+  ); 
 begin
   inherited Create;
   FID := GenerateID;
@@ -710,10 +730,20 @@ var
   MEI: String = '';
 begin
   { Fermata is handled separately in TMeasureList.AddFermatas }
-  if FArticulations.FStaccato then
-    MEI := MEI + Artic('stacc');
-  if FArticulations.FAccent then
-    MEI := MEI + Artic('acc');
+  with FArticulations do
+  begin
+    if FAccent then
+      MEI := MEI + Artic('acc');
+    if FStaccato then
+      MEI := MEI + Artic('stacc');
+    if FTenuto then
+      MEI := MEI + Artic('ten');
+    if FStaccatissimo then
+      MEI := MEI + Artic('stacciss');
+    if FMarcato then
+      MEI := MEI + Artic('marc');
+  end; 
+
   result := MEI;
 end;
 
@@ -1491,13 +1521,7 @@ end;
 
 end.
 
-{ TODO find and replace all the commands that have a simple one-to-one match }
-{
-function ReplaceCommand(Source: String): String;
-var
-  OutputStr: String;
-begin
-  case Source of
+{ TODO find and replace all the commands that have a simple one-to-one match 
     '\clef "treble"'  :
     '\clef "bass"'    :
     '\CantusMollis'   :
@@ -1511,10 +1535,8 @@ begin
     '\FineEd'         :
 x    '\break'          :
 x    '\fermata'        :
-  else
-  end;
-  
-  result := OutputStr;
-end;
-}
 
+  \color
+  \endcolor
+  [ ] (ligatures)
+}
