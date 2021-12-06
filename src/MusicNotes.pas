@@ -830,10 +830,11 @@ end;
 
 function ReplaceLyCommands(Source: String): String;
 var 
-  Translation: Array[0..2, 0..1] of String = ( 
+  Translation: Array[0..3, 0..1] of String = ( 
     ('\break', ''),  { ignore breaks }
     ('\[ ', '\['),   { group start ligature with next note }
-    (' \]', '\]')    { group end ligature with previous note }
+    (' \]', '\]'),   { group end ligature with previous note }
+    ('\colorOne', '') { TODO for now; not supported by MEI? }
   );
   PairIndex: Integer;
 begin

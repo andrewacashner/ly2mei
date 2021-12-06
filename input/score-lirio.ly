@@ -39,7 +39,7 @@ MusicT = {
   \clef "treble_8"
   \MeterDuple
   \CantusMollis
-  | a4 b4 c'4 d'4
+  | a4 b4 c'4\colorOne d'4
   | \[ d'4 c'4\color bes4\endcolor( a4) \]
 }
 LyricsT = \lyricmode {
