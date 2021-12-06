@@ -66,6 +66,9 @@ type
     FFermata, FAccent, FStaccato, FTenuto, FStaccatissimo, FMarcato: Boolean;
   end; 
 
+  { Types of bar lines }
+  TBarline = (bkNormal, bkMiddle, bkFinal, bkRepeatEnd, bkRepeatStart);
+  
   { @abstract(Internal data structure for a single pitch or rest.)
 
     Our internal structure for storing data for a pitch, using the labels
@@ -164,6 +167,7 @@ type
   end;
 
 
+
   { @abstract(A list of @link(TPitch) objects, corresponding to one measure of
      music.) }
   TPitchList = class(specialize TObjectList<TPitch>)
@@ -171,6 +175,7 @@ type
     var
       FLines: String; { TODO make a slur class }
       FFermata: String; { TODO make a fermata class }
+      FBarlineRight: TBarline;
   public
     { Create a new list of pitches from the Lilypond input string for a single
       measure of music, and the key relevant to this music. Recursively create
@@ -179,6 +184,10 @@ type
 
     { Deep copy of all pitches from another list to this one. }
     procedure Assign(Source: TPitchList);
+
+    procedure  SetBarlineRight(Source: String);
+
+    function MEIBarlineAttr: String;
 
     { Generate an MEI @code(measure) element, recursively generating the
       @code(note) elements it contains. }
@@ -884,7 +893,41 @@ begin
     end;
     FLines := Source.FLines;
     FFermata := Source.FFermata;
+    FBarlineRight := Source.FBarlineRight;
   end;
+end;
+
+procedure TPitchList.SetBarlineRight(Source: String);
+begin
+  FBarlineRight := bkNormal;
+  if Source.Contains('\FinalBar') or Source.Contains('\bar "|."') then
+    FBarlineRight := bkFinal
+  else if Source.Contains('\MiddleBar') or Source.Contains('\bar "||"') then
+    FBarlineRight := bkMiddle
+  else if Source.Contains('\RepeatBarEnd') or Source.Contains('\bar ":|."') then
+    FBarlineRight := bkRepeatEnd;
+  DebugLn('Set BARLINE to :');
+  {$ifdef DEBUG}WriteLn(FBarlineRight);{$endif}
+end;
+
+function TPitchList.MEIBarlineAttr: String;
+var 
+  Attr, MEI: String;
+begin
+  case FBarlineRight of
+    bkNormal    : Attr := '';
+    bkMiddle    : Attr := 'dbl';
+    bkFinal     : Attr := 'end';
+    bkRepeatEnd : Attr := 'rptend';
+  end;
+
+  if Attr = '' then
+    MEI := ''
+  else
+    MEI := XMLAttribute('right', Attr);
+ 
+  DebugLn('Made MEI Barline: ' + MEI);
+  result := MEI;
 end;
 
 function TPitchList.ToMEI: TStringListAAC;
@@ -895,10 +938,7 @@ begin
   MEI := TStringListAAC.Create;
   for ThisPitch in Self do
     MEI.Add(ThisPitch.ToMEI);
-  { 
-  if FFermata <> '' then
-    MEI.Add(FFermata);
-  }
+  
   result := MEI;
 end;
 
@@ -929,7 +969,7 @@ procedure TMeasureList.SetFromLy(Source: String);
 var
   Key: TKeyKind;
   LyLines: TStringListAAC;
-  SearchStr, ThisLine, MeasureStr: String;
+  SearchStr, ThisLine, TestLine, MeasureStr: String;
 begin
   { Find the key signature for this voice }
   SearchStr := Source.Substring(0, 800); 
@@ -939,12 +979,20 @@ begin
   LyLines := TStringListAAC.Create(Source);
   for ThisLine in LyLines do
   begin
-    if ThisLine.TrimLeft.StartsWith('\Section ') then
+    TestLine := ThisLine.TrimLeft;
+    if TestLine.StartsWith('\Section ') then
     begin
       DebugLn('Section heading found: ' + ThisLine);
       FPrefix := MEISectionHead(ThisLine);
     end
-    else if ThisLine.TrimLeft.StartsWith('|') then
+    
+    else if TestLine.StartsWith('\bar') or TestLine.Contains('Bar') then
+    begin
+      DebugLn('Barline found: ' + ThisLine);
+      Self.Last.SetBarlineRight(ThisLine);
+    end
+
+    else if TestLine.StartsWith('|') then
     begin
       MeasureStr := StringDropBefore(ThisLine, '| ');
 
@@ -1219,6 +1267,7 @@ begin
                     [ThisPitchList.FLines]) + LineEnding; 
       OutputStr := OutputStr + Format('PitchList fermata SUFFIX: ''%s''', 
                     [ThisPitchList.FFermata]) + LineEnding; 
+
     end;
 
     OutputStr := OutputStr + Format('Measurelist suffix: ''%s''',
@@ -1268,7 +1317,8 @@ end;
 function TMEIElement.StaffToMeasureTree: TMEIElement;
 var
   MeasureCount, MeasureNum: Integer;
-  MeasureTree, Root, Branch, Prefix, Suffix: TMEIElement;
+  MeasureTree, Root, Branch, Prefix, Suffix, Leaf: TMEIElement;
+  ThisMeasure: TPitchList;
   PrefixStr: String;
   SuffixStr: String = '';
   BeforeEndMeasureStr: String = '';
@@ -1286,6 +1336,15 @@ begin
 
     Branch := TMEIElement.Create;
     Branch.AssignTree(Self, mkOneMeasure, MeasureNum);
+
+    Leaf := Branch.LastChild;
+    if Leaf.FMeasures <> nil then
+    begin
+      ThisMeasure := Leaf.FMeasures.First;
+      if ThisMeasure.FBarlineRight <> bkNormal then
+        Root.FText := ThisMeasure.MEIBarlineAttr;
+        { TODO there must a better way }
+    end;
 
     BeforeEndMeasureStr := Self.ConcatMeasureSuffixes(MeasureNum);
     Branch.LastSibling.FSibling := TMEIElement.Create(ekXML, '', BeforeEndMeasureStr);
@@ -1356,6 +1415,14 @@ begin
       NewMeasure := Node.FMeasures.First.ToMEI;
       NewElement.AddStrings(NewMeasure);
       FreeAndNil(NewMeasure);
+    end
+    else
+    begin
+      if (Node.FType = ekMeasure) and (Node.FText <> '') then
+      begin
+        Attributes := Format('%s %s', [Attributes, Node.FText]);
+        DebugLn('Add Barline attribute to Measure: ' + Attributes);
+      end;
     end;
 
     if Node.FChild <> nil then
@@ -1368,15 +1435,22 @@ begin
       Attributes := XMLAttribute('n', IntToStr(Node.FNum));
       if Node.FType = ekStaff then
       begin
-        Attributes := format('%s %s', 
+        Attributes := Format('%s %s', 
           [Attributes,  XMLAttribute('def', '#' + Node.FID)]);
       end
       else if Node.FID <> '' then
       begin
-        Attributes := format('%s %s', 
+        Attributes := Format('%s %s', 
           [Attributes, XMLAttribute('xml:id', Node.FID)]);
       end;
+     
+      if (Node.FType = ekMeasure) and (Node.FText <> '') then
+      begin
+        Attributes := Format('%s %s', [Attributes, Node.FText]);
+        DebugLn('Add Barline attribute to Measure: ' + Attributes);
+      end;
       
+
       NewElement.EncloseInXML(Node.FName, Attributes);
     end;
 
@@ -1663,7 +1737,7 @@ end.
 x    '\break'          :
 x    '\fermata'        :
 
-  \color
-  \endcolor
-  [ ] (ligatures)
+x  \color
+x  \endcolor
+x  \[ \] (ligatures)
 }

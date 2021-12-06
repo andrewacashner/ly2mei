@@ -11,7 +11,9 @@ MusicS = {
   \CantusMollis
   \Section "DEMONSTRACIÓN"
   | c'4 d'4( e'4 f'4~\color
+  \MiddleBar
   | f'4 e'4)\endcolor d'4 c'4
+  \RepeatBarEnd
 }
 LyricsS = \lyricmode {
   Me -- lis -- ma -- ta 

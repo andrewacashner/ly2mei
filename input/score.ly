@@ -10,6 +10,7 @@ MusicS = {
   \key f\major
   | c''4(-^ c''4 a'2() \break
   | bes'4) a'2-- c''4\fermata
+  \bar "|."
 }
 LyricsS = \lyricmode {
   syn -- co -- pa
