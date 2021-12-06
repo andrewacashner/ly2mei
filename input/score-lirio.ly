@@ -10,11 +10,11 @@ MusicS = {
   \MeterDuple
   \CantusMollis
   \Section "DEMONSTRACIÓN"
-  | c'4 d'4( e'4 f'4~
-  | f'4 e'4) d'4 c'4
+  | c'4 d'4( e'4 f'4~\color
+  | f'4 e'4)\endcolor d'4 c'4
 }
 LyricsS = \lyricmode {
-  Me -- lis -- ma --ta 
+  Me -- lis -- ma -- ta 
 }
 
 MusicSII = {
@@ -28,8 +28,8 @@ MusicA = {
   \clef "alto"
   \MeterDuple
   \CantusMollis
-  | c'4( d'4 e'4) f'4~
-  | f'4 e'4 d'4 c'4
+  | \[ c'4( d'4 \] e'4) f'4~
+  | f'4 e'4\color d'4 c'4\endcolor
 }
 LyricsA = \lyricmode {
   Can -- ción de no -- tas
@@ -40,7 +40,7 @@ MusicT = {
   \MeterDuple
   \CantusMollis
   | a4 b4 c'4 d'4
-  | d'4 c'4 bes4( a4)
+  | \[ d'4 c'4\color bes4\endcolor( a4) \]
 }
 LyricsT = \lyricmode {
   mun -- dum sub -- ter -- ra -- ne -- um

@@ -57,13 +57,15 @@ type
     mkEndStart {< end one and start another on same note }
   );
 
+  { Label for types of lines extending from one note to another }
+  TLineKind = (lkNone, lkSlur, lkColoration, lkLigature);
+
   { Records which articulations a pitch has (correspond to MEI
     @code(data.ARTICULATION) }
   TArticulationSpec = record
     FFermata, FAccent, FStaccato, FTenuto, FStaccatissimo, FMarcato: Boolean;
   end; 
 
-type
   { @abstract(Internal data structure for a single pitch or rest.)
 
     Our internal structure for storing data for a pitch, using the labels
@@ -72,7 +74,7 @@ type
 
     This class also represents rests, when the @code(FPitchName) field is set
     to @code(pkRest) or @code(pkMeasureRest). } 
-TPitch = class
+  TPitch = class
   private 
     var
       { From automatically generated GUID }
@@ -98,9 +100,15 @@ TPitch = class
         (start/middle/end)? }
       FTie: TMarkupPosition;
 
-      { Label indicated whether a slur is connected to this note, and if so,
+      { Label indicates whether a slur is connected to this note, and if so,
          its position }
       FSlur: TMarkupPosition;
+
+      { Label indicates position of note in a coloration bracket, if any }
+      FColoration: TMarkupPosition;
+
+      { Label indicates position of note in a ligature bracket, if any }
+      FLigature: TMarkupPosition;
 
       { Record with boolean flags for possible articulation labels }
       FArticulations: TArticulationSpec;
@@ -161,7 +169,7 @@ TPitch = class
   TPitchList = class(specialize TObjectList<TPitch>)
   private
     var
-      FSlurs: String; { TODO make a slur class }
+      FLines: String; { TODO make a slur class }
       FFermata: String; { TODO make a fermata class }
   public
     { Create a new list of pitches from the Lilypond input string for a single
@@ -203,9 +211,11 @@ TPitch = class
       of the tie. }
     procedure AddTies;
     
-    { Go through measure list in which only slur starts and ends have been
-      marked, and create slur elements connecting those notes. }
-    procedure AddSlurs;
+    { Go through measure list in which line starts and ends have been
+      marked in the @link(TPitch) elements, and create MEI line elements
+      connecting those notes. Used for slurs, coloration brackets, and
+      ligature brackets (MEI @code(slur) and @code(bracketSpan) elements). }
+    procedure AddLines(LineKind: TLineKind);
 
     { Go through measure list and add fermata elements within the MEI
       @code(measure) linked to their notes by the @code(startid). }
@@ -345,7 +355,7 @@ begin
     '' : PitchName  := pkNone;
     else 
     begin
-      WriteLn(StdErr, 'Unrecognized pitch name, substituting C: input was ' + LyName);
+      WriteLn(StdErr, 'Unrecognized pitch name: ' + LyName);
       PitchName := pkNone;
     end;
   end;
@@ -499,21 +509,58 @@ begin
   result := Position;
 end;
 
-{ TODO this does not enable us to deal with multiple layers of slurs }
-function GetSlur(Source: String): TMarkupPosition;
+function GetLinePosition(LineKind: TLineKind; Source: String): TMarkupPosition;
 var
   Position: TMarkupPosition = mkNone;
+  StartMark, EndMark: String;
 begin
-  if Source.Contains('(') and Source.Contains(')') then
+  case LineKind of
+    lkSlur :
+    begin
+      StartMark := '(';
+      EndMark   := ')';
+    end;
+
+    lkColoration :
+    begin
+      StartMark := '\color';
+      EndMark   := '\endcolor';
+    end;
+
+    lkLigature :
+    begin
+      StartMark := '\[';
+      EndMark   := '\]';
+    end;
+    { TODO deal with 'prefix' notation in Lilypond }
+  end;
+  if Source.Contains(StartMark) and Source.Contains(EndMark) then
     Position := mkEndStart
-  else if Source.Contains('(') then 
+  else if Source.Contains(StartMark) then 
     Position := mkStart
-  else if Source.Contains(')') then
+  else if Source.Contains(EndMark) then
     Position := mkEnd
   else
     Position := mkNone;
 
   result := Position;
+end;
+
+
+{ TODO this does not enable us to deal with multiple layers of slurs }
+function GetSlur(Source: String): TMarkupPosition;
+begin
+  result := GetLinePosition(lkSlur, Source);
+end;
+
+function GetColoration(Source: String): TMarkupPosition;
+begin
+  result := GetLinePosition(lkColoration, Source);
+end;
+
+function GetLigature(Source: String): TMarkupPosition;
+begin
+  result := GetLinePosition(lkLigature, Source);
 end;
 
 function GetArticulations(Source: String): TArticulationSpec;
@@ -597,8 +644,10 @@ begin
     FAccidType := GetAccidType(FPitchName, FAccid, Key);
   end;
 
-  FTie  := GetTie(EtcLy);
-  FSlur := GetSlur(EtcLy);
+  FTie           := GetTie(EtcLy);
+  FSlur          := GetSlur(EtcLy);
+  FColoration    := GetColoration(EtcLy);
+  FLigature      := GetLigature(EtcLy);
   FArticulations := GetArticulations(EtcLy); 
 
   FAnnotation := EtcLy; { TODO just holding surplus text in case we need it }
@@ -616,6 +665,8 @@ begin
     FDur           := Source.FDur;
     FTie           := Source.FTie;
     FSlur          := Source.FSlur;
+    FColoration    := Source.FColoration;
+    FLigature      := Source.FLigature;
     FArticulations := Source.FArticulations;
     FAnnotation    := Source.FAnnotation;
   end;
@@ -714,6 +765,8 @@ begin
       mkStart    : Position := 'i';
       mkMiddle   : Position := 'm';
       mkEnd      : Position := 't';
+      { TODO what about mkEndStart }
+      { TODO what about colorOne }
     end;
     MEI := ' ' + XMLAttribute('tie', Position);
   end;
@@ -810,7 +863,7 @@ begin
       NewPitch.Assign(ThisPitch);
       Self.Add(NewPitch);
     end;
-    FSlurs := Source.FSlurs;
+    FLines := Source.FLines;
     FFermata := Source.FFermata;
   end;
 end;
@@ -1143,8 +1196,8 @@ begin
     for ThisPitchList in FMeasures do
     begin
       OutputStr := OutputStr + ThisPitchList.ToMEIString;
-      OutputStr := OutputStr + Format('PitchList slur SUFFIX: ''%s''', 
-                    [ThisPitchList.FSlurs]) + LineEnding; 
+      OutputStr := OutputStr + Format('PitchList line SUFFIX: ''%s''', 
+                    [ThisPitchList.FLines]) + LineEnding; 
       OutputStr := OutputStr + Format('PitchList fermata SUFFIX: ''%s''', 
                     [ThisPitchList.FFermata]) + LineEnding; 
     end;
@@ -1172,8 +1225,8 @@ begin
     if (Node.FType = ekLayer) and (Node.FMeasures <> nil) then
     begin
       ThisMeasure := Node.FMeasures[MeasureIndex];
-      if ThisMeasure.FSlurs <> '' then
-          SuffixStr := Format('%s %s', [SuffixStr, ThisMeasure.FSlurs]);
+      if ThisMeasure.FLines <> '' then
+          SuffixStr := Format('%s %s', [SuffixStr, ThisMeasure.FLines]);
       if ThisMeasure.FFermata <> '' then
           SuffixStr := Format('%s %s', [SuffixStr, ThisMeasure.FFermata]);
       { TODO using a stringlist would be better, but using data objects for
@@ -1380,72 +1433,107 @@ begin
   end;
 end;
 
-procedure TMeasureList.AddSlurs;
+
+procedure TMeasureList.AddLines(LineKind: TLineKind);
 var 
   ThisMeasure: TPitchList;
   ThisPitch: TPitch;
-  FoundSlurStart, FoundSlurEnd: Boolean;
+  FoundStart, FoundEnd: Boolean;
   StartID, EndID: String;
   MeasureNum: Integer;
+  LinePosition: TMarkupPosition;
+  ElementName, LocationAttr, FunctionAttr, MEI: String;
 begin
-  FoundSlurStart := False;
-  FoundSlurEnd := False;
+  DebugLn('Looking for line type:'); {$ifdef DEBUG}WriteLn(LineKind);{$endif}
+  FoundStart := False;
+  FoundEnd := False;
   for MeasureNum := 0 to Self.Count - 1 do
   begin
     ThisMeasure := Self[MeasureNum];
     
     for ThisPitch in ThisMeasure do 
     begin
-      case ThisPitch.FSlur of
+      case LineKind of
+        lkSlur : 
+        begin
+          LinePosition := ThisPitch.FSlur;
+          ElementName := 'slur';
+          FunctionAttr := '';
+        end;
+
+        lkColoration : 
+        begin
+          LinePosition := ThisPitch.FColoration;
+          ElementName := 'bracketSpan';
+          FunctionAttr := ' ' + XMLAttribute('func', 'coloration');
+        end;
+
+        lkLigature : 
+        begin
+          LinePosition := ThisPitch.FLigature;
+          ElementName := 'bracketSpan';
+          FunctionAttr := Format(' %s %s', [XMLAttribute('func', 'ligature'),
+                                           XMLAttribute('lform', 'solid')]);
+        end;
+      end;
+
+      case LinePosition of
         mkStart :
         begin
-          if not FoundSlurStart then
+          if not FoundStart then
           begin
-            FoundSlurStart := True;
+            FoundStart := True;
             StartID := ThisPitch.FID;
-            DEBUGLN('Found slur start on ID ' + StartID);
+            DEBUGLN('Found line start on ID ' + StartID);
           end;
         end;
 
         mkEnd :
         begin
-          if FoundSlurStart then
+          if FoundStart then
           begin
-            FoundSlurEnd := True;
+            FoundEnd := True;
             EndID := ThisPitch.FID;
-            DEBUGLN('Found slur end on ID ' + EndID);
-            FoundSlurStart := False;
+            DEBUGLN('Found line end on ID ' + EndID);
+            FoundStart := False;
           end;
         end;
       end;
 
-      if FoundSlurEnd then
+      if FoundEnd then
       begin
-        DebugLn('FOUND A SLUR');
+        DebugLn('FOUND A LINE');
         with ThisMeasure do
         begin
           { TODO use an object instead of XML string? }
-          FSlurs := FSlurs + XMLElement('slur',
-            format('%s %s', [XMLAttribute('startid', '#' + StartID), 
-                             XMLAttribute('endid', '#' + EndID)]));
+          LocationAttr := Format('%s %s', [XMLAttribute('startid', '#' + StartID), 
+                                           XMLAttribute('endid', '#' + EndID)]);
+         
+          MEI := XMLElement(ElementName, LocationAttr + FunctionAttr);
+          FLines := Flines + MEI;
         end;
-        FoundSlurEnd := False;
+        FoundEnd := False;
       end;
     end;
   end;
 end;
 
 procedure TMEIElement.AddAnalyticalMarkup;
+procedure MeasureListDo(List: TMeasureList);
+begin
+  List.AddTies;
+  List.AddLines(lkSlur);
+  List.AddLines(lkColoration);
+  List.AddLines(lkLigature);
+  List.AddFermatas;
+end;
+
 function InnerMarkup(Tree: TMEIElement): TMEIElement;
 begin
   if Tree <> nil then
   begin
     if (Tree.FType = ekLayer) and (Tree.FMeasures <> nil) then
-    begin
-      Tree.FMeasures.AddTies;
-      Tree.FMeasures.AddSlurs;
-      Tree.FMeasures.AddFermatas;
-    end;
+      MeasureListDo(Tree.FMeasures);
 
     if Tree.FChild <> nil then
       Tree.FChild := InnerMarkup(Tree.FChild);
@@ -1455,6 +1543,7 @@ begin
   end;
   result := Tree;
 end;
+
 begin
   InnerMarkup(Self);
 end;

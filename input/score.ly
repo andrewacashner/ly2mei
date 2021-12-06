@@ -12,7 +12,7 @@ MusicS = {
   | bes'4) a'2-- c''4\fermata
 }
 LyricsS = \lyricmode {
-  One two syn -- co -- pa
+  One syn -- co -- pa
 }
 
 MusicSII = {
