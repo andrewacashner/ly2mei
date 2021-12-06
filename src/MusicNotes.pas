@@ -608,6 +608,11 @@ var
 begin
   Self.Create;
   NoteStr := Source;
+
+  { Move ligatures to after note (where Lilypond docs admit they should be!) }
+  if NoteStr.StartsWith('\[') then
+    NoteStr := NoteStr.Substring(2) + '\[';
+
   PitchNameLy := ExtractWord(1, NoteStr, [',', '''', '1', '2', '4', '8', '\']);
   NoteStr := StringDropBefore(NoteStr, PitchNameLy);
   
@@ -765,8 +770,6 @@ begin
       mkStart    : Position := 'i';
       mkMiddle   : Position := 'm';
       mkEnd      : Position := 't';
-      { TODO what about mkEndStart }
-      { TODO what about colorOne }
     end;
     MEI := ' ' + XMLAttribute('tie', Position);
   end;
@@ -825,6 +828,21 @@ begin
   result := MEI;
 end;
 
+function ReplaceLyCommands(Source: String): String;
+var 
+  Translation: Array[0..2, 0..1] of String = ( 
+    ('\break', ''),  { ignore breaks }
+    ('\[ ', '\['),   { group start ligature with next note }
+    (' \]', '\]')    { group end ligature with previous note }
+  );
+  PairIndex: Integer;
+begin
+  for PairIndex := 0 to Length(Translation) - 1 do
+    Source := Source.Replace(Translation[PairIndex][0], Translation[PairIndex][1]);
+
+  result := Source;
+end;
+
 constructor TPitchList.CreateFromLy(Source: String; Key: TKeyKind);
 var
   ThisNote: String;
@@ -835,7 +853,7 @@ begin
   DebugLn('Trying to make new pitch list from string: ' + Source);
 
   { TODO replace full command strings }
-  Source := Source.Replace('\break', '');
+  Source := ReplaceLyCommands(Source);
 
   Notes := Source.Split([' ']);
   for ThisNote in Notes do
@@ -1438,15 +1456,17 @@ procedure TMeasureList.AddLines(LineKind: TLineKind);
 var 
   ThisMeasure: TPitchList;
   ThisPitch: TPitch;
-  FoundStart, FoundEnd: Boolean;
-  StartID, EndID: String;
+  FoundStart, FoundEnd, FoundEndStart: Boolean;
+  StartID, EndID, NextStartID: String;
   MeasureNum: Integer;
   LinePosition: TMarkupPosition;
   ElementName, LocationAttr, FunctionAttr, MEI: String;
 begin
   DebugLn('Looking for line type:'); {$ifdef DEBUG}WriteLn(LineKind);{$endif}
-  FoundStart := False;
-  FoundEnd := False;
+  FoundStart    := False;
+  FoundEnd      := False;
+  FoundEndStart := False;
+
   for MeasureNum := 0 to Self.Count - 1 do
   begin
     ThisMeasure := Self[MeasureNum];
@@ -1484,7 +1504,7 @@ begin
           begin
             FoundStart := True;
             StartID := ThisPitch.FID;
-            DEBUGLN('Found line start on ID ' + StartID);
+            DebugLn('Found line start on ID ' + StartID);
           end;
         end;
 
@@ -1494,9 +1514,23 @@ begin
           begin
             FoundEnd := True;
             EndID := ThisPitch.FID;
-            DEBUGLN('Found line end on ID ' + EndID);
             FoundStart := False;
+            DebugLn('Found line end on ID ' + EndID);
           end;
+        end;
+
+        mkEndStart :
+        begin
+          if FoundStart then
+          begin
+            FoundEndStart := True;
+            FoundEnd := True;
+            EndID := ThisPitch.FID;
+          end;
+          
+          FoundStart := True;
+          NextStartID := ThisPitch.FID;
+          DebugLn('Found line end and start on ID ' + EndID);
         end;
       end;
 
@@ -1514,6 +1548,9 @@ begin
         end;
         FoundEnd := False;
       end;
+
+      if FoundEndStart then
+        StartID := NextStartID;
     end;
   end;
 end;

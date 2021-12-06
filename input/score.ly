@@ -8,11 +8,11 @@ MusicS = {
   \clef "treble"
   \time 4/4
   \key f\major
-  | c''4-^ c''4( a'2 \break
+  | c''4(-^ c''4 a'2() \break
   | bes'4) a'2-- c''4\fermata
 }
 LyricsS = \lyricmode {
-  One syn -- co -- pa
+  syn -- co -- pa
 }
 
 MusicSII = {
@@ -26,11 +26,11 @@ MusicA = {
   \clef "treble"
   \time 4/4
   \key f\major
-  | c'4(\tenuto d'4-!) e'4 f'4->~
-  | f'4 e'4\marcato d'4 c'4\fermata
+  | c'4(\tenuto d'4-!) e'4 \[ f'4->(~
+  | f'4 e'4)(\marcato \] d'4 c'4\fermata)
 }
 LyricsA = \lyricmode {
-  Ri -- sing tied __ notes go down
+  Ma -- ny slurs
 }
 
 MusicT = {
