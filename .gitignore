@@ -3,3 +3,4 @@ build/
 doc/
 *.swp
 .*.swp
+*.o
