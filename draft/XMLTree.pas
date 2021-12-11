@@ -21,10 +21,13 @@ type
       FChild: TXMLNode;
       FSibling: TXMLNode;
   public
-    constructor Create(Name: String; IDStr: String = ''; TextStr: String = '');
+    constructor Create(Name: String; IDStr: String = ''; 
+      TextStr: String = '');
     destructor Destroy; override;
     function ToString: String; override;
     procedure AddAttribute(Key, Value: String);
+    function AddChild(Child: TXMLNode): TXMLNode;
+    function AddParent(Parent: TXMLNode): TXMLNode;
   end;
 
 function XMLAttributeString(Key, Value: String): String;
@@ -36,12 +39,20 @@ function TXMLAttributeList.ToString: String;
 var
   ThisAttribute: TXMLAttributeList.TDictionaryPair;
   XML: String = '';
+  Index: Integer = 0;
 begin
   if Count > 0 then 
   begin
     for ThisAttribute in Self do
-      XML := Format('%s %s', [XML, 
-        XMLAttributeString(ThisAttribute.Key, ThisAttribute.Value)]);
+    begin
+      if Index > 1 then 
+        XML := XML + ' ';
+      
+      XML := XML + XMLAttributeString(ThisAttribute.Key, 
+        ThisAttribute.Value); 
+
+      Inc(Index);
+    end;
   end;
   result := XML;
 end;
@@ -111,13 +122,44 @@ begin
   FAttributes.Add(Key, Value);
 end;
 
-var
-  Root: TXMLNode;
+function TXMLNode.AddChild(Child: TXMLNode): TXMLNode;
 begin
-  Root := TXMLNode.Create('score');
-  Root.AddAttribute('n', '1');
-  Root.AddAttribute('type', 'test');
+  FChild := Child;
+  if Assigned(Child) then
+    Child.FParent := Self;
 
-  WriteLn(Root.ToString);
-  FreeAndNil(Root);
+  result := Self;
+end;
+
+function TXMLNode.AddParent(Parent: TXMLNode): TXMLNode;
+begin
+  FParent := Parent;
+  if Assigned(Parent) then
+    Parent.FChild:= Self;
+
+  result := Self;
+end;
+
+
+var
+  Measure, Staff, Layer, Note: TXMLNode;
+begin
+  Measure := TXMLNode.Create('measure');
+  Measure.AddAttribute('n', '1');
+
+  Staff := TXMLNode.Create('staff', 's-Soprano');
+  Staff.AddAttribute('n', '1');
+
+  Layer := TXMLNode.Create('layer', 'soprano');
+  Layer.AddAttribute('n', '1');
+
+  Note := TXMLNode.Create('note');
+  Note.AddAttribute('pname', 'c');
+  Note.AddAttribute('dur', '4');
+
+  Note.AddParent(Layer.AddParent(Staff.AddParent(Measure)));
+//  Measure := Measure.AddChild(Staff.AddChild(Layer.AddChild(Note)));
+
+  WriteLn(Measure.ToString);
+  FreeAndNil(Measure);
 end.
