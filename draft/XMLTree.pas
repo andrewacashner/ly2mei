@@ -14,9 +14,8 @@ type
   private
     var
       FName: String;
-      FID: String;
-      FText: String;
       FAttributes: TXMLAttributeList;
+      FText: String;
       FParent: TXMLNode;
       FChild: TXMLNode;
       FSibling: TXMLNode;
@@ -24,9 +23,10 @@ type
     constructor Create(Name: String; IDStr: String = ''; 
       TextStr: String = '');
     destructor Destroy; override;
-    function ToString: String; override;
+    function ToString(Indent: Integer = 0): String;
     procedure AddAttribute(Key, Value: String);
     function AddChild(Child: TXMLNode): TXMLNode;
+    function AddSibling(Sibling: TXMLNode): TXMLNode;
     function AddParent(Parent: TXMLNode): TXMLNode;
   end;
 
@@ -45,8 +45,8 @@ begin
   begin
     for ThisAttribute in Self do
     begin
-      if Index > 1 then 
-        XML := XML + ' ';
+      if Index > 0 then 
+        XML := XML + ' '; 
       
       XML := XML + XMLAttributeString(ThisAttribute.Key, 
         ThisAttribute.Value); 
@@ -65,18 +65,20 @@ var
 begin
   inherited Create;
   FName := Name;
-  FText := TextStr;
  
-  FID := IDStr;
-  if FID = '' then
+  if IDStr = '' then
   begin
     Test := CreateGUID(NewGUID);
     if Test = 0 then
-      FID := GUIDToString(NewGUID);
+      IDStr := GUIDToString(NewGUID).Trim(['{', '}']);
   end;
 
-  FAttributes := TXMLAttributeList.Create;
+  IDStr := Format('%s_%s', [Name, IDStr]);
 
+  FAttributes := TXMLAttributeList.Create;
+  FAttributes.Add('xml:id', IDStr);
+
+  FText := TextStr;
   FParent := nil;
   FChild := nil;
   FSibling := nil;
@@ -86,49 +88,40 @@ destructor TXMLNode.Destroy;
 begin
   FreeAndNil(FAttributes);
 
-  if FChild <> nil then
+  if Assigned(FChild) then
     FChild.Destroy;
 
-  if FSibling <> nil then
+  if Assigned(FSibling) then
     FSibling.Destroy;
 
   inherited Destroy;
 end;
 
-function TXMLNode.ToString: String;
+function TXMLNode.ToString(Indent: Integer = 0): String;
 var
-  XML, ID, Attributes: String;
+  XML, Attributes, IndentStr: String;
 begin
-  ID := XMLAttributeString('xml:id', FID);
-
+  IndentStr := Space(Indent * 2);
   Attributes := FAttributes.ToString;
-  if Attributes = '' then
-    Attributes := ID
-  else
-    Attributes := Format('%s %s', [ID, Attributes]);
 
-  if FChild <> nil then
-    FText := FText + FChild.ToString;
+  if Assigned(FChild) then
+  begin
+    FText := FText + LineEnding
+              + FChild.ToString(Indent + 1) + LineEnding + IndentStr;
+  end;
 
-  if FSibling <> nil then
-    FText := FText + FSibling.ToString;
+  XML := Format('%s<%s %s>%s</%s>', 
+          [IndentStr, FName, Attributes, FText, FName]);
+  
+  if Assigned(FSibling) then
+    XML := XML + LineEnding + FSibling.ToString(Indent);
 
-  XML := Format('<%s %s>%s</%s>', [FName, Attributes, FText, FName]);
   result := XML;
 end;
 
 procedure TXMLNode.AddAttribute(Key, Value: String);
 begin
   FAttributes.Add(Key, Value);
-end;
-
-function TXMLNode.AddChild(Child: TXMLNode): TXMLNode;
-begin
-  FChild := Child;
-  if Assigned(Child) then
-    Child.FParent := Self;
-
-  result := Self;
 end;
 
 function TXMLNode.AddParent(Parent: TXMLNode): TXMLNode;
@@ -140,9 +133,38 @@ begin
   result := Self;
 end;
 
+function TXMLNode.AddChild(Child: TXMLNode): TXMLNode;
+begin
+  FChild := Child;
+  if Assigned(Child) then
+    Child.FParent := Self;
+
+  result := Self;
+end;
+
+function TXMLNode.AddSibling(Sibling: TXMLNode): TXMLNode;
+begin
+  FSibling := Sibling;
+  if Assigned(Sibling) then
+    Sibling.FParent := FParent;
+
+  result := Self;
+end;
+
+function XMLDocument(Tree: TXMLNode): String;
+const
+ XMLDeclaration: String = '<?xml version="1.0" encoding="UTF-8"?>' + LineEnding;
+var
+ XML: String = '';
+begin
+  if Assigned(Tree) then
+    XML := XMLDeclaration + Tree.ToString;
+
+  result := XML;
+end;
 
 var
-  Measure, Staff, Layer, Note: TXMLNode;
+  Measure, Staff, Layer, Note1, Note2, Note1Accid: TXMLNode;
 begin
   Measure := TXMLNode.Create('measure');
   Measure.AddAttribute('n', '1');
@@ -153,13 +175,24 @@ begin
   Layer := TXMLNode.Create('layer', 'soprano');
   Layer.AddAttribute('n', '1');
 
-  Note := TXMLNode.Create('note');
-  Note.AddAttribute('pname', 'c');
-  Note.AddAttribute('dur', '4');
+  Note1 := TXMLNode.Create('note');
+  Note1.AddAttribute('pname', 'c');
+  Note1.AddAttribute('dur', '4');
 
-  Note.AddParent(Layer.AddParent(Staff.AddParent(Measure)));
-//  Measure := Measure.AddChild(Staff.AddChild(Layer.AddChild(Note)));
+  Note1Accid := TXMLNode.Create('accid');
+  Note1Accid.AddAttribute('accid', 'f');
 
-  WriteLn(Measure.ToString);
+  Note2 := TXMLNode.Create('note');
+  Note2.AddAttribute('pname', 'c');
+  Note2.AddAttribute('dur', '4');
+
+  Measure.AddChild(Staff);
+  Staff.AddChild(Layer);
+  Layer.AddChild(Note1);
+  Note1.AddSibling(Note2);
+  Note1.AddChild(Note1Accid);
+
+  WriteLn(XMLDocument(Measure));
   FreeAndNil(Measure);
+
 end.
