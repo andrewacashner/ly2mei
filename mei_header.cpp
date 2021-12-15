@@ -12,13 +12,10 @@
 #include <string>
 #include <map>
 
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated"
 #include <mei/mei.h>
 #include <mei/header.h>
 #include <mei/shared.h>
 #include <mei/xmlexport.h>
-#pragma clang diagnostic pop
 
 /* CONSTANTS */
 /* The name of this program */
