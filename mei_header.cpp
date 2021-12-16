@@ -80,7 +80,7 @@ std::string balanced_delimiter_substring(std::string source,
     if (start_index != std::string::npos) {
         int brace_level = 0;
         size_t end_index = start_index;
-        for (auto &c : source) {
+        for (auto& c : source) {
             if (c == start_delim) {
                 ++brace_level;
             } else if (c == end_delim) {
@@ -357,7 +357,7 @@ mei::MeiHead* create_header(mei::MeiHead *meiHead, dictionary dict) {
         mei::SourceDesc *sourceDesc     = new mei::SourceDesc();
         mei::EncodingDesc *encodingDesc = new mei::EncodingDesc();
      
-        for (const auto& [key, value] : dict) {
+        for (auto& [key, value] : dict) {
             if (key == "title") {
                 titleStmt = mei_titleStmt_add_maintitle(titleStmt, value);
             } else if (key == "subtitle") {
