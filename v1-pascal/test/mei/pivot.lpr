@@ -154,5 +154,19 @@ begin
   WriteMeiDocument(MeiRoot);
 
   FreeAndNil(LyRoot);
+
+  { Find parts of tree. Not copying, just getting pointers to nodes. }
+  LyRoot := MeiRoot.FindElementByAttribute('staff', 'n', '2');
+  if Assigned(LyRoot) then
+    WriteMeiDocument(LyRoot);
+  
+  LyRoot := MeiRoot.FindElementByAttribute('staff', 'label', 'Soprano');
+  if Assigned(LyRoot) then
+    WriteMeiDocument(LyRoot);
+
   FreeAndNil(MeiRoot);
 end.
+{
+for measure n: extract staff attributes
+  for each staff, copy tree: voices/measure[n]/notes
+}

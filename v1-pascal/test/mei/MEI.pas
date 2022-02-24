@@ -52,6 +52,8 @@ type
     function AppendSibling(Sibling: TMeiNode): TMeiNode;
 
     procedure Assign(SourceNode: TMeiNode);
+
+    function FindElementByAttribute(Name, Key, Value: String): TMeiNode;
   end;
 
 const
@@ -258,6 +260,33 @@ begin
     FSibling := TMeiNode.Create();
     FSibling.Assign(SourceNode.FSibling);
   end;
+end;
+
+{ Return the first node that matches the name and attribute pair.
+  Does not copy the tree, just returns the pointer to its root. }
+function TMeiNode.FindElementByAttribute(Name, Key, Value: String): TMeiNode;
+var
+  ValueTest: String;
+  FoundNode: TMeiNode = nil;
+begin
+  if (FName = Name) 
+    and FAttributes.TryGetValue(Key, ValueTest)
+    and (ValueTest = Value) then
+  begin
+    FoundNode := Self;
+  end;
+
+  if (not Assigned(FoundNode)) and Assigned(FChild) then
+  begin
+    FoundNode := FChild.FindElementByAttribute(Name, Key, Value);
+  end;
+  
+  if (not Assigned(FoundNode)) and Assigned(FSibling) then
+  begin
+    FoundNode := FSibling.FindElementByAttribute(Name, Key, Value);
+  end;
+
+  result := FoundNode;
 end;
 
 procedure WriteMEIDocument(Root: TMeiNode);
