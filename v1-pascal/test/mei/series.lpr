@@ -6,47 +6,40 @@ program series(output);
 
 uses SysUtils, MEI;
 
-var
-  Root, M1, M2, M3, M4, M5, ThisNode, SelectedNode: TMeiNode;
-  ThisCount: Integer;
-const
-  Max: Integer = 5;
+function CreateMeasureN(MeasureNum: Integer): TMeiNode;
+var NewMeasure: TMeiNode;
+begin
+  NewMeasure := TMeiNode.Create('measure');
+  NewMeasure.AddAttribute('n', Format('%d', [MeasureNum]));
+  result := NewMeasure;
+end;
 
+var
+  Root, SelectedNode, Layer: TMeiNode;
 begin
   Root := TMeiNode.CreateMeiRoot();
-  M1 := TMeiNode.Create('measure');
-  M2 := TMeiNode.Create('measure');
-  M3 := TMeiNode.Create('measure');
-  M4 := TMeiNode.Create('measure');
-  M5 := TMeiNode.Create('measure');
+  Layer := TMeiNode.Create('layer');
+  Layer.AddAttribute('label', 'Soprano');
 
-  for ThisCount := 1 to Max do
-  begin
-    ThisNode := nil;
-    case ThisCount of
-      1 : ThisNode := M1;
-      2 : ThisNode := M2;
-      3 : ThisNode := M3;
-      4 : ThisNode := M4;
-      5 : ThisNode := M5;
-    end;
-    ThisNode.AddAttribute('n', Format('%d', [ThisCount]));
-  
-    if ThisCount = 1 then
-      Root.AppendChild(ThisNode)
-    else if Assigned(Root.ChildTree) then
-      Root.ChildTree.AppendSibling(ThisNode);
-  end;
+  Root.AppendChild(
+    CreateMeasureN(1).AppendSibling(
+      CreateMeasureN(2).AppendSibling(
+        CreateMeasureN(3).AppendSibling(
+          CreateMeasureN(4).AppendSibling(
+            CreateMeasureN(5))))));
+
+  SelectedNode := Root.FindElementByAttribute('measure', 'n', '3');
+  SelectedNode.AppendChild(Layer);
 
   WriteMeiDocument(Root);
 
-  SelectedNode := TMeiNode.Create();
-  SelectedNode.Assign(Root.FindElementByAttribute('measure', 'n', '3'));
-  WriteMeiDocument(SelectedNode);
+  SelectedNode := TMeiNode.Create;
+  SelectedNode.AssignWithoutSiblings(
+    Root.FindElementByAttribute('measure', 'n', '3'));
   
-  { Need to extract just a single node, not children or siblings }
-
   FreeAndNil(Root);
+  WriteMeiDocument(SelectedNode);
+
   FreeAndNil(SelectedNode);
 end.
 

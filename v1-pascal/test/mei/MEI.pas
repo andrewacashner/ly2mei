@@ -51,6 +51,8 @@ type
     function AppendChild(Child: TMeiNode): TMeiNode;
     function AppendSibling(Sibling: TMeiNode): TMeiNode;
 
+    procedure AssignNodeOnly(SourceNode: TMeiNode);
+    procedure AssignWithoutSiblings(SourceNode: TMeiNode);
     procedure Assign(SourceNode: TMeiNode);
 
     function FindElementByAttribute(Name, Key, Value: String): TMeiNode;
@@ -243,11 +245,26 @@ begin
   result := Self.LastSibling.AddFirstSibling(Sibling);
 end;
 
-procedure TMeiNode.Assign(SourceNode: TMeiNode);
+procedure TMeiNode.AssignNodeOnly(SourceNode: TMeiNode);
 begin
   FName := SourceNode.FName;
-
   FAttributes.Assign(SourceNode.FAttributes);
+end;
+
+procedure TMeiNode.AssignWithoutSiblings(SourceNode: TMeiNode);
+begin
+  AssignNodeOnly(SourceNode);
+
+  if Assigned(SourceNode.FChild) then
+  begin
+    FChild := TMeiNode.Create();
+    FChild.Assign(SourceNode.FChild);
+  end;
+end;
+
+procedure TMeiNode.Assign(SourceNode: TMeiNode);
+begin
+  AssignNodeOnly(SourceNode);
 
   if Assigned(SourceNode.FChild) then
   begin
@@ -261,6 +278,9 @@ begin
     FSibling.Assign(SourceNode.FSibling);
   end;
 end;
+
+
+
 
 { Return the first node that matches the name and attribute pair.
   Does not copy the tree, just returns the pointer to its root. }
