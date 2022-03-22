@@ -6,7 +6,7 @@ unit Header;
 
 interface
 
-uses SysUtils, Classes, StringTools, Outline;
+uses SysUtils, Classes, StringTools, Outline, MEI;
 
 const ProgramName: String = 'ly2mei';
 
@@ -28,6 +28,35 @@ function ParseHeader(InputLines: TStringListAAC): THeader;
 function CreateMEIHeader(SourceLines: TStringListAAC): TStringListAAC;
 
 implementation
+
+function THeader.ToMEI: TMeiNode;
+var HeaderTree, FileDesc, TitleStmt, Title, Subtitle, RespStmt, Composer,
+Lyricist, Editor, PubStmt, Availability, Copyright, EncodingDesc, AppInfo,
+Application, ApplicationName, SourceDesc, Source: TMeiNode; 
+begin
+  HeaderTree := TMeiNode.Create('meiHead');
+  if Header.FValid then
+  begin
+    with Header do
+    begin
+      FileDesc := TMeiNode.Create('fileDesc');
+      HeaderTree.AppendChild(FileDesc);
+
+      TitleStmt := TMeiNode.Create('titleStmt');
+      FileDesc.AppendChild(TitleStmt);
+
+      Title := TMeiNode.Create('title');
+      Title.AddAttribute('type', 'main');
+      { TODO add title text: add text element to MEI node type } 
+      TitleStmt := AppendChild(Title);
+
+      { TODO etc, translate function below into building XML tree,
+      then just call the ToString function on the tree }
+
+  end;
+  result := HeaderTree;
+end;
+
 
 function NewMEIFromHeader(Header: THeader): TStringListAAC;
 var

@@ -26,7 +26,6 @@ type
     var
       FName: String;
       FAttributes: TMeiAttributeList;
-      FText: String;
       FChild: TMeiNode;
       FSibling: TMeiNode;
   public
@@ -39,8 +38,6 @@ type
 
     procedure AddAttribute(Key, Value: String);
     procedure RemoveAttribute(Key: String);
-
-    { TODO add function to set FText member }
 
     function ChildTree: TMeiNode;
     function NextSibling: TMeiNode;
@@ -106,8 +103,7 @@ begin
   
   FAttributes := TMeiAttributeList.Create();
   FAttributes.AddOrSetValue('xml:id', GenerateID());
-
-  FText    := '';
+ 
   FChild   := nil;
   FSibling := nil;
 end;
@@ -167,33 +163,16 @@ begin
     OutputStr := BasicIndent + Format('<%s>', [FName])
   else
     OutputStr := BasicIndent + Format('<%s %s', [FName, FAttributes.XMLString]);
-
-  if not Assigned(FChild) and FText.IsEmpty then
-    OutputStr := OutputStr + '/>'
-  else 
-  begin
-    OutputStr := OutputStr + '>';
-    if not FText.IsEmpty then
-    begin
-      OutputStr := OutputStr + FText;
-    end;
-
-    if not Assigned(FChild) then
-    begin
-      OutputStr := OutputStr + Format('</%s>', [FName]);
-    end
-    else
-    begin
-      OutputStr := OutputStr  + LineEnding 
-        + FChild.XMLString(IndentLevel + 1) + LineEnding
-        + BasicIndent + Format('</%s>', [FName]);
-    end;
-  end;
+  
+  if Assigned(FChild) then
+    OutputStr := OutputStr + '>' + LineEnding 
+                  + FChild.XMLString(IndentLevel + 1) + LineEnding
+                  + BasicIndent + Format('</%s>', [FName])
+  else
+    OutputStr := OutputStr + Format('/>', [FName]);
 
   if Assigned(FSibling) then
-  begin
     OutputStr := OutputStr + LineEnding + FSibling.XMLString(IndentLevel);
-  end;
   
   result := OutputStr;
 end;
