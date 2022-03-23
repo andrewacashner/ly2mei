@@ -2,7 +2,12 @@
 \include "early-music.ly"
 \header {
   title = "Test of Lirio Score Reading"
-  composer = "Andrew Cashner"
+  subtitle = "Lirio format"
+  composer = "Dr. Beats"
+  poet = "Anonymous"
+  editor = "Prof. Contrappunto"
+  source = "Made up"
+  copyright = "Public domain"
 }
 
 MusicS = {

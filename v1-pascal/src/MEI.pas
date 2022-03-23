@@ -30,7 +30,7 @@ type
       FChild: TMeiNode;
       FSibling: TMeiNode;
   public
-    constructor Create(Name: String = 'xml');
+    constructor Create(Name: String = 'xml'; TextContents: String = '');
     constructor CreateMeiRoot();
     destructor Destroy(); override;
 
@@ -52,8 +52,9 @@ type
     function AddFirstChild(Child: TMeiNode): TMeiNode;
     function AddFirstSibling(Sibling: TMeiNode): TMeiNode;
 
-    function AppendChild(Child: TMeiNode): TMeiNode;
     function AppendSibling(Sibling: TMeiNode): TMeiNode;
+    function AppendChild(Child: TMeiNode): TMeiNode;
+    function AppendLastChild(Child: TMeiNode): TMeiNode;
 
     procedure AssignNodeOnly(SourceNode: TMeiNode);
     procedure AssignWithoutSiblings(SourceNode: TMeiNode);
@@ -100,7 +101,7 @@ begin
     Add(ThisPair);
 end;
 
-constructor TMeiNode.Create(Name: String = 'xml');
+constructor TMeiNode.Create(Name: String = 'xml'; TextContents: String = '');
 begin
   inherited Create();
   FName := Name;
@@ -108,7 +109,7 @@ begin
   FAttributes := TMeiAttributeList.Create();
   FAttributes.AddOrSetValue('xml:id', GenerateID());
 
-  FText    := '';
+  FText    := TextContents;
   FChild   := nil;
   FSibling := nil;
 end;
@@ -267,14 +268,22 @@ begin
   result := Self;
 end;
 
-function TMeiNode.AppendChild(Child: TMeiNode): TMeiNode;
-begin
-  result := Self.LastChild.AddFirstChild(Child);
-end;
-
 function TMeiNode.AppendSibling(Sibling: TMeiNode): TMeiNode;
 begin
   result := Self.LastSibling.AddFirstSibling(Sibling);
+end;
+
+function TMeiNode.AppendChild(Child: TMeiNode): TMeiNode;
+begin
+  if not Assigned(FChild) then
+    result := Self.AddFirstChild(Child)
+  else 
+    result := Self.FChild.AppendSibling(Child);
+end;
+
+function TMeiNode.AppendLastChild(Child: TMeiNode): TMeiNode;
+begin
+  result := Self.LastChild.AddFirstChild(Child);
 end;
 
 procedure TMeiNode.AssignNodeOnly(SourceNode: TMeiNode);

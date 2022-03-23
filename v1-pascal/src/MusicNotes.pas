@@ -1404,7 +1404,7 @@ function InnerToMEI(Node: TMEIElement; MEI: TStringListAAC): TStringListAAC;
 
 var
   NewElement, NewMeasure: TStringListAAC;
-  Attributes: String;
+  Attributes: String = '';
 begin
   if Node <> nil then
   begin

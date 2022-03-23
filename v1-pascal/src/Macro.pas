@@ -229,13 +229,16 @@ begin
       RestStr := ExtractWord(1, RestStr, [' ']);
       RestData := RestStr.Split('*', 2);
       DurStr := RestData[0];
-
-      Repeats := 1;
-      if RestData[1] <> '' then
-        Repeats := RestData[1].ToInteger;
-    
-      for RestCount := Repeats - 1 downto 0 do
-        EditedLines.Add('| R' + DurStr);
+      
+      if (Length(RestData) = 2) and not RestData[1].IsEmpty then
+      begin
+          Repeats := RestData[1].ToInteger;
+      
+          for RestCount := Repeats - 1 downto 0 do
+          begin
+            EditedLines.Add('| R' + DurStr);
+          end;
+      end;
     end
     else
       EditedLines.Add(ThisLine);
