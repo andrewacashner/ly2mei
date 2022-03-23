@@ -669,7 +669,7 @@ end;
 
 procedure TPitch.Assign(Source: TPitch);
 begin
-  if Source <> nil then
+  if Assigned(Source) then
   begin
     FID            := Source.FID;
     FPitchName     := Source.FPitchName;
@@ -883,7 +883,7 @@ procedure TPitchList.Assign(Source: TPitchList);
 var
   ThisPitch, NewPitch: TPitch;
 begin
-  if Source <> nil then
+  if Assigned(Source) then
   begin
     for ThisPitch in Source do
     begin
@@ -921,7 +921,7 @@ begin
     bkRepeatEnd : Attr := 'rptend';
   end;
 
-  if Attr = '' then
+  if Attr.IsEmpty then 
     MEI := ''
   else
     MEI := XMLAttribute('right', Attr);
@@ -1007,7 +1007,7 @@ procedure TMeasureList.Assign(Source: TMeasureList);
 var
   ThisMeasure, NewPitchList: TPitchList;
 begin
-  if Source <> nil then
+  if Assigned(Source) then
   begin
     for ThisMeasure in Source do
     begin
@@ -1069,7 +1069,7 @@ begin
   FID   := Source.FID;
   FText := Source.FText;
   FNum  := Source.FNum;
-  if Source.FMeasures <> nil then
+  if Assigned(Source.FMeasures) then
   begin
     FMeasures := TMeasureList.Create;
 
@@ -1104,16 +1104,16 @@ procedure TMEIElement.AssignTree(Source: TMEIElement; Mode: TMeasureCopyMode =
   mkAllMeasures; MeasureIndex: Integer = 0); 
 function InnerAssign(TreeA, TreeB: TMEIElement): TMEIElement;
 begin
-  if TreeA <> nil then
+  if Assigned(TreeA) then
   begin
-    if TreeB = nil then
+    if not Assigned(TreeB) then
       TreeB := TMEIElement.Create;
   
     TreeB.AssignNode(TreeA, Mode, MeasureIndex);
 
-    if TreeA.FChild <> nil then
+    if Assigned(TreeA.FChild) then
       TreeB.FChild := InnerAssign(TreeA.FChild, TreeB.FChild);
-    if TreeA.FSibling <> nil then
+    if Assigned(TreeA.FSibling) then
       TreeB.FSibling:= InnerAssign(TreeA.FSibling, TreeB.FSibling);
   end;
   result := TreeB;
@@ -1133,7 +1133,7 @@ begin
   FNum      := LyObject.FNum;
   FChild    := nil;
   FSibling  := nil;
-  if LyObject.FContents = '' then
+  if LyObject.FContents.IsEmpty then
     FMeasures := nil
   else
   begin
@@ -1149,9 +1149,9 @@ function InnerCount(Node: TMEIElement): Integer;
 var
   ThisCount: Integer = 0;
 begin
-  if Node <> nil then
+  if Assigned(Node) then
   begin
-    if (Node.FType = ekLayer) and (Node.FMeasures <> nil) then
+    if (Node.FType = ekLayer) and Assigned(Node.FMeasures) then
     begin
       ThisCount := Node.FMeasures.Count;
       if MasterCount = 0 then
@@ -1162,9 +1162,9 @@ begin
         exit;
       end;
     end;
-    if Node.FChild <> nil then
+    if Assigned(Node.FChild) then
       ThisCount := InnerCount(Node.FChild);
-    if Node.FSibling <> nil then
+    if Assigned(Node.FSibling) then
       ThisCount := InnerCount(Node.FSibling);
   end;
   result := ThisCount;
@@ -1175,7 +1175,7 @@ end;
 
 function LyToMEITree(LyNode: TLyObject; MEINode: TMEIElement): TMEIElement;
 begin
-  if LyNode <> nil then
+  if Assigned(LyNode) then
   begin
     DebugLn('LyToMEITree: visiting non-empty LyObjectNode with FType: ');
     {$ifdef DEBUG}WriteLn(LyNode.FType);{$endif}
@@ -1183,7 +1183,7 @@ begin
     case LyNode.FType of
       ekStaff, ekLayer :
       begin
-        if MEINode = nil then
+        if not Assigned(MEINode) then
         begin
           MEINode := TMEIElement.Create;
           MEINode.SetFromLyObject(LyNode);
@@ -1191,16 +1191,16 @@ begin
       end;
     end;
     { If we haven't made a new node yet, then we are skipping a parent node }
-    if MEINode = nil then
+    if not Assigned(MEINode) then
     begin
-      if LyNode.FChild <> nil then
+      if Assigned(LyNode.FChild) then
         MEINode := LyToMEITree(LyNode.FChild, MEINode);
-      if LyNode.FSibling <> nil then
+      if Assigned(LyNode.FSibling) then
         MEINode := LyToMEITree(LyNode.FSibling, MEINode);
     end
     else 
     begin
-      if LyNode.FChild <> nil then
+      if Assigned(LyNode.FChild) then
       begin
         { Because we are skipping some parent nodes, we may find child nodes
         in the original tree that need to become sibling nodes in the new tree }
@@ -1213,7 +1213,7 @@ begin
           MEINode.FChild := LyToMEITree(LyNode.FChild, MEINode.FChild);
       end;
 
-      if LyNode.FSibling <> nil then
+      if Assigned(LyNode.FSibling) then
         MEINode.FSibling := LyToMEITree(LyNode.FSibling, MEINode.FSibling);
     end;
   end;
@@ -1224,16 +1224,16 @@ end;
 destructor TMEIElement.Destroy;
 begin
   FreeAndNil(FMeasures);
-  if FChild <> nil then 
+  if Assigned(FChild) then 
     FChild.Destroy;
-  if FSibling <> nil then 
+  if Assigned(FSibling) then 
     FSibling.Destroy;
   inherited Destroy;
 end;
 
 function TMEIElement.LastChild: TMEIElement;
 begin
-  if FChild = nil then
+  if not Assigned(FChild) then
     result := Self
   else
     result := FChild.LastChild;
@@ -1242,7 +1242,7 @@ end;
 
 function TMEIElement.LastSibling: TMEIElement;
 begin
-  if FSibling = nil then
+  if not Assigned(FSibling) then
     result := Self
   else
     result := FSibling.LastSibling;
@@ -1255,7 +1255,7 @@ var
   ThisPitchList: TPitchList;
 begin
   OutputStr := OutputStr + Format('%s %s %d', [FName, FID, FNum]) + LineEnding;
-  if FMeasures <> nil then
+  if Assigned(FMeasures) then
   begin
     OutputStr := OutputStr + Format('Measurelist prefix: ''%s''', 
                     [FMeasures.FPrefix]) + LineEnding; 
@@ -1273,11 +1273,11 @@ begin
     OutputStr := OutputStr + Format('Measurelist suffix: ''%s''',
                   [FMeasures.FSuffix]) + LineEnding;
   end;
-  if FChild <> nil then
+  if Assigned(FChild) then
     OutputStr := OutputStr + Format('CHILD (to %s %d): %s', 
                   [Fname, FNum, FChild.ToString]); 
 
-  if FSibling <> nil then
+  if Assigned(FSibling) then
     OutputStr := OutputStr + Format('SIBLING (to %s %d): %s',
                   [Fname, FNum, FSibling.ToString]); 
   result := OutputStr;
@@ -1288,9 +1288,9 @@ function InnerConcat(Node: TMEIElement; SuffixStr: String = ''): String;
 var
   ThisMeasure: TPitchList;
 begin
-  if Node <> nil then
+  if Assigned(Node) then
   begin
-    if (Node.FType = ekLayer) and (Node.FMeasures <> nil) then
+    if (Node.FType = ekLayer) and Assigned(Node.FMeasures) then
     begin
       ThisMeasure := Node.FMeasures[MeasureIndex];
       if ThisMeasure.FLines <> '' then
@@ -1301,10 +1301,10 @@ begin
       slur elements would be better yet }
     end;
 
-    if Node.FChild <> nil then
+    if Assigned(Node.FChild) then
       SuffixStr := InnerConcat(Node.FChild, SuffixStr);
     
-    if Node.FSibling <> nil then
+    if Assigned(Node.FSibling) then
       SuffixStr := InnerConcat(Node.FSibling, SuffixStr);
   end;
   DebugLn('PitchList SUFFIX string currently: ' + SuffixStr);
@@ -1338,7 +1338,7 @@ begin
     Branch.AssignTree(Self, mkOneMeasure, MeasureNum);
 
     Leaf := Branch.LastChild;
-    if Leaf.FMeasures <> nil then
+    if Assigned(Leaf.FMeasures) then
     begin
       ThisMeasure := Leaf.FMeasures.First;
       if ThisMeasure.FBarlineRight <> bkNormal then
@@ -1353,7 +1353,7 @@ begin
 
     if MeasureNum = 0 then
     begin
-      if Branch.LastChild.FMeasures <> nil then
+      if Assigned(Branch.LastChild.FMeasures) then
       begin
         PrefixStr := Branch.LastChild.FMeasures.FPrefix;
         if PrefixStr <> '' then
@@ -1369,7 +1369,7 @@ begin
     end
     else if MeasureNum = MeasureCount - 1 then
     begin
-      if Branch.LastChild.FMeasures <> nil then
+      if Assigned(Branch.LastChild.FMeasures) then
       begin
         SuffixStr := Branch.LastChild.FMeasures.FSuffix;
         if SuffixStr <> '' then
@@ -1394,7 +1394,7 @@ function InnerToMEI(Node: TMEIElement; MEI: TStringListAAC): TStringListAAC;
   var
     NewLines: TStringListAAC;
   begin
-    assert(List <> nil);
+    assert(Assigned(List));
     NewLines := TStringListAAC.Create;
     NewLines := InnerToMEI(Node, NewLines);
     List.AddStrings(NewLines);
@@ -1406,11 +1406,11 @@ var
   NewElement, NewMeasure: TStringListAAC;
   Attributes: String = '';
 begin
-  if Node <> nil then
+  if Assigned(Node) then
   begin
     NewElement := TStringListAAC.Create;
 
-    if (Node.FType = ekLayer) and (Node.FMeasures <> nil) then
+    if (Node.FType = ekLayer) and Assigned(Node.FMeasures) then
     begin
       NewMeasure := Node.FMeasures.First.ToMEI;
       NewElement.AddStrings(NewMeasure);
@@ -1425,7 +1425,7 @@ begin
       end;
     end;
 
-    if Node.FChild <> nil then
+    if Assigned(Node.FChild) then
       NewElement := InnerAddNewElement(Node.FChild, NewElement);
 
     if Node.FType = ekXML then
@@ -1454,7 +1454,7 @@ begin
       NewElement.EncloseInXML(Node.FName, Attributes);
     end;
 
-    if Node.FSibling <> nil then
+    if Assigned(Node.FSibling) then
       NewElement := InnerAddNewElement(Node.FSibling, NewElement);
   end;
   MEI.AddStrings(NewElement);
@@ -1642,15 +1642,15 @@ end;
 
 function InnerMarkup(Tree: TMEIElement): TMEIElement;
 begin
-  if Tree <> nil then
+  if Assigned(Tree) then
   begin
-    if (Tree.FType = ekLayer) and (Tree.FMeasures <> nil) then
+    if (Tree.FType = ekLayer) and Assigned(Tree.FMeasures) then
       MeasureListDo(Tree.FMeasures);
 
-    if Tree.FChild <> nil then
+    if Assigned(Tree.FChild) then
       Tree.FChild := InnerMarkup(Tree.FChild);
 
-    if Tree.FSibling <> nil then
+    if Assigned(Tree.FSibling) then
       Tree.FSibling := InnerMarkup(Tree.FSibling);
   end;
   result := Tree;
@@ -1680,7 +1680,7 @@ begin
 
     MEIStaffTree := LyToMEITree(LyObjectTree, MEIStaffTree);
     
-    if MEIStaffTree <> nil then
+    if Assigned(MEIStaffTree) then
     begin
       DebugLn('MEI TREE STAGE 1:' + LineEnding + MEIStaffTree.ToString);
 
@@ -1690,7 +1690,7 @@ begin
 
       MEIMeasureTree := MEIStaffTree.StaffToMeasureTree;
     end;
-    if MEIMeasureTree <> nil then
+    if Assigned(MEIMeasureTree) then
     begin
       DebugLn('MEI TREE STAGE 2:' + LineEnding + MEIMeasureTree.ToString);
       
@@ -1698,10 +1698,10 @@ begin
     end;
   end;
 
-  if MEIMusicLines = nil then
+  if not Assigned(MEIMusicLines) then
     MEIMusicLines := TStringListAAC.Create;
 
-  if MEIScoreLines <> nil then
+  if Assigned(MEIScoreLines) then
   begin
     MEIScoreLines.EncloseInXML('section');
     MEIMusicLines.AddStrings(MEIScoreLines);

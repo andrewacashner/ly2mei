@@ -189,7 +189,7 @@ function XMLAttributeIDNum(ID: String; Num: Integer): String;
 var
   IDStr: String;
 begin
-  if ID = '' then
+  if ID.IsEmpty then
     IDStr := ''
   else 
     IDStr := XMLAttribute('xml:id', ID) + ' ';

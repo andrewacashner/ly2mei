@@ -115,8 +115,8 @@ var
   Found: Boolean;
   OutputLines: TStringListAAC;
 begin
-  assert(SourceLines <> nil);
-  assert(Dict <> nil);
+  Assert(Assigned(SourceLines));
+  Assert(Assigned(Dict));
   CopyOutline.FStart := 0;
   CopyOutline.FValid := True;
   InputStr := SourceLines.Text;
@@ -198,7 +198,7 @@ function ExpandMacros(SourceLines: TStringListAAC): TStringListAAC;
 var
   Macros: TMacroDict;
 begin
-  assert(SourceLines <> nil);
+  Assert(Assigned(SourceLines));
   Macros := TMacroDict.Create;
   try
     SourceLines.RemoveComments;
@@ -218,7 +218,7 @@ var
   Repeats, RestCount: Integer;
   EditedLines: TStringListAAC;
 begin
-  assert(SourceLines <> nil);
+  Assert(Assigned(SourceLines));
   EditedLines := TStringListAAC.Create;
 
   for ThisLine in SourceLines do

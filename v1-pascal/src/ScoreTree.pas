@@ -159,16 +159,16 @@ end;
 
 destructor TLyObject.Destroy;
 begin
-  if FChild <> nil then 
+  if Assigned(FChild) then 
     FChild.Destroy;
-  if FSibling <> nil then 
+  if Assigned(FSibling) then 
     FSibling.Destroy;
   inherited Destroy;
 end;
 
 function TLyObject.LastChild: TLyObject;
 begin
-  if FChild = nil then
+  if not Assigned(FChild) then
     result := Self
   else
     result := FChild.LastChild;
@@ -176,7 +176,7 @@ end;
 
 function TLyObject.LastSibling: TLyObject;
 begin
-  if FSibling = nil then
+  if not Assigned(FSibling) then
     result := Self
   else
     result := FSibling.LastSibling;
@@ -188,7 +188,7 @@ var
   Indent: String;
   ParentStr, ChildStr, SibStr: String;
 begin
-  if Parent <> nil then
+  if Assigned(Parent) then
   begin
     Indent := IndentStr(Generation);
     
@@ -198,11 +198,11 @@ begin
          XMLAttribute('n', IntToStr(Parent.FNum)), 
          Parent.FContents]);
 
-    if Parent.FChild <> nil then
+    if Assigned(Parent.FChild) then
       ChildStr := LineEnding + TreeToString(Parent.FChild, Generation + 1) + Indent;
 
     SibStr := LineEnding;
-    if Parent.FSibling <> nil then 
+    if Assigned(Parent.FSibling) then 
       SibStr := LineEnding + TreeToString(Parent.FSibling, Generation);
 
     result := Indent + ParentStr + ChildStr + '</lyobject>' + SibStr;
@@ -221,7 +221,7 @@ begin
   SearchStr := Source;
   SearchIndex := SearchStr.IndexOf('\new ');
 
-  if (SearchStr <> '') and (SearchIndex <> -1) then
+  if (not SearchStr.IsEmpty) and (SearchIndex <> -1) then
   begin
     { Find Type }
     SearchStr := SearchStr.Substring(SearchIndex);
@@ -279,16 +279,16 @@ var
   N: Integer = 0;
 function InnerNums(Node: TLyObject): TLyObject;
 begin
-  if Node <> nil then
+  if Assigned(Node) then
   begin
     if Node.FType = ElementType then
     begin
       Inc(N);
       Node.FNum := N;
     end;
-    if Node.FChild <> nil then
+    if Assigned(Node.FChild) then
       Node.FChild := InnerNums(Node.FChild);
-    if Node.FSibling <> nil then
+    if Assigned(Node.FSibling) then
       Node.FSibling := InnerNums(Node.FSibling);
   end;
   result := Node;
@@ -579,7 +579,7 @@ var
   Key: TKeyKind;
   Meter: TMeter;
 begin
-  assert(InnerLines <> nil);
+  assert(Assigned(InnerLines));
   TempLines := TStringListAAC.Create;
   ThisTag := '';
   
@@ -598,7 +598,7 @@ begin
       
       { Extract staffDef info from the first music expression in the first
       child Voice }
-      if (Node.FChild <> nil) and (Node.FChild.FType = ekLayer) then
+      if Assigned(Node.FChild) and (Node.FChild.FType = ekLayer) then
       begin
         { Search c. first 10 lines }
         SearchStr := Node.FChild.FContents.Substring(0, 800); 
@@ -613,14 +613,14 @@ begin
   end;
 
   { Create this element and its children }
-  if (ThisTag <> '') and (Node.FChild <> nil) then
+  if (not ThisTag.IsEmpty) and Assigned(Node.FChild) then
   begin
     TempLines.AddStrings(InnerScoreDef(Node.FChild, InnerLines));
     TempLines.EncloseInXML(ThisTag, Attributes);
   end;
 
   { Create its siblings }
-  if Node.FSibling <> nil then
+  if Assigned(Node.FSibling) then
     TempLines.AddStrings(InnerScoreDef(Node.FSibling, InnerLines));
 
   InnerLines.Assign(TempLines);
