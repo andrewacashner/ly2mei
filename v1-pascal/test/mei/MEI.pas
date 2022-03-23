@@ -40,7 +40,8 @@ type
     procedure AddAttribute(Key, Value: String);
     procedure RemoveAttribute(Key: String);
 
-    { TODO add function to set FText member }
+    procedure SetTextNode(NewText: String);
+    function IsTextSet: Boolean;
 
     function ChildTree: TMeiNode;
     function NextSibling: TMeiNode;
@@ -168,12 +169,12 @@ begin
   else
     OutputStr := BasicIndent + Format('<%s %s', [FName, FAttributes.XMLString]);
 
-  if not Assigned(FChild) and FText.IsEmpty then
+  if not Assigned(FChild) and not IsTextSet then
     OutputStr := OutputStr + '/>'
   else 
   begin
     OutputStr := OutputStr + '>';
-    if not FText.IsEmpty then
+    if IsTextSet then
     begin
       OutputStr := OutputStr + FText;
     end;
@@ -202,6 +203,16 @@ procedure TMeiNode.AddAttribute(Key, Value: String);
 begin
   Assert(Assigned(FAttributes));
   FAttributes.AddOrSetValue(Key, Value);
+end;
+
+procedure TMEINode.SetTextNode(NewText: String);
+begin
+  FText := NewText;
+end;
+
+function TMEINode.IsTextSet: Boolean;
+begin
+  result := not FText.IsEmpty;
 end;
 
 procedure TMeiNode.RemoveAttribute(Key: String);

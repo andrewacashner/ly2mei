@@ -30,9 +30,11 @@ function CreateMEIHeader(SourceLines: TStringListAAC): TStringListAAC;
 implementation
 
 function THeader.ToMEI: TMeiNode;
-var HeaderTree, FileDesc, TitleStmt, Title, Subtitle, RespStmt, Composer,
-Lyricist, Editor, PubStmt, Availability, Copyright, EncodingDesc, AppInfo,
-Application, ApplicationName, SourceDesc, Source: TMeiNode; 
+var 
+  HeaderTree, FileDesc, TitleStmt, Title, Subtitle, TitleRespStmt, Composer,
+  Lyricist, Editor, EditionRespStmt, PubStmt, Availability, Copyright,
+  EncodingDesc, AppInfo, Application, ApplicationName, SourceDesc, Source:
+    TMeiNode; 
 begin
   HeaderTree := TMeiNode.Create('meiHead');
   if Header.FValid then
@@ -47,16 +49,80 @@ begin
 
       Title := TMeiNode.Create('title');
       Title.AddAttribute('type', 'main');
-      { TODO add title text: add text element to MEI node type } 
+      Title.SetTextNode(FTitle);
       TitleStmt := AppendChild(Title);
 
-      { TODO etc, translate function below into building XML tree,
-      then just call the ToString function on the tree }
+      if not FSubtitle.IsEmpty then 
+      begin
+        Subtitle := TMeiNode.Create('title');
+        Subtitle.AddAttribute('type', 'subtitle');
+        Subtitle.SetTextNode(FSubtitle);
+        TitleStmt := AppendChild(Subtitle);
+      end;
 
+      TitleRespStmt := TMeiNode.Create('respStmt');
+      TitleStmt.AppendChild(TitleRespStmt);
+
+      Composer := TMeiNode.Create('composer');
+      if FDates.IsEmpty then
+        Composer.SetTextNode(FComposer)
+      else
+      begin
+        Composer.SetTextNode(Format('%s %s', [FComposer, FDates]));
+      end;
+      TitleRespStmt.AppendChild(Composer);
+
+      if not FPoet.IsEmpty then
+      begin
+        Lyricist := TMeiNodeCreate('lyricist');
+        Lyricist.SetTextNode(FPoet);
+        TitleRespStmt.AppendChild(Lyricist):
+      end;
+
+      if not FEditor.IsEmpty then
+      begin
+        Editor := TMeiNodeCreate('editor');
+        Editor.SetTextNode(FEditor);
+        TitleRespStmt.AppendChild(Editor);
+      end;
+
+
+      if not FEditor.IsEmpty then
+      begin
+        EditionStmt := TMeiNodeCreate('editionStmt');
+        EditionRespStmt := TMeiNodeCreate('respStmt');
+        EditionRespStmt.AppendChild(
+          TMeiNodeCreate('p').SetTextNode(Format('Edited by %s', [FEditor])));
+        EditionStmt.AppendChild(EditionRespStmt);
+        FileDesc.AppendChild(EditionStmt);
+      end;
+
+      if not FCopyright.IsEmpty then
+      begin
+        PubStmt := TMeiNodeCreate('pubStmt');
+        Availability := TMeiNodeCreate('availability').AppendChild(
+          TMeiNodeCreate('p').SetTextNode(FCopyright));
+        PubStmt.AppendChild(Availability);
+        FileDesc.AppendChild(PubStmt);
+      end;
+
+      EncodingDesc := TMeiNodeCreate('encodingDesc').AppendChild(
+        TMeiNodeCreate('appInfo').AppendChild(
+          TMeiNodeCreate('application').AddAttribute('name', ProgramName)));
+      HeaderTree.AppendChild(EncodingDesc);
+
+      if not FSource.IsEmpty then
+      begin
+        Source := TMeiNode.Create('sourceDesc').AppendChild(
+          TMeiNode.Create('source').SetTextNode(FSource));
+        HeaderTree.AppendChild(Source);
+      end;
+    end;
   end;
   result := HeaderTree;
 end;
 
+{ TODO debug function above, test XMLString output from it }
 
 function NewMEIFromHeader(Header: THeader): TStringListAAC;
 var
