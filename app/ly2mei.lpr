@@ -11,7 +11,6 @@ uses SysUtils, Classes, StringTools, Macro, MEI, Header, ScoreTree;
 var
   InputLines: TStringListAAC;
   Root, MeiHead, MeiScoreDef: TMeiNode;
-  LyTree: TLyObject;
 begin
   InputLines  := TStringListAAC.Create;
   Root := TMeiNode.CreateMeiRoot();
@@ -32,14 +31,13 @@ begin
     if Assigned(MeiHead) then
       Root.AppendChild(MeiHead);
 
-    LyTree := BuildLyObjectTree(InputLines.Text, nil);
-    MeiScoreDef := LyTree.ToMEIScoreDef;
-    Root.AppendChild(MeiScoreDef);
+    MeiScoreDef := CreateMeiScoreDefFromLy(InputLines);
+    if Assigned(MeiScoreDef) then
+      Root.AppendChild(MeiScoreDef);
 
     WriteMeiDocument(Root);
 
   finally
-    FreeAndNil(LyTree);
     FreeAndNil(Root);
     FreeAndNil(InputLines);
   end;

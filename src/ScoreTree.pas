@@ -102,9 +102,7 @@ type
       testing/debugging. }
     function ToString: String; override;
 
-    { Create a new stringlist containing an MEI scoreDef element, drawing the
-    information from this tree. }
-    function ToMEIScoreDefText: TStringListAAC;
+    function ToMeiScoreDef: TMeiNode;
   end;
 
 { Build an LCRS tree of Lilypond @code(\new) objects.
@@ -124,6 +122,8 @@ type
 }
 function BuildLyObjectTree(Source: String; Tree: TLyObject): TLyObject;
 
+
+function CreateMeiScoreDefFromLy(LyInput: TStringListAAC): TMeiNode;
 
 implementation
 
@@ -342,8 +342,8 @@ var
   ClefLine: Integer;
   ClefLetter: String;
 begin
-  Assert(Assigned(TMeiNode));
-  Assert(TMeiNode.FName = 'staffDef');
+  Assert(Assigned(StaffDefNode));
+  Assert(StaffDefNode.GetName = 'staffDef');
 
   case Clef of
     ckNone, ckSoprano           : ClefLine := 1;
@@ -455,7 +455,7 @@ var
   KeySig: String;
 begin
   Assert(Assigned(StaffDefNode));
-  Assert(StaffDefNode.FName = 'staffDef');
+  Assert(StaffDefNode.GetName = 'staffDef');
 
   case Key of 
     kkNone, kkCantusDurus : KeySig := '0';
@@ -521,10 +521,10 @@ begin
   result := Meter;
 end;
 
-function AddMEIMeterAttribute(Meter: TMeter; StaffDefNode: TMeiNode): TMeiNode;
+function AddMEIMeterAttribute(StaffDefNode: TMeiNode; Meter: TMeter): TMeiNode;
 begin
   Assert(Assigned(StaffDefNode));
-  Assert(StaffDefNode.FName = 'staffDef');
+  Assert(StaffDefNode.GetName = 'staffDef');
 
   with Meter do
   begin
@@ -556,7 +556,7 @@ function AddStaffDefAttributes(StaffDefNode: TMeiNode; Clef: TClefKind; Key:
   TKeyKind; Meter: TMeter): TMeiNode;
 begin
   Assert(Assigned(StaffDefNode));
-  Assert(StaffDefNode.FName = 'staffDef');
+  Assert(StaffDefNode.GetName = 'staffDef');
 
   StaffDefNode.AddAttribute('lines', '5');
   StaffDefNode := AddMEIClefAttribute(StaffDefNode, Clef);
@@ -569,7 +569,7 @@ end;
 function AddStaffGrpAttributes(StaffGrpNode: TMeiNode): TMeiNode;
 begin
   Assert(Assigned(StaffGrpNode));
-  Assert(StaffGrpNode.FName = 'staffGrp');
+  Assert(StaffGrpNode.GetName = 'staffGrp');
 
   StaffGrpNode.AddAttribute('bar.thru', 'false');
   StaffGrpNode.AddAttribute('symbol', 'bracket');
@@ -581,7 +581,7 @@ function AddStaffNumIDAttributes(StaffNode: TMeiNode; Node: TLyObject):
   TMeiNode; 
 begin
   Assert(Assigned(StaffNode));
-  Assert(StaffNode.FName = 'staff');
+  Assert(StaffNode.GetName = 'staff');
 
   StaffNode.AddAttribute('n', IntToStr(Node.FNum));
   StaffNode.AddAttribute('def', '#' + Node.FID);
@@ -589,145 +589,81 @@ begin
   result := StaffNode;
 end;
 
-{ TODO rewrite following to output a new TMeiNode scoreDef tree with internal
-MEI representation instead of a string list with XML output }
-function TLyObject.ToMEIScoreDef: TMeiNode
-function InnerScoreDef(Node: TLyObject; InnerLines: TStringListAAC): TStringListAAC;
+function TLyObject.ToMeiScoreDef: TMeiNode;
+function InnerScoreDef(LyNode: TLyObject; MeiNode: TMeiNode): TMeiNode;
 var 
-  ThisTag, SearchStr, Attributes: String;
-  TempLines: TStringListAAC;
+  SearchStr: String;
   Clef: TClefKind;
   Key: TKeyKind;
   Meter: TMeter;
 begin
-  assert(Assigned(InnerLines));
-  TempLines := TStringListAAC.Create;
-  ThisTag := '';
+  if not Assigned(MeiNode) then
+  begin
+    MeiNode := TMeiNode.Create();
+  end;
+
+  MeiNode.AddAttribute('n', IntToStr(LyNode.FNum));
+ 
+  if not LyNode.FID.IsEmpty then
+    MeiNode.AddAttribute('xml:id', LyNode.FID); 
   
-  Attributes := Format('%s %s', [XMLAttribute('n', IntToStr(Node.FNum)),
-                                 XMLAttribute('xml:id', Node.FID)]);
-  case Node.FType of
+  case LyNode.FType of
     ekStaffGrp:
     begin
-      ThisTag := 'staffGrp';
-      Attributes := Attributes + StaffGrpAttributes;
+      MeiNode.SetName('staffGrp');
+      MeiNode := AddStaffGrpAttributes(MeiNode);
     end;
 
     ekStaff:
     begin
-      ThisTag := 'staffDef';
+      MeiNode.SetName('staffDef');
       
       { Extract staffDef info from the first music expression in the first
       child Voice }
-      if Assigned(Node.FChild) and (Node.FChild.FType = ekLayer) then
+      if Assigned(LyNode.FChild) and (LyNode.FChild.FType = ekLayer) then
       begin
         { Search c. first 10 lines }
-        SearchStr := Node.FChild.FContents.Substring(0, 800); 
+        SearchStr := LyNode.FChild.FContents.Substring(0, 800); 
         Clef  := FindLyClef(SearchStr);
         Key   := FindLyKey(SearchStr);
         Meter := FindLyMeter(SearchStr);
+        MeiNode := AddStaffDefAttributes(MeiNode, Clef, Key, Meter); 
       end;
-
-      Attributes := Format('%s %s', [Attributes, 
-        StaffDefAttributes(Clef, Key, Meter)]);;
     end;
   end;
 
   { Create this element and its children }
-  if (not ThisTag.IsEmpty) and Assigned(Node.FChild) then
+  if (LyNode.FType = ekStaffGrp) and Assigned(LyNode.FChild) then
   begin
-    TempLines.AddStrings(InnerScoreDef(Node.FChild, InnerLines));
-    TempLines.EncloseInXML(ThisTag, Attributes);
+    MeiNode.AppendChild(InnerScoreDef(LyNode.FChild, nil));
   end;
 
   { Create its siblings }
-  if Assigned(Node.FSibling) then
-    TempLines.AddStrings(InnerScoreDef(Node.FSibling, InnerLines));
+  if Assigned(LyNode.FSibling) then
+  begin
+    MeiNode.AppendSibling(InnerScoreDef(LyNode.FSibling, nil));
+  end;
 
-  InnerLines.Assign(TempLines);
-  FreeAndNil(TempLines);
-  result := InnerLines;
+  result := MeiNode;
 end;
 
 var
-  MEI: TStringListAAC;
+  ScoreDef: TMeiNode;
 begin
-  MEI := TStringListAAC.Create;
-  MEI := InnerScoreDef(Self, MEI);
-  MEI.EncloseInXML('staffGrp');
-  MEI.EncloseInXML('scoreDef');
-
-  result := MEI;
+  ScoreDef := TMeiNode.Create('scoreDef');
+  ScoreDef.AppendChild(InnerScoreDef(Self, nil));
+  result := ScoreDef;
 end;
 
-
-function TLyObject.ToMEIScoreDefText: TStringListAAC;
-function InnerScoreDef(Node: TLyObject; InnerLines: TStringListAAC): TStringListAAC;
+function CreateMeiScoreDefFromLy(LyInput: TStringListAAC): TMeiNode;
 var 
-  ThisTag, SearchStr, Attributes: String;
-  TempLines: TStringListAAC;
-  Clef: TClefKind;
-  Key: TKeyKind;
-  Meter: TMeter;
+  LyTree: TLyObject;
+  MeiScoreDef: TMeiNode = nil;
 begin
-  assert(Assigned(InnerLines));
-  TempLines := TStringListAAC.Create;
-  ThisTag := '';
-  
-  Attributes := Format('%s %s', [XMLAttribute('n', IntToStr(Node.FNum)),
-                                 XMLAttribute('xml:id', Node.FID)]);
-  case Node.FType of
-    ekStaffGrp:
-    begin
-      ThisTag := 'staffGrp';
-      Attributes := Attributes + StaffGrpAttributes;
-    end;
-
-    ekStaff:
-    begin
-      ThisTag := 'staffDef';
-      
-      { Extract staffDef info from the first music expression in the first
-      child Voice }
-      if Assigned(Node.FChild) and (Node.FChild.FType = ekLayer) then
-      begin
-        { Search c. first 10 lines }
-        SearchStr := Node.FChild.FContents.Substring(0, 800); 
-        Clef  := FindLyClef(SearchStr);
-        Key   := FindLyKey(SearchStr);
-        Meter := FindLyMeter(SearchStr);
-      end;
-
-      Attributes := Format('%s %s', [Attributes, 
-        StaffDefAttributes(Clef, Key, Meter)]);;
-    end;
-  end;
-
-  { Create this element and its children }
-  if (not ThisTag.IsEmpty) and Assigned(Node.FChild) then
-  begin
-    TempLines.AddStrings(InnerScoreDef(Node.FChild, InnerLines));
-    TempLines.EncloseInXML(ThisTag, Attributes);
-  end;
-
-  { Create its siblings }
-  if Assigned(Node.FSibling) then
-    TempLines.AddStrings(InnerScoreDef(Node.FSibling, InnerLines));
-
-  InnerLines.Assign(TempLines);
-  FreeAndNil(TempLines);
-  result := InnerLines;
-end;
-
-var
-  MEI: TStringListAAC;
-begin
-  MEI := TStringListAAC.Create;
-  MEI := InnerScoreDef(Self, MEI);
-  MEI.EncloseInXML('staffGrp');
-  MEI.EncloseInXML('scoreDef');
-
-  result := MEI;
+  LyTree := BuildLyObjectTree(LyInput.Text, nil);
+  MeiScoreDef := LyTree.ToMeiScoreDef;
+  FreeAndNil(LyTree);
+  result := MeiScoreDef;
 end;
 
 end.

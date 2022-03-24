@@ -43,6 +43,9 @@ type
     procedure SetTextNode(NewText: String);
     function IsTextSet: Boolean;
 
+    function GetName: String;
+    procedure SetName(NewName: String);
+
     function ChildTree: TMeiNode;
     function NextSibling: TMeiNode;
 
@@ -220,6 +223,16 @@ procedure TMeiNode.RemoveAttribute(Key: String);
 begin
   Assert(Assigned(FAttributes));
   FAttributes.Remove(Key);
+end;
+
+function TMeiNode.GetName: String;
+begin
+  result := FName;
+end;
+
+procedure TMeiNode.SetName(NewName: String);
+begin
+  FName := NewName;
 end;
 
 function TMeiNode.ChildTree: TMeiNode;

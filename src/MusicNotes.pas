@@ -343,8 +343,9 @@ function LyToMEITree(LyNode: TLyObject; MEINode: TMEIElement): TMEIElement;
 function MEISectionHead(Source: String): String;
 
 { Parse a Lilypond \score expression and create an MEI music
-  element including the scoreDef and music notes. }
+  element including the scoreDef and music notes. 
 function CreateMEIMusic(SourceLines: TStringListAAC): TStringListAAC;
+}
 
 implementation
 
@@ -1659,7 +1660,7 @@ end;
 begin
   InnerMarkup(Self);
 end;
-
+{
 function CreateMEIMusic(SourceLines: TStringListAAC): TStringListAAC; 
 var
   LyScoreStr: String;
@@ -1718,7 +1719,7 @@ begin
   FreeAndNil(LyObjectTree);
   result := MEIMusicLines;
 end;
-
+}
 
 end.
 
