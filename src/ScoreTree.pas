@@ -17,7 +17,7 @@ unit ScoreTree;
 
 interface
 
-uses SysUtils, StrUtils, Classes, StringTools, Outline;
+uses SysUtils, StrUtils, Classes, StringTools, Outline, MEI;
 
 { Labels for keys or key signatures. }
 type
@@ -104,7 +104,7 @@ type
 
     { Create a new stringlist containing an MEI scoreDef element, drawing the
     information from this tree. }
-    function ToMEIScoreDef: TStringListAAC;
+    function ToMEIScoreDefText: TStringListAAC;
   end;
 
 { Build an LCRS tree of Lilypond @code(\new) objects.
@@ -337,13 +337,14 @@ begin
   result := Clef;
 end;
 
-function MEIClef(Clef: TClefKind): String;
+function AddMEIClefAttribute(StaffDefNode: TMeiNode; Clef: TClefKind): TMeiNode;
 var
   ClefLine: Integer;
-  ClefLetter: Char;
-  ClefDis: String;
-  XML: String;
+  ClefLetter: String;
 begin
+  Assert(Assigned(TMeiNode));
+  Assert(TMeiNode.FName = 'staffDef');
+
   case Clef of
     ckNone, ckSoprano           : ClefLine := 1;
     ckTreble, ckMezzoSoprano,   
@@ -360,19 +361,15 @@ begin
     ckBaritone, ckBass          : ClefLetter := 'F';
   end;
 
-  case Clef of
-    ckTreble8va : 
-      ClefDis := Format(' %s %s', [XMLAttribute('clef.dis', '8'),
-                                   XMLAttribute('clef.dis.place', 'below')]);
-    else
-      ClefDis := '';
+  StaffDefNode.AddAttribute('clef.line', IntToStr(ClefLine));
+  StaffDefNode.AddAttribute('clef.shape', ClefLetter);
+
+  if Clef = ckTreble8va then
+  begin
+    StaffDefNode.AddAttribute('clef.dis', '8');
+    StaffDefNode.AddAttribute('clef.dis.place', 'below');
   end;
-
-  XML := Format(' %s %s%s', [XMLAttribute('clef.line', IntToStr(ClefLine)),
-                            XMLAttribute('clef.shape', ClefLetter),
-                            ClefDis]);
-
-  result := XML;
+  result := StaffDefNode;
 end;
 
 function FindLyKey(KeyStr: String): TKeyKind;
@@ -453,10 +450,13 @@ begin
   result := Key;
 end;
 
-function MEIKey(Key: TKeyKind): String;
+function AddMEIKeyAttribute(StaffDefNode: TMeiNode; Key: TKeyKind): TMeiNode;
 var
   KeySig: String;
 begin
+  Assert(Assigned(StaffDefNode));
+  Assert(StaffDefNode.FName = 'staffDef');
+
   case Key of 
     kkNone, kkCantusDurus : KeySig := '0';
     kkCantusMollis        : KeySig := '1f';
@@ -476,7 +476,8 @@ begin
     kkGbMaj, kkEbMin  : KeySig := '6f';
     kkCbMaj, kkAbMin  : KeySig := '7f';
   end;
-  result := XMLAttribute('key.sig', KeySig);
+  StaffDefNode.AddAttribute('key.sig', KeySig);
+  result := StaffDefNode;
 end;
 
 type
@@ -520,57 +521,147 @@ begin
   result := Meter;
 end;
 
-function MEIMeter(Meter: TMeter): String;
-var
-  MEI, TempusImperfectum: String;
+function AddMEIMeterAttribute(Meter: TMeter; StaffDefNode: TMeiNode): TMeiNode;
 begin
-  TempusImperfectum := Format('%s %s', [XMLAttribute('mensur.sign', 'C'),
-                                        XMLAttribute('mensur.tempus', '2')]);
+  Assert(Assigned(StaffDefNode));
+  Assert(StaffDefNode.FName = 'staffDef');
+
   with Meter do
   begin
     case FKind of
       mkMensuralTempusImperfectum : 
-        MEI := TempusImperfectum;
+      begin
+        StaffDefNode.AddAttribute('mensur.sign', 'C');
+        StaffDefNode.AddAttribute('mensur.tempus', '2');
+      end;
 
       mkMensuralProportioMinor : 
-        MEI := Format('%s %s', [TempusImperfectum, 
-                                XMLAttribute('proport.num', '3')]);
+      begin
+        StaffDefNode.AddAttribute('mensur.sign', 'C');
+        StaffDefNode.AddAttribute('mensur.tempus', '2');
+        StaffDefNode.AddAttribute('proport.num', '3');
+      end;
 
       mkModern : 
-        MEI := Format('%s %s', [XMLAttribute('meter.count', IntToStr(FCount)),
-                                XMLAttribute('meter.unit', IntToStr(FUnit))]);
-      else
-        MEI := '';
+      begin
+        StaffDefNode.AddAttribute('meter.count', IntToStr(FCount));
+        StaffDefNode.AddAttribute('meter.unit', IntToStr(FUnit));
+      end;
     end;
   end;
+  result := StaffDefNode;
+end;
+
+function AddStaffDefAttributes(StaffDefNode: TMeiNode; Clef: TClefKind; Key:
+  TKeyKind; Meter: TMeter): TMeiNode;
+begin
+  Assert(Assigned(StaffDefNode));
+  Assert(StaffDefNode.FName = 'staffDef');
+
+  StaffDefNode.AddAttribute('lines', '5');
+  StaffDefNode := AddMEIClefAttribute(StaffDefNode, Clef);
+  StaffDefNode := AddMEIKeyAttribute(StaffDefNode, Key);
+  StaffDefNode := AddMEIMeterAttribute(StaffDefNode, Meter);
+
+  result := StaffDefNode;
+end;
+
+function AddStaffGrpAttributes(StaffGrpNode: TMeiNode): TMeiNode;
+begin
+  Assert(Assigned(StaffGrpNode));
+  Assert(StaffGrpNode.FName = 'staffGrp');
+
+  StaffGrpNode.AddAttribute('bar.thru', 'false');
+  StaffGrpNode.AddAttribute('symbol', 'bracket');
+
+  result := StaffGrpNode;
+end;
+
+function AddStaffNumIDAttributes(StaffNode: TMeiNode; Node: TLyObject):
+  TMeiNode; 
+begin
+  Assert(Assigned(StaffNode));
+  Assert(StaffNode.FName = 'staff');
+
+  StaffNode.AddAttribute('n', IntToStr(Node.FNum));
+  StaffNode.AddAttribute('def', '#' + Node.FID);
+
+  result := StaffNode;
+end;
+
+{ TODO rewrite following to output a new TMeiNode scoreDef tree with internal
+MEI representation instead of a string list with XML output }
+function TLyObject.ToMEIScoreDef: TMeiNode
+function InnerScoreDef(Node: TLyObject; InnerLines: TStringListAAC): TStringListAAC;
+var 
+  ThisTag, SearchStr, Attributes: String;
+  TempLines: TStringListAAC;
+  Clef: TClefKind;
+  Key: TKeyKind;
+  Meter: TMeter;
+begin
+  assert(Assigned(InnerLines));
+  TempLines := TStringListAAC.Create;
+  ThisTag := '';
+  
+  Attributes := Format('%s %s', [XMLAttribute('n', IntToStr(Node.FNum)),
+                                 XMLAttribute('xml:id', Node.FID)]);
+  case Node.FType of
+    ekStaffGrp:
+    begin
+      ThisTag := 'staffGrp';
+      Attributes := Attributes + StaffGrpAttributes;
+    end;
+
+    ekStaff:
+    begin
+      ThisTag := 'staffDef';
+      
+      { Extract staffDef info from the first music expression in the first
+      child Voice }
+      if Assigned(Node.FChild) and (Node.FChild.FType = ekLayer) then
+      begin
+        { Search c. first 10 lines }
+        SearchStr := Node.FChild.FContents.Substring(0, 800); 
+        Clef  := FindLyClef(SearchStr);
+        Key   := FindLyKey(SearchStr);
+        Meter := FindLyMeter(SearchStr);
+      end;
+
+      Attributes := Format('%s %s', [Attributes, 
+        StaffDefAttributes(Clef, Key, Meter)]);;
+    end;
+  end;
+
+  { Create this element and its children }
+  if (not ThisTag.IsEmpty) and Assigned(Node.FChild) then
+  begin
+    TempLines.AddStrings(InnerScoreDef(Node.FChild, InnerLines));
+    TempLines.EncloseInXML(ThisTag, Attributes);
+  end;
+
+  { Create its siblings }
+  if Assigned(Node.FSibling) then
+    TempLines.AddStrings(InnerScoreDef(Node.FSibling, InnerLines));
+
+  InnerLines.Assign(TempLines);
+  FreeAndNil(TempLines);
+  result := InnerLines;
+end;
+
+var
+  MEI: TStringListAAC;
+begin
+  MEI := TStringListAAC.Create;
+  MEI := InnerScoreDef(Self, MEI);
+  MEI.EncloseInXML('staffGrp');
+  MEI.EncloseInXML('scoreDef');
+
   result := MEI;
 end;
 
-function StaffDefAttributes(Clef: TClefKind; Key: TKeyKind; Meter: TMeter): String;
-var
-  ClefStr, KeyStr, MeterStr, OutputStr: String;
-begin
-  OutputStr := XMLAttribute('lines', '5');
-  ClefStr   := MEIClef(Clef);
-  KeyStr    := MEIKEy(Key);
-  MeterStr  := MEIMeter(Meter);
 
-  result := OutputStr + Format('%s %s %s', [ClefStr, KeyStr, MeterStr]);
-end;
-
-function StaffGrpAttributes(): String;
-begin
-  result := Format(' %s %s', [XMLAttribute('bar.thru', 'false'),
-                              XMLAttribute('symbol', 'bracket')]);
-end;
-
-function StaffNumID(Node: TLyObject): String;
-begin
-  result := Format('%s %s', [XMLAttribute('n', IntToStr(Node.FNum)),
-                             XMLAttribute('def', '#' + Node.FID)]);
-end;
-
-function TLyObject.ToMEIScoreDef: TStringListAAC;
+function TLyObject.ToMEIScoreDefText: TStringListAAC;
 function InnerScoreDef(Node: TLyObject; InnerLines: TStringListAAC): TStringListAAC;
 var 
   ThisTag, SearchStr, Attributes: String;
