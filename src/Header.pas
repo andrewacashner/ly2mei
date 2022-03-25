@@ -25,6 +25,8 @@ type
 
 function CreateMeiHeadFromLy(LyInput: TStringListAAC): TMeiNode;
 
+function AddMeiHead(Root: TMeiNode; LyInput: TStringListAAC): TMeiNode;
+
 implementation
 
 constructor THeader.CreateFromLy(InputLines: TStringListAAC);
@@ -188,6 +190,20 @@ begin
   MeiTree := HeaderData.ToMei;
   FreeAndNil(HeaderData);
   result := MeiTree;
+end;
+
+function AddMeiHead(Root: TMeiNode; LyInput: TStringListAAC): TMeiNode;
+var
+  MeiHead: TMeiNode = nil;
+begin
+  assert(Assigned(Root));
+  MeiHead := CreateMeiHeadFromLy(LyInput);
+  if Assigned(MeiHead) then
+    Root.AppendChild(MeiHead)
+  else
+    WriteLn(stderr, 'Could not create meiHead element');
+
+  result := Root;
 end;
 
 end.

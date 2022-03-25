@@ -48,13 +48,14 @@ type
 function FindReplaceMacros(SourceLines: TStringListAAC; Dict: TMacroDict):
   TStringListAAC; 
 
-{ Process macros in the source text: modify the stringlist by expanding all
-  macros, including nested ones. }
-function ExpandMacros(SourceLines: TStringListAAC): TStringListAAC;
-
 { Write out Lilypond multimeasure rests as individual rests: @code(| R1*2)
 becomes @code(| R1\n| R1). }
 function ExpandMultiRests(SourceLines: TStringListAAC): TStringListAAC;
+
+{ Process macros in the source text: modify the stringlist by expanding all
+  macros, including nested ones. Also expand multimeasure rests. }
+function ExpandMacros(SourceLines: TStringListAAC): TStringListAAC;
+
 
 implementation
 
@@ -194,23 +195,6 @@ begin
   FreeAndNil(OutputLines);
 end;
 
-function ExpandMacros(SourceLines: TStringListAAC): TStringListAAC;
-var
-  Macros: TMacroDict;
-begin
-  Assert(Assigned(SourceLines));
-  Macros := TMacroDict.Create;
-  try
-    SourceLines.RemoveComments;
-    ExtractMacros(SourceLines, Macros);
-    SourceLines := FindReplaceMacros(SourceLines, Macros);
-    SourceLines.RemoveBlankLines;
-  finally
-    FreeAndNil(Macros);
-    result := SourceLines;
-  end;
-end;
-
 function ExpandMultiRests(SourceLines: TStringListAAC): TStringListAAC;
 var
   ThisLine, RestStr, DurStr: String;
@@ -247,5 +231,24 @@ begin
   FreeAndNil(EditedLines);
   result := SourceLines;
 end;
-    
+
+function ExpandMacros(SourceLines: TStringListAAC): TStringListAAC;
+var
+  Macros: TMacroDict;
+begin
+  Assert(Assigned(SourceLines));
+  Macros := TMacroDict.Create;
+  try
+    SourceLines.RemoveComments;
+    ExtractMacros(SourceLines, Macros);
+    SourceLines := FindReplaceMacros(SourceLines, Macros);
+    SourceLines.RemoveBlankLines;
+    SourceLines := ExpandMultiRests(SourceLines);
+  finally
+    FreeAndNil(Macros);
+    result := SourceLines;
+  end;
+end;
+
+   
 end.

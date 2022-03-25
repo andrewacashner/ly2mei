@@ -45,6 +45,7 @@ function FindLyKey(KeyStr: String): TKeyKind;
 type 
   { Types of elements in the internal tree of @code(TLyObject) or
     @code(TMEIElement) objects }
+    { TODO get rid of deprecated ekXML }
   TMusicTreeElement = (ekAnonymous, ekStaffGrp, ekStaff, ekLayer, ekMeasure, ekXML);
 
   { @abstract(One node in a tree of Lilypond code objects.)
@@ -103,6 +104,8 @@ type
     function ToString: String; override;
 
     function ToMeiScoreDef: TMeiNode;
+    
+    function ToXMLAsIs(XmlNode: TMeiNode = nil): TMeiNode;
   end;
 
 { Build an LCRS tree of Lilypond @code(\new) objects.
@@ -123,7 +126,11 @@ type
 function BuildLyObjectTree(Source: String; Tree: TLyObject): TLyObject;
 
 
+function CreateLyObjectTreeFromLy(LyInput: TStringListAAC): TLyObject;
+
 function CreateMeiScoreDefFromLy(LyInput: TStringListAAC): TMeiNode;
+
+function AddMeiScoreDef(Root: TMeiNode; LyInput: TStringListAAC): TMeiNode;
 
 implementation
 
@@ -302,6 +309,15 @@ begin
   NumberElementsInOrder(ekStaffGrp); 
   NumberElementsInOrder(ekStaff);
   NumberElementsInOrder(ekLayer);
+end;
+
+function CreateLyObjectTreeFromLy(LyInput: TStringListAAC): TLyObject;
+var 
+  LyTree: TLyObject = nil;
+begin
+  LyTree := BuildLyObjectTree(LyInput.Text, LyTree); 
+  LyTree.SetNumbers;
+  result := LyTree;
 end;
 
 type
@@ -577,6 +593,7 @@ begin
   result := StaffGrpNode;
 end;
 
+{ TODO are we using this? }
 function AddStaffNumIDAttributes(StaffNode: TMeiNode; Node: TLyObject):
   TMeiNode; 
 begin
@@ -655,15 +672,69 @@ begin
   result := ScoreDef;
 end;
 
+function TLyObject.ToXMLAsIs(XmlNode: TMeiNode = nil): TMeiNode;
+var
+  NodeName: String;
+begin
+  if not Assigned(XmlNode) then
+    XmlNode := TMeiNode.Create();
+
+  case FType of
+    ekStaffGrp  : NodeName := 'staffGrp';
+    ekStaff     : NodeName := 'staff';
+    ekLayer     : NodeName := 'layer';
+    ekMeasure   : NodeName := 'measure';
+  else NodeName := 'xml';
+  end;
+
+  XmlNode.SetName(NodeName);
+
+  if FID.IsEmpty then
+    XmlNode.SetName(FName)
+  else
+    XmlNode.AddAttribute('xml:id', FName);
+
+  XmlNode.AddAttribute('n', IntToStr(FNum));
+  XmlNode.SetTextNode(FContents);
+
+  if Assigned(FChild) then
+  begin
+    XmlNode.AppendChild(FChild.ToXMLAsIs);
+  end;
+
+  if Assigned(FSibling) then
+  begin
+    XmlNode.AppendSibling(FSibling.ToXMLAsIs);
+  end;
+
+  result := XmlNode;
+end;
+
 function CreateMeiScoreDefFromLy(LyInput: TStringListAAC): TMeiNode;
 var 
   LyTree: TLyObject;
   MeiScoreDef: TMeiNode = nil;
 begin
   LyTree := BuildLyObjectTree(LyInput.Text, nil);
+  LyTree.SetNumbers;
+
   MeiScoreDef := LyTree.ToMeiScoreDef;
   FreeAndNil(LyTree);
   result := MeiScoreDef;
+end;
+
+function AddMeiScoreDef(Root: TMeiNode; LyInput: TStringListAAC): TMeiNode;
+var
+  ScoreDef: TMeiNode = nil;
+begin
+  assert(Assigned(Root));
+  ScoreDef := CreateMeiScoreDefFromLy(LyInput);
+  if Assigned(ScoreDef) then
+    Root.AppendChild(ScoreDef)
+  else
+    WriteLn(stderr, 'Could not create scoreDef element');
+
+  result := Root;
 end;
 
 end.

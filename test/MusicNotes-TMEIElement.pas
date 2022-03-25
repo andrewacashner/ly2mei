@@ -231,6 +231,82 @@ type
     procedure AddFermatas;
   end;
 
+  { Label to indicate whether we should assign all measures or just one. Used
+  when converting a Lilypond tree to an MEI structure, where there are just
+  the notes for one measure at the bottom of the tree.}
+  TMeasureCopyMode = (mkAllMeasures, mkOneMeasure);
+
+  { @abstract(A node in an LCRS tree used to represent MEI structure.)
+
+    Like @link(TLyObject), this class functions as nodes in an
+    left-child/right-sibling tree. Each node represents one XML element. We
+    will convert the @link(TLyObject) tree taken from Lilypond input into a
+    new tree. }
+  TMEIElement = class
+  private
+    var
+      { The element must be one of a standard set of types. }
+      FType: TMusicTreeElement;
+
+      { Name and ID strings }
+      FName, FID: String;
+
+      { Any kind of text }
+      FText: String;
+      
+      { Position in series of same type }
+      FNum: Integer;
+
+      { Only elements with @code(ekLayer) type contain a list of measures; 
+        for all other types this will be @code(nil). }
+      FMeasures: TMeasureList;
+
+      { Links to rest of tree }
+      FChild, FSibling: TMEIElement;
+  public
+    constructor Create();
+
+    { Create from all fields (default is to create a single node with
+      @code(nil) relations) }
+    constructor Create(ElementType: TMusicTreeElement; ID: String = '';
+      TextStr: String = ''; Num: Integer = 1);
+
+    { Destroy entire tree }
+    destructor Destroy; override;
+
+    { Return the last left child in the tree. }
+    function LastChild: TMEIElement;
+
+    { Return the last right sibling in the tree. }
+    function LastSibling: TMEIElement;
+
+    { Deep copy of all fields of a single element node to this one, including
+      the measure list (and its contents recursively) if there is one. }
+    procedure AssignNode(Source: TMEIElement; Mode: TMeasureCopyMode =
+      mkAllMeasures; MeasureIndex: Integer = 0); 
+
+    { Deep copy of the entire tree starting at this node, including any
+      measure lists it contains and all their contents recursively. }
+    procedure AssignTree(Source: TMEIElement; Mode: TMeasureCopyMode =
+      mkAllMeasures; MeasureIndex: Integer = 0); 
+
+    { Copy data to convert from a @link(TLyObject). }
+    procedure SetFromLyObject(LyObject: TLyObject);
+
+    { How many measures are in the measure list within this element? Return -1
+      if not all measure lists have the same count. }
+    function CountMeasures: Integer;
+
+    { Convert the tree to a simple string representation for debugging. }
+    function ToString: String; override;
+
+    { Fill in ties, slurs, and fermatas from the markers taken from Lilypond
+      input. }
+    procedure AddAnalyticalMarkup;
+   
+    { Combine all the @link(TMeasureList) suffixes in each measure element. }
+    function ConcatMeasureSuffixes(MeasureIndex: Integer): String;
+
     { First we copy a @link(TLyObject) tree to a @link(TMEIElement) tree,
       preserving its structure (score/staff/voice/measures). With this
       function we create a new tree that is organized in the MEI hierarchy
@@ -241,12 +317,35 @@ type
       measure, where the child element is the entire original tree
       (staff/layer), but we include only a single measure in the list at the
       bottom, corresponding to the music for this measure. }
+    function StaffToMeasureTree: TMEIElement;
+
+    { Generate the MEI output for the whole tree starting at this node,
+      including recursively all its subelements and relations. Return a
+      stringlist with one MEI node and its contents. }
+    function ToMEI: TStringListAAC;
+  end;
 
 { Convert a @code(TLyObject) tree to a @code(TMEIElement) tree, preserving the
-  same hierarchy from the Lilypond input. 
+  same hierarchy from the Lilypond input. }
 function LyToMEITree(LyNode: TLyObject; MEINode: TMEIElement): TMEIElement;
-}
 
+{ For now, replace section command with MEI equivalent. 
+  Eventually (TODO) replace multiple commands.
+
+  If no commands are found, return the original string.
+ 
+  @table(
+    @rowHead( @cell(Lilypond) @cell(MEI) )
+    @row( @cell(@code(\Section "[ESTRIBILLO] SOLO"))
+          @cell(@code(<tempo tstamp="1">[ESTRIBILLO] SOLO</tempo>)) ) 
+  )
+}
+function MEISectionHead(Source: String): String;
+
+{ Parse a Lilypond \score expression and create an MEI music
+  element including the scoreDef and music notes. 
+function CreateMEIMusic(SourceLines: TStringListAAC): TStringListAAC;
+}
 
 implementation
 
@@ -938,6 +1037,440 @@ begin
   result := Name;
 end;
 
+constructor TMEIElement.Create();
+begin
+  inherited Create;
+  FID := GenerateID;
+end;
+
+constructor TMEIElement.Create(ElementType: TMusicTreeElement; ID: String = '';
+  TextStr: String = ''; Num: Integer = 1);
+begin
+  inherited Create;
+  FType        := ElementType;
+  FName        := TypeToName(ElementType);
+
+  if ID <> '' then
+    FID := ID;
+
+  FText        := TextStr;
+  FNum         := Num;
+  FMeasures    := nil;
+  FChild       := nil;
+  FSibling     := nil;
+end;
+
+procedure TMEIElement.AssignNode(Source: TMEIElement; Mode: 
+  TMeasureCopyMode = mkAllMeasures; MeasureIndex: Integer = 0); 
+var
+  NewMeasure: TPitchList;
+begin
+  FType := Source.FType;
+  FName := Source.FName;
+  FID   := Source.FID;
+  FText := Source.FText;
+  FNum  := Source.FNum;
+  if Assigned(Source.FMeasures) then
+  begin
+    FMeasures := TMeasureList.Create;
+
+    case Mode of 
+      mkAllMeasures: FMeasures.Assign(Source.FMeasures);
+
+      mkOneMeasure:
+      begin
+        if MeasureIndex < Source.FMeasures.Count then
+        begin
+          NewMeasure := TPitchList.Create;
+          NewMeasure.Assign(Source.FMeasures[MeasureIndex]);
+          FMeasures.Add(NewMeasure);
+
+          {
+          if MeasureIndex = 0 then
+            FMeasures.FPrefix := Source.FMeasures.FPrefix
+          else if MeasureIndex = Source.FMeasures.Count - 1 then
+            FMeasures.FSuffix := Source.FMeasures.FSuffix;
+          }
+          FMeasures.FPrefix := Source.FMeasures.FPrefix;
+          FMeasures.FSuffix := Source.FMeasures.FSuffix;
+        end;
+      end;
+    end;
+  end;
+  FChild   := nil;
+  FSibling := nil;
+end;
+
+procedure TMEIElement.AssignTree(Source: TMEIElement; Mode: TMeasureCopyMode =
+  mkAllMeasures; MeasureIndex: Integer = 0); 
+function InnerAssign(TreeA, TreeB: TMEIElement): TMEIElement;
+begin
+  if Assigned(TreeA) then
+  begin
+    if not Assigned(TreeB) then
+      TreeB := TMEIElement.Create;
+  
+    TreeB.AssignNode(TreeA, Mode, MeasureIndex);
+
+    if Assigned(TreeA.FChild) then
+      TreeB.FChild := InnerAssign(TreeA.FChild, TreeB.FChild);
+    if Assigned(TreeA.FSibling) then
+      TreeB.FSibling:= InnerAssign(TreeA.FSibling, TreeB.FSibling);
+  end;
+  result := TreeB;
+end;
+begin
+  InnerAssign(Source, Self);
+end;
+
+procedure TMEIElement.SetFromLyObject(LyObject: TLyObject);
+begin
+  FType     := LyObject.FType;
+  FName     := TypeToName(LyObject.FType);
+
+  if LyObject.FID <> '' then
+    FID       := LyObject.FID;
+
+  FNum      := LyObject.FNum;
+  FChild    := nil;
+  FSibling  := nil;
+  if LyObject.FContents.IsEmpty then
+    FMeasures := nil
+  else
+  begin
+    FMeasures := TMeasureList.Create;
+    FMeasures.SetFromLy(LyObject.FContents);
+  end;
+end;
+
+function TMEIElement.CountMeasures: Integer;
+var
+  MasterCount: Integer = 0;
+function InnerCount(Node: TMEIElement): Integer;
+var
+  ThisCount: Integer = 0;
+begin
+  if Assigned(Node) then
+  begin
+    if (Node.FType = ekLayer) and Assigned(Node.FMeasures) then
+    begin
+      ThisCount := Node.FMeasures.Count;
+      if MasterCount = 0 then
+        MasterCount := ThisCount
+      else if ThisCount <> MasterCount then
+      begin
+        result := -1;
+        exit;
+      end;
+    end;
+    if Assigned(Node.FChild) then
+      ThisCount := InnerCount(Node.FChild);
+    if Assigned(Node.FSibling) then
+      ThisCount := InnerCount(Node.FSibling);
+  end;
+  result := ThisCount;
+end;
+begin
+  result := InnerCount(Self)
+end;
+
+function LyToMEITree(LyNode: TLyObject; MEINode: TMEIElement): TMEIElement;
+begin
+  if Assigned(LyNode) then
+  begin
+    DebugLn('LyToMEITree: visiting non-empty LyObjectNode with FType: ');
+    {$ifdef DEBUG}WriteLn(LyNode.FType);{$endif}
+    
+    case LyNode.FType of
+      ekStaff, ekLayer :
+      begin
+        if not Assigned(MEINode) then
+        begin
+          MEINode := TMEIElement.Create;
+          MEINode.SetFromLyObject(LyNode);
+        end;
+      end;
+    end;
+    { If we haven't made a new node yet, then we are skipping a parent node }
+    if not Assigned(MEINode) then
+    begin
+      if Assigned(LyNode.FChild) then
+        MEINode := LyToMEITree(LyNode.FChild, MEINode);
+      if Assigned(LyNode.FSibling) then
+        MEINode := LyToMEITree(LyNode.FSibling, MEINode);
+    end
+    else 
+    begin
+      if Assigned(LyNode.FChild) then
+      begin
+        { Because we are skipping some parent nodes, we may find child nodes
+        in the original tree that need to become sibling nodes in the new tree }
+        if MEINode.FType = LyNode.FChild.FType then
+        begin
+          MEINode.LastSibling.FSibling := 
+            LyToMEITree(LyNode.FChild, MEINode.LastSibling.FSibling);
+        end
+        else
+          MEINode.FChild := LyToMEITree(LyNode.FChild, MEINode.FChild);
+      end;
+
+      if Assigned(LyNode.FSibling) then
+        MEINode.FSibling := LyToMEITree(LyNode.FSibling, MEINode.FSibling);
+    end;
+  end;
+
+  result := MEINode;
+end;
+
+destructor TMEIElement.Destroy;
+begin
+  FreeAndNil(FMeasures);
+  if Assigned(FChild) then 
+    FChild.Destroy;
+  if Assigned(FSibling) then 
+    FSibling.Destroy;
+  inherited Destroy;
+end;
+
+function TMEIElement.LastChild: TMEIElement;
+begin
+  if not Assigned(FChild) then
+    result := Self
+  else
+    result := FChild.LastChild;
+end;
+
+
+function TMEIElement.LastSibling: TMEIElement;
+begin
+  if not Assigned(FSibling) then
+    result := Self
+  else
+    result := FSibling.LastSibling;
+end;
+
+
+function TMEIElement.ToString: String;
+var
+  OutputStr: String = '';
+  ThisPitchList: TPitchList;
+begin
+  OutputStr := OutputStr + Format('%s %s %d', [FName, FID, FNum]) + LineEnding;
+  if Assigned(FMeasures) then
+  begin
+    OutputStr := OutputStr + Format('Measurelist prefix: ''%s''', 
+                    [FMeasures.FPrefix]) + LineEnding; 
+
+    for ThisPitchList in FMeasures do
+    begin
+      OutputStr := OutputStr + ThisPitchList.ToMEIString;
+      OutputStr := OutputStr + Format('PitchList line SUFFIX: ''%s''', 
+                    [ThisPitchList.FLines]) + LineEnding; 
+      OutputStr := OutputStr + Format('PitchList fermata SUFFIX: ''%s''', 
+                    [ThisPitchList.FFermata]) + LineEnding; 
+
+    end;
+
+    OutputStr := OutputStr + Format('Measurelist suffix: ''%s''',
+                  [FMeasures.FSuffix]) + LineEnding;
+  end;
+  if Assigned(FChild) then
+    OutputStr := OutputStr + Format('CHILD (to %s %d): %s', 
+                  [Fname, FNum, FChild.ToString]); 
+
+  if Assigned(FSibling) then
+    OutputStr := OutputStr + Format('SIBLING (to %s %d): %s',
+                  [Fname, FNum, FSibling.ToString]); 
+  result := OutputStr;
+end;
+
+function TMEIElement.ConcatMeasureSuffixes(MeasureIndex: Integer): String;
+function InnerConcat(Node: TMEIElement; SuffixStr: String = ''): String;
+var
+  ThisMeasure: TPitchList;
+begin
+  if Assigned(Node) then
+  begin
+    if (Node.FType = ekLayer) and Assigned(Node.FMeasures) then
+    begin
+      ThisMeasure := Node.FMeasures[MeasureIndex];
+      if ThisMeasure.FLines <> '' then
+          SuffixStr := Format('%s %s', [SuffixStr, ThisMeasure.FLines]);
+      if ThisMeasure.FFermata <> '' then
+          SuffixStr := Format('%s %s', [SuffixStr, ThisMeasure.FFermata]);
+      { TODO using a stringlist would be better, but using data objects for
+      slur elements would be better yet }
+    end;
+
+    if Assigned(Node.FChild) then
+      SuffixStr := InnerConcat(Node.FChild, SuffixStr);
+    
+    if Assigned(Node.FSibling) then
+      SuffixStr := InnerConcat(Node.FSibling, SuffixStr);
+  end;
+  DebugLn('PitchList SUFFIX string currently: ' + SuffixStr);
+  result := SuffixStr;
+end;
+begin
+  result := InnerConcat(Self);
+end;
+
+function TMEIElement.StaffToMeasureTree: TMEIElement;
+var
+  MeasureCount, MeasureNum: Integer;
+  MeasureTree, Root, Branch, Prefix, Suffix, Leaf: TMEIElement;
+  ThisMeasure: TPitchList;
+  PrefixStr: String;
+  SuffixStr: String = '';
+  BeforeEndMeasureStr: String = '';
+begin
+  MeasureCount := Self.CountMeasures;
+  DebugLn('MEASURE COUNT: ' + IntToStr(MeasureCount));
+  if MeasureCount <= 0 then
+  begin
+    result := nil;
+    exit;
+  end;
+  for MeasureNum := 0 to MeasureCount - 1 do
+  begin
+    Root := TMEIElement.Create(ekMeasure, '', '', MeasureNum + 1);
+
+    Branch := TMEIElement.Create;
+    Branch.AssignTree(Self, mkOneMeasure, MeasureNum);
+
+    Leaf := Branch.LastChild;
+    if Assigned(Leaf.FMeasures) then
+    begin
+      ThisMeasure := Leaf.FMeasures.First;
+      if ThisMeasure.FBarlineRight <> bkNormal then
+        Root.FText := ThisMeasure.MEIBarlineAttr;
+        { TODO there must a better way }
+    end;
+
+    BeforeEndMeasureStr := Self.ConcatMeasureSuffixes(MeasureNum);
+    Branch.LastSibling.FSibling := TMEIElement.Create(ekXML, '', BeforeEndMeasureStr);
+
+    Root.FChild := Branch;
+
+    if MeasureNum = 0 then
+    begin
+      if Assigned(Branch.LastChild.FMeasures) then
+      begin
+        PrefixStr := Branch.LastChild.FMeasures.FPrefix;
+        if PrefixStr <> '' then
+        begin
+          DebugLn('Found measurelist prefix' + PrefixStr);
+          Prefix := TMEIElement.Create(ekXML, '', PrefixStr);
+          Prefix.FSibling := Branch;
+          Root.FChild := Prefix;
+        end;
+      end;
+
+      MeasureTree := Root
+    end
+    else if MeasureNum = MeasureCount - 1 then
+    begin
+      if Assigned(Branch.LastChild.FMeasures) then
+      begin
+        SuffixStr := Branch.LastChild.FMeasures.FSuffix;
+        if SuffixStr <> '' then
+        begin
+          DebugLn('Found measurelist suffix' + SuffixStr);
+          Suffix := TMEIElement.Create(ekXML, '', SuffixStr);
+          Root.LastSibling.FSibling := Suffix;
+        end;
+      end;
+      
+      MeasureTree.LastSibling.FSibling := Root;
+    end
+    else
+      MeasureTree.LastSibling.FSibling := Root;
+  end;
+  result := MeasureTree;
+end;
+
+function TMEIElement.ToMEI: TStringListAAC;
+function InnerToMEI(Node: TMEIElement; MEI: TStringListAAC): TStringListAAC;
+  function InnerAddNewElement(Node: TMEIElement; List: TStringListAAC): TStringListAAC;
+  var
+    NewLines: TStringListAAC;
+  begin
+    assert(Assigned(List));
+    NewLines := TStringListAAC.Create;
+    NewLines := InnerToMEI(Node, NewLines);
+    List.AddStrings(NewLines);
+    FreeAndNil(NewLines);
+    result := List;
+  end;
+
+var
+  NewElement, NewMeasure: TStringListAAC;
+  Attributes: String = '';
+begin
+  if Assigned(Node) then
+  begin
+    NewElement := TStringListAAC.Create;
+
+    if (Node.FType = ekLayer) and Assigned(Node.FMeasures) then
+    begin
+      NewMeasure := Node.FMeasures.First.ToMEI;
+      NewElement.AddStrings(NewMeasure);
+      FreeAndNil(NewMeasure);
+    end
+    else
+    begin
+      if (Node.FType = ekMeasure) and (Node.FText <> '') then
+      begin
+        Attributes := Format('%s %s', [Attributes, Node.FText]);
+        DebugLn('Add Barline attribute to Measure: ' + Attributes);
+      end;
+    end;
+
+    if Assigned(Node.FChild) then
+      NewElement := InnerAddNewElement(Node.FChild, NewElement);
+
+    if Node.FType = ekXML then
+      NewElement.Add(Node.FText)
+    else
+    begin
+      Attributes := XMLAttribute('n', IntToStr(Node.FNum));
+      if Node.FType = ekStaff then
+      begin
+        Attributes := Format('%s %s', 
+          [Attributes,  XMLAttribute('def', '#' + Node.FID)]);
+      end
+      else if Node.FID <> '' then
+      begin
+        Attributes := Format('%s %s', 
+          [Attributes, XMLAttribute('xml:id', Node.FID)]);
+      end;
+     
+      if (Node.FType = ekMeasure) and (Node.FText <> '') then
+      begin
+        Attributes := Format('%s %s', [Attributes, Node.FText]);
+        DebugLn('Add Barline attribute to Measure: ' + Attributes);
+      end;
+      
+
+      NewElement.EncloseInXML(Node.FName, Attributes);
+    end;
+
+    if Assigned(Node.FSibling) then
+      NewElement := InnerAddNewElement(Node.FSibling, NewElement);
+  end;
+  MEI.AddStrings(NewElement);
+  FreeAndNil(NewElement);
+  result := MEI;
+end;
+
+var
+  MasterMEI: TStringListAAC;
+begin
+  MasterMEI := TStringListAAC.Create;
+  MasterMEI := InnerToMEI(Self, MasterMEI);
+  result := MasterMEI;
+end;
+
 procedure TMeasureList.AddFermatas;
 var
   ThisMeasure: TPitchList;
@@ -958,7 +1491,6 @@ begin
     end;
   end;
 end;
-
 
 procedure TMeasureList.AddTies;
 var
@@ -1099,6 +1631,114 @@ begin
   end;
 end;
 
+procedure TMEIElement.AddAnalyticalMarkup;
+procedure MeasureListDo(List: TMeasureList);
+begin
+  List.AddTies;
+  List.AddLines(lkSlur);
+  List.AddLines(lkColoration);
+  List.AddLines(lkLigature);
+  List.AddFermatas;
+end;
 
+function InnerMarkup(Tree: TMEIElement): TMEIElement;
+begin
+  if Assigned(Tree) then
+  begin
+    if (Tree.FType = ekLayer) and Assigned(Tree.FMeasures) then
+      MeasureListDo(Tree.FMeasures);
+
+    if Assigned(Tree.FChild) then
+      Tree.FChild := InnerMarkup(Tree.FChild);
+
+    if Assigned(Tree.FSibling) then
+      Tree.FSibling := InnerMarkup(Tree.FSibling);
+  end;
+  result := Tree;
+end;
+
+begin
+  InnerMarkup(Self);
+end;
+{
+function CreateMEIMusic(SourceLines: TStringListAAC): TStringListAAC; 
+var
+  LyScoreStr: String;
+  LyObjectTree: TLyObject = nil;
+  MEIMusicLines: TStringListAAC = nil;
+  MEIScoreLines: TStringListAAC = nil;
+  MEIStaffTree: TMEIElement = nil;
+  MEIMeasureTree: TMEIElement = nil;
+begin
+  LyScoreStr := LyArg(SourceLines.Text, '\score');
+  if not LyScoreStr.IsEmpty then
+  begin
+    LyObjectTree := BuildLyObjectTree(LyScoreStr, LyObjectTree);
+    LyObjectTree.SetNumbers;
+    DebugLn('LYOBJECT TREE, NUMBERED:' + LineEnding + LyObjectTree.ToString);
+    
+    MEIMusicLines := LyObjectTree.ToMEIScoreDef;
+
+    MEIStaffTree := LyToMEITree(LyObjectTree, MEIStaffTree);
+    
+    if Assigned(MEIStaffTree) then
+    begin
+      DebugLn('MEI TREE STAGE 1:' + LineEnding + MEIStaffTree.ToString);
+
+      MEIStaffTree.AddAnalyticalMarkup;
+      DebugLn('MEI TREE STAGE 1.5, analytical markup:' 
+          + LineEnding + MEIStaffTree.ToString);
+
+      MEIMeasureTree := MEIStaffTree.StaffToMeasureTree;
+    end;
+    if Assigned(MEIMeasureTree) then
+    begin
+      DebugLn('MEI TREE STAGE 2:' + LineEnding + MEIMeasureTree.ToString);
+      
+      MEIScoreLines := MEIMeasureTree.ToMEI;
+    end;
+  end;
+
+  if not Assigned(MEIMusicLines) then
+    MEIMusicLines := TStringListAAC.Create;
+
+  if Assigned(MEIScoreLines) then
+  begin
+    MEIScoreLines.EncloseInXML('section');
+    MEIMusicLines.AddStrings(MEIScoreLines);
+  end;
+
+  MEIMusicLines.EncloseInXML('score');
+  MEIMusicLines.EncloseInXML('mdiv');
+  MEIMusicLines.EncloseInXML('body');
+  MEIMusicLines.EncloseInXML('music');
+
+  FreeAndNil(MEIMeasureTree);
+  FreeAndNil(MEIStaffTree);
+  FreeAndNil(MEIScoreLines);
+  FreeAndNil(LyObjectTree);
+  result := MEIMusicLines;
+end;
+}
 
 end.
+
+{ TODO find and replace all the commands that have a simple one-to-one match 
+    '\clef "treble"'  :
+    '\clef "bass"'    :
+    '\CantusMollis'   :
+    '\MeterDuple'     :
+    '\MeterTriple'    :
+    '\MiddleBar'      :
+    '\FinalBar'       :
+    '\RepeatBarStart' :
+    '\RepeatBarEnd'   :
+    '\Fine'           :
+    '\FineEd'         :
+x    '\break'          :
+x    '\fermata'        :
+
+x  \color
+x  \endcolor
+x  \[ \] (ligatures)
+}
