@@ -122,23 +122,35 @@ type
     { Generate the MEI @code(pname) attribute for the pitch name. }
     function MEIPName: String;
 
+    function AddMeiPnameAttribute(MeiNote: TMeiNode): TMeiNode;
+
     { Generate the MEI @code(accid) and/or @code(accid.ges) attributes for the
       accidental, depending on whether the accidental is to be written
       explicitly in this key. }
     function MEIAccid: String;
 
+    function AddMeiAccid(MeiNote: TMeiNode): TMeiNode;
+
     { Generate the MEI @code(oct) attribute for the octave. }
     function MEIOct: String;
 
+    function AddMeiOctAttribute(MeiNote: TMeiNode): TMeiNode;
+
     { Generate the MEI @code(dur) and @code(dots) attributes for the rhythmic
       duration. }
-    function MEIDurDots: String;
+    function MEIDurDotsText: String;
+    
+    function AddMeiDurDotsAttributes(MeiNode: TMeiNode): TMeiNode;
 
     { Generate the MEI @code(tie) attribute. }
-    function MEITie: String;
+    function MEITieText: String;
+    
+    function AddMeiTieAttribute(MeiNote: TMeiNode): TMeiNode;
 
     { Generate one or more MEI @code(artic) elements within a @code(note). }
     function MEIArtic: String;
+    
+    function AddMeiArticAttribute(MeiNote: TMeiNode): TMeiNode;
 
   public
     constructor Create(); 
@@ -163,7 +175,9 @@ type
     function PitchEq(P2: TPitch): Boolean;
 
     { Generate a complete MEI @code(note) element for this pitch. }
-    function ToMEI: String;
+    function ToMeiText: String;
+    
+    function ToMEI: TMeiNode;
   end;
 
 
@@ -598,7 +612,7 @@ begin
   result := FPitchName >= pkRest;
 end;
 
-function TPitch.MEIPname: String;
+function TPitch.MEIPnameText: String;
 var
   Pname: String;
 begin
@@ -613,6 +627,27 @@ begin
   end;
   result := XMLAttribute('pname', Pname);
 end;
+
+function TPitch.AddMeiPnameAttribute(MeiNote: TMeiNode): TMeiNode;
+var
+  Pname: String;
+begin
+  assert(Assigned(MeiNote));
+  assert(MeiNote.GetName = 'note');
+
+  case FPitchName of
+    pkC : Pname := 'c';
+    pkD : Pname := 'd';
+    pkE : Pname := 'e';
+    pkF : Pname := 'f';
+    pkG : Pname := 'g';
+    pkA : Pname := 'a';
+    pkB : Pname := 'b';
+  end;
+  MeiNote.AddAttribute('pname', Pname);
+  result := MeiNote;
+end;
+
 
 function TPitch.MEIAccid: String;
 var
@@ -633,12 +668,49 @@ begin
   result := AccidSounded + AccidWritten;
 end;
 
-function TPitch.MEIOct: String;
+function TPitch.AddMeiAccidAttribute(MeiNote: TMeiNode): TMeiNode;
+var
+  AccidSounded, AccidWritten: String;
+begin
+  assert(Assigned(MeiNote));
+  assert(MeiNote.GetName = 'note');
+
+  case FAccid of
+    akNatural : AccidSounded := 'n';
+    akFlat    : AccidSounded := 'f';
+    akSharp   : AccidSounded := 's';
+  end;
+
+  if FAccidType = akExplicit then
+  begin
+    MeiNote.AddAttribute('accid', AccidSounded)
+  end;
+
+  MeiNote.AddAttribute('accid.ges', AccidSounded);
+
+  result := MeiNote;
+end;
+
+
+function TPitch.MEIOctText: String;
 begin
   result := XMLAttribute('oct', IntToStr(FOct));
 end;
 
-function TPitch.MEIDurDots: String;
+function TPitch.AddMeiOctAttribute(MeiNote: TMeiNode): TMeiNode;
+var
+  Oct: String;
+begin
+  assert(Assigned(MeiNote));
+  assert(MeiNote.GetName = 'note');
+
+  Oct := IntToStr(FOct);
+  MeiNote.AddAttribute(Oct);
+  result := MeiNote;
+end;
+
+
+function TPitch.MEIDurDotsText: String;
 var
   DurBase, Dur: String;
   Dots: Boolean;
@@ -670,7 +742,44 @@ begin
   result := Dur;
 end;
 
-function TPitch.MEITie: String;
+function AddMEIDurDotsAttributes(MeiNode: TMeiNode): TMeiNode;
+var
+  DurBase, Dur: String;
+  Dots: Boolean;
+begin
+  assert(Assigned(MeiNode));
+  assert((GetName(MeiNode) = 'note') 
+          or (GetName(MeiNode) = 'rest')
+          or (GetName(MeiNode) = 'mRest')); 
+  
+  case FDur of 
+    dkBreve           : DurBase := 'breve';
+    dkSemibreve       : DurBase := '1';
+    dkMinim           : DurBase := '2';
+    dkSemiminim       : DurBase := '4';
+    dkFusa            : DurBase := '8';
+    dkSemifusa        : DurBase := '16';
+    dkBreveDotted     : DurBase := 'breve';
+    dkSemibreveDotted : DurBase := '1';
+    dkMinimDotted     : DurBase := '2';
+    dkSemiminimDotted : DurBase := '4';
+    dkFusaDotted      : DurBase := '8';
+  end;
+
+  case FDur of
+    dkBreve .. dkSemifusa         : Dots := False;
+    dkBreveDotted .. dkFusaDotted : Dots := True;
+  end;
+  
+  MeiNode.AddAttribute('dur', DurBase);
+
+  if Dots then
+    MeiNode.AddAttribute('dots', '1');
+ 
+  result := MeiNode;
+end;
+
+function TPitch.MEITieText: String;
 var 
   Position: String;
   MEI: String = '';
@@ -686,6 +795,26 @@ begin
   end;
   result := MEI;
 end;
+
+function TPitch.AddMeiTieAttribute(MeiNote: TMeiNode): TMeiNode;
+var 
+  Position: String;
+begin
+  assert(Assigned(MeiNote));
+  assert(MeiNote.GetName = 'note');
+
+  if FTie <> mkNone then
+  begin
+    case FTie of
+      mkStart    : Position := 'i';
+      mkMiddle   : Position := 'm';
+      mkEnd      : Position := 't';
+    end;
+    MeiNote.AddAttribute('tie', Position);
+  end;
+  result := MeiNote;
+end;
+
 
 function TPitch.MEIArtic: String;
   function Artic(Kind: String): String;
@@ -714,12 +843,50 @@ begin
   result := MEI;
 end;
 
+function TPitch.AddMeiArticAttribute(MeiNote: TMeiNode): TMeiNode;
+  function Artic(Kind: String): String;
+  begin
+    result := XMLElement('artic', XMLAttribute('artic', Kind));
+  end;
+
+var
+  ArticKind: String = '';
+  MeiArticNode: TMeiNode;
+begin
+  assert(Assigned(MeiNote));
+  assert(MeiNote.GetName = 'note');
+
+  { Fermata is handled separately in TMeasureList.AddFermatas }
+  case FArticulations of 
+    FAccent, FStaccato, FTenuto, FStaccatissimo, FMarcato :
+    begin
+      if FAccent then
+        ArticKind := 'acc';
+      if FStaccato then
+        ArticKind := 'stacc';
+      if FTenuto then
+        ArticKind := 'ten';
+      if FStaccatissimo then
+        ArticKind := 'stacciss';
+      if FMarcato then
+        ArticKind := 'marc';
+      
+      MeiArticNode := TMeiNode.Create('artic');
+      MeiArticNode.AddAttribute('artic', ArticKind);
+      MeiNote.AppendChild(MeiArticNode);
+    end;
+  end;
+
+  result := MeiNote;
+end;
+
+
 function TPitch.PitchEq(P2: TPitch): Boolean;
 begin
   result := (FPitchName = P2.FPitchName) and (FAccid = P2.FAccid);
 end;
 
-function TPitch.ToMEI: String;
+function TPitch.ToMeiText: String;
 var
   Dur, ID, MEI: String;
 begin
@@ -737,6 +904,30 @@ begin
     end;
   end;
   result := MEI;
+end;
+
+function TPitch.ToMEI: TMeiNode;
+var
+  MeiElement: TMeiNode;
+  RestType: String = '';
+begin
+  case FPitchName of
+    pkRest        : MeiElement := TMeiNode.Create('rest');
+    pkMeasureRest : MeiElement := TMeiNode.Create('mRest');
+    else
+    begin
+      MeiElement := TMeiNode.Create('note');
+      MeiElement := AddMeiPnameAttribute(MeiElement);
+      MeiElement := AddMeiAccidAttribute(MeiElement);
+      MeiElement := AddMeiOctAttribute(MeiElement);
+      MeiElement := AddMeiTieAttribute(MeiElement);
+      MeiElement := AddMeiArticAttribute(MeiElement);
+    end;
+  end;
+
+  MeiElement := AddMeiDurDotsAttributes(MeiElement);
+
+  result := MeiElement;
 end;
 
 function ReplaceLyCommands(Source: String): String;
