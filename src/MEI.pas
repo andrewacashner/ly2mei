@@ -64,6 +64,7 @@ type
     procedure Assign(SourceNode: TMeiNode);
 
     function FindElementByAttribute(Name, Key, Value: String): TMeiNode;
+    
   end;
 
 const

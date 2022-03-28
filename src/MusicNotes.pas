@@ -14,12 +14,13 @@ unit MusicNotes;
 
 interface
 
-uses SysUtils, StrUtils, Classes, Generics.Collections, StringTools, Outline,
+uses SysUtils, StrUtils, Classes, Generics.Collections, StringTools,
 ScoreTree, MEI;
 
 type 
   { Labels for pitch classes }
-  TPitchName = (pkNone, pkC, pkD, pkE, pkF, pkG, pkA, pkB, pkRest, pkMeasureRest);
+  TPitchName = (pkNone, pkC, pkD, pkE, pkF, pkG, pkA, pkB, pkRest,
+    pkMeasureRest);
 
   { Labels for accidentals }
   TAccidental = (akFlat, akNatural, akSharp);
@@ -119,39 +120,7 @@ type
       { A string with additional text paired with this pitch. }
       FAnnotation: String;
 
-    { Generate the MEI @code(pname) attribute for the pitch name. }
-    function MEIPName: String;
-
-    function AddMeiPnameAttribute(MeiNote: TMeiNode): TMeiNode;
-
-    { Generate the MEI @code(accid) and/or @code(accid.ges) attributes for the
-      accidental, depending on whether the accidental is to be written
-      explicitly in this key. }
-    function MEIAccid: String;
-
-    function AddMeiAccid(MeiNote: TMeiNode): TMeiNode;
-
-    { Generate the MEI @code(oct) attribute for the octave. }
-    function MEIOct: String;
-
-    function AddMeiOctAttribute(MeiNote: TMeiNode): TMeiNode;
-
-    { Generate the MEI @code(dur) and @code(dots) attributes for the rhythmic
-      duration. }
-    function MEIDurDotsText: String;
-    
-    function AddMeiDurDotsAttributes(MeiNode: TMeiNode): TMeiNode;
-
-    { Generate the MEI @code(tie) attribute. }
-    function MEITieText: String;
-    
-    function AddMeiTieAttribute(MeiNote: TMeiNode): TMeiNode;
-
-    { Generate one or more MEI @code(artic) elements within a @code(note). }
-    function MEIArtic: String;
-    
-    function AddMeiArticAttribute(MeiNote: TMeiNode): TMeiNode;
-
+      
   public
     constructor Create(); 
 
@@ -173,14 +142,9 @@ type
     { Is the pitch class and accidental the same as another? (Ignoring
       duration and other fields) }
     function PitchEq(P2: TPitch): Boolean;
-
-    { Generate a complete MEI @code(note) element for this pitch. }
-    function ToMeiText: String;
-    
-    function ToMEI: TMeiNode;
   end;
 
-
+      
 
   { @abstract(A list of @link(TPitch) objects, corresponding to one measure of
      music.) }
@@ -199,18 +163,13 @@ type
     { Deep copy of all pitches from another list to this one. }
     procedure Assign(Source: TPitchList);
 
-    procedure  SetBarlineRight(Source: String);
-
-    function MEIBarlineAttr: String;
+    procedure SetBarlineRight(Source: String);
 
     { Generate an MEI @code(measure) element, recursively generating the
       @code(note) elements it contains. }
-    function ToMEI: TStringListAAC;
-
-    { Return the results of @link(TPitchList.ToMEI) as a string instead of a
-      list. }
-    function ToMEIString: String;
+    function ToMEI: TMeiNode;
   end;
+
 
   { @abstract(A list of @link(TPitchList) objects for a single voice/layer.)
 
@@ -219,7 +178,7 @@ type
   TMeasureList = class(specialize TObjectList<TPitchList>)
   private
     var
-      FPrefix, FSuffix: String;
+      FPrefix: TMeiNode;
   public
     { Deep copy of all measures and pitches in another list to this one. }
     procedure Assign(Source: TMeasureList);
@@ -261,6 +220,38 @@ type
 function LyToMEITree(LyNode: TLyObject; MEINode: TMEIElement): TMEIElement;
 }
 
+  TMeiNoteRest = class(TMeiNode)
+  private
+    function IsNote: Boolean;
+    function IsRest: Boolean;
+
+    { Generate the MEI @code(pname) attribute for the pitch name. }
+    procedure AddMeiPnameAttribute(Pitch: TPitch);
+
+    { Generate the MEI @code(accid) and/or @code(accid.ges) attributes for the
+      accidental, depending on whether the accidental is to be written
+      explicitly in this key. }
+    procedure AddMeiAccidAttribute(Pitch: TPitch);
+
+    { Generate the MEI @code(oct) attribute for the octave. }
+    procedure AddMeiOctAttribute(Pitch: TPitch);
+
+    { Generate the MEI @code(dur) and @code(dots) attributes for the rhythmic
+      duration. }
+    procedure AddMeiDurDotsAttributes(Pitch: TPitch);
+
+    { Generate the MEI @code(tie) attribute. }
+    procedure AddMeiTieAttribute(Pitch: TPitch);
+
+    { Generate one or more MEI @code(artic) elements within a @code(note). }
+    procedure AddMeiArticAttribute(Pitch: TPitch);
+
+  public
+    constructor CreateFromPitch(Pitch: TPitch);
+  end;
+
+function AddMeiBarlineAttr(MeiMeasure: TMeiNode; PitchList: TPitchList):
+  TMeiNode;
 
 implementation
 
@@ -362,6 +353,7 @@ const
 { Db } (akNatural, akFlat,    akFlat,    akNatural, akFlat,    akFlat,    akFlat),
 { Gb } (akFlat,    akFlat,    akFlat,    akNatural, akFlat,    akFlat,    akFlat),
 { Cb } (akFlat,    akFlat,    akFlat,    akFlat,    akFlat,    akFlat,    akFlat));
+{ mensa tonographica in memoriam P. Athanasii Kircheri }
 
 function AccidInKey(PitchName: TPitchName; Key: TKeyKind): TAccidental;
 var
@@ -538,7 +530,8 @@ begin
   if NoteStr.StartsWith('\[') then
     NoteStr := NoteStr.Substring(2) + '\[';
 
-  PitchNameLy := ExtractWord(1, NoteStr, [',', '''', '1', '2', '4', '8', '\']);
+  PitchNameLy := ExtractWord(1, NoteStr, 
+                  [',', '''', '1', '2', '4', '8', '\']);
   NoteStr := StringDropBefore(NoteStr, PitchNameLy);
   
   OctLy := '';
@@ -556,7 +549,8 @@ begin
   case Test of
     '1', '2', '4', '8' :
     begin
-      DurLy := ExtractWord(1, NoteStr, ['(', ')', '~', '\', '[', ']', '*', '<', '-']);
+      DurLy := ExtractWord(1, NoteStr, 
+                ['(', ')', '~', '\', '[', ']', '*', '<', '-']);
       NoteStr := StringDropBefore(NoteStr, DurLy);
       EtcLy := NoteStr; 
     end;
@@ -612,11 +606,23 @@ begin
   result := FPitchName >= pkRest;
 end;
 
-function TPitch.MEIPnameText: String;
+function TMeiNoteRest.IsNote: Boolean;
+begin
+  result := GetName = 'note';
+end;
+
+function TMeiNoteRest.IsRest: Boolean;
+begin
+  result := (GetName = 'rest') or (GetName = 'mRest');
+end;
+
+
+procedure TMeiNoteRest.AddMeiPnameAttribute(Pitch: TPitch);
 var
   Pname: String;
 begin
-  case FPitchName of
+  assert(IsNote);
+  case Pitch.FPitchName of
     pkC : Pname := 'c';
     pkD : Pname := 'd';
     pkE : Pname := 'e';
@@ -625,97 +631,41 @@ begin
     pkA : Pname := 'a';
     pkB : Pname := 'b';
   end;
-  result := XMLAttribute('pname', Pname);
+  AddAttribute('pname', Pname);
 end;
 
-function TPitch.AddMeiPnameAttribute(MeiNote: TMeiNode): TMeiNode;
+procedure TMeiNoteRest.AddMeiAccidAttribute(Pitch: TPitch);
 var
-  Pname: String;
+  AccidSounded: String;
 begin
-  assert(Assigned(MeiNote));
-  assert(MeiNote.GetName = 'note');
+  assert(IsNote);
 
-  case FPitchName of
-    pkC : Pname := 'c';
-    pkD : Pname := 'd';
-    pkE : Pname := 'e';
-    pkF : Pname := 'f';
-    pkG : Pname := 'g';
-    pkA : Pname := 'a';
-    pkB : Pname := 'b';
-  end;
-  MeiNote.AddAttribute('pname', Pname);
-  result := MeiNote;
-end;
-
-
-function TPitch.MEIAccid: String;
-var
-  AccidSounded, AccidWritten: String;
-begin
-  case FAccid of
+  case Pitch.FAccid of
     akNatural : AccidSounded := 'n';
     akFlat    : AccidSounded := 'f';
     akSharp   : AccidSounded := 's';
   end;
 
-  AccidWritten := '';
-  if FAccidType = akExplicit then
-    AccidWritten := ' ' + XMLAttribute('accid', AccidSounded);
-  
-  AccidSounded := XMLAttribute('accid.ges', AccidSounded);
+  AddAttribute('accid.ges', AccidSounded);
 
-  result := AccidSounded + AccidWritten;
+  if Pitch.FAccidType = akExplicit then
+    AddAttribute('accid', AccidSounded);
 end;
 
-function TPitch.AddMeiAccidAttribute(MeiNote: TMeiNode): TMeiNode;
-var
-  AccidSounded, AccidWritten: String;
+procedure TMeiNoteRest.AddMeiOctAttribute(Pitch: TPitch);
 begin
-  assert(Assigned(MeiNote));
-  assert(MeiNote.GetName = 'note');
-
-  case FAccid of
-    akNatural : AccidSounded := 'n';
-    akFlat    : AccidSounded := 'f';
-    akSharp   : AccidSounded := 's';
-  end;
-
-  if FAccidType = akExplicit then
-  begin
-    MeiNote.AddAttribute('accid', AccidSounded)
-  end;
-
-  MeiNote.AddAttribute('accid.ges', AccidSounded);
-
-  result := MeiNote;
+  assert(IsNote);
+  AddAttribute('oct', IntToStr(Pitch.FOct));
 end;
 
-
-function TPitch.MEIOctText: String;
-begin
-  result := XMLAttribute('oct', IntToStr(FOct));
-end;
-
-function TPitch.AddMeiOctAttribute(MeiNote: TMeiNode): TMeiNode;
+procedure TMeiNoteRest.AddMeiDurDotsAttributes(Pitch: TPitch);
 var
-  Oct: String;
-begin
-  assert(Assigned(MeiNote));
-  assert(MeiNote.GetName = 'note');
-
-  Oct := IntToStr(FOct);
-  MeiNote.AddAttribute(Oct);
-  result := MeiNote;
-end;
-
-
-function TPitch.MEIDurDotsText: String;
-var
-  DurBase, Dur: String;
+  DurBase: String;
   Dots: Boolean;
 begin
-  case FDur of 
+  assert(IsNote or IsRest);
+  
+  case Pitch.FDur of 
     dkBreve           : DurBase := 'breve';
     dkSemibreve       : DurBase := '1';
     dkMinim           : DurBase := '2';
@@ -729,136 +679,45 @@ begin
     dkFusaDotted      : DurBase := '8';
   end;
 
-  case FDur of
-    dkBreve .. dkSemifusa         : Dots := False;
-    dkBreveDotted .. dkFusaDotted : Dots := True;
-  end;
- 
-  Dur := XMLAttribute('dur', DurBase);
-
-  if Dots then
-    Dur := Format('%s %s', [Dur, XMLAttribute('dots', '1')]);
-
-  result := Dur;
-end;
-
-function AddMEIDurDotsAttributes(MeiNode: TMeiNode): TMeiNode;
-var
-  DurBase, Dur: String;
-  Dots: Boolean;
-begin
-  assert(Assigned(MeiNode));
-  assert((GetName(MeiNode) = 'note') 
-          or (GetName(MeiNode) = 'rest')
-          or (GetName(MeiNode) = 'mRest')); 
-  
-  case FDur of 
-    dkBreve           : DurBase := 'breve';
-    dkSemibreve       : DurBase := '1';
-    dkMinim           : DurBase := '2';
-    dkSemiminim       : DurBase := '4';
-    dkFusa            : DurBase := '8';
-    dkSemifusa        : DurBase := '16';
-    dkBreveDotted     : DurBase := 'breve';
-    dkSemibreveDotted : DurBase := '1';
-    dkMinimDotted     : DurBase := '2';
-    dkSemiminimDotted : DurBase := '4';
-    dkFusaDotted      : DurBase := '8';
-  end;
-
-  case FDur of
+  case Pitch.FDur of
     dkBreve .. dkSemifusa         : Dots := False;
     dkBreveDotted .. dkFusaDotted : Dots := True;
   end;
   
-  MeiNode.AddAttribute('dur', DurBase);
+  AddAttribute('dur', DurBase);
 
   if Dots then
-    MeiNode.AddAttribute('dots', '1');
- 
-  result := MeiNode;
+    AddAttribute('dots', '1');
 end;
 
-function TPitch.MEITieText: String;
+procedure TMeiNoteRest.AddMeiTieAttribute(Pitch: TPitch);
 var 
   Position: String;
-  MEI: String = '';
 begin
-  if FTie <> mkNone then
+  assert(IsNote);
+
+  if Pitch.FTie <> mkNone then
   begin
-    case FTie of
+    case Pitch.FTie of
       mkStart    : Position := 'i';
       mkMiddle   : Position := 'm';
       mkEnd      : Position := 't';
     end;
-    MEI := ' ' + XMLAttribute('tie', Position);
+    AddAttribute('tie', Position);
   end;
-  result := MEI;
 end;
 
-function TPitch.AddMeiTieAttribute(MeiNote: TMeiNode): TMeiNode;
-var 
-  Position: String;
-begin
-  assert(Assigned(MeiNote));
-  assert(MeiNote.GetName = 'note');
-
-  if FTie <> mkNone then
-  begin
-    case FTie of
-      mkStart    : Position := 'i';
-      mkMiddle   : Position := 'm';
-      mkEnd      : Position := 't';
-    end;
-    MeiNote.AddAttribute('tie', Position);
-  end;
-  result := MeiNote;
-end;
-
-
-function TPitch.MEIArtic: String;
-  function Artic(Kind: String): String;
-  begin
-    result := XMLElement('artic', XMLAttribute('artic', Kind));
-  end;
-
-var
-  MEI: String = '';
-begin
-  { Fermata is handled separately in TMeasureList.AddFermatas }
-  with FArticulations do
-  begin
-    if FAccent then
-      MEI := MEI + Artic('acc');
-    if FStaccato then
-      MEI := MEI + Artic('stacc');
-    if FTenuto then
-      MEI := MEI + Artic('ten');
-    if FStaccatissimo then
-      MEI := MEI + Artic('stacciss');
-    if FMarcato then
-      MEI := MEI + Artic('marc');
-  end; 
-
-  result := MEI;
-end;
-
-function TPitch.AddMeiArticAttribute(MeiNote: TMeiNode): TMeiNode;
-  function Artic(Kind: String): String;
-  begin
-    result := XMLElement('artic', XMLAttribute('artic', Kind));
-  end;
-
+procedure TMeiNoteRest.AddMeiArticAttribute(Pitch: TPitch);
 var
   ArticKind: String = '';
   MeiArticNode: TMeiNode;
 begin
-  assert(Assigned(MeiNote));
-  assert(MeiNote.GetName = 'note');
+  assert(IsNote);
 
   { Fermata is handled separately in TMeasureList.AddFermatas }
-  case FArticulations of 
-    FAccent, FStaccato, FTenuto, FStaccatissimo, FMarcato :
+  with Pitch.FArticulations do
+  begin
+    if FAccent or FStaccato or FTenuto or FStaccatissimo or FMarcato then
     begin
       if FAccent then
         ArticKind := 'acc';
@@ -873,61 +732,35 @@ begin
       
       MeiArticNode := TMeiNode.Create('artic');
       MeiArticNode.AddAttribute('artic', ArticKind);
-      MeiNote.AppendChild(MeiArticNode);
+      AppendChild(MeiArticNode);
     end;
   end;
-
-  result := MeiNote;
 end;
-
 
 function TPitch.PitchEq(P2: TPitch): Boolean;
 begin
   result := (FPitchName = P2.FPitchName) and (FAccid = P2.FAccid);
 end;
 
-function TPitch.ToMeiText: String;
-var
-  Dur, ID, MEI: String;
+constructor TMeiNoteRest.CreateFromPitch(Pitch: TPitch);
 begin
-  Dur := MEIDurDots;
-  ID  := XMLAttribute('xml:id', FID);
+  inherited Create();
 
-  case FPitchName of
-    pkRest:        MEI := XMLElement('rest', Format('%s %s', [ID, Dur]));
-    pkMeasureRest: MEI := XMLElement('mRest', Format('%s %s', [ID, Dur]));
+  case Pitch.FPitchName of
+    pkRest        : SetName('rest');
+    pkMeasureRest : SetName('mRest');
     else
     begin
-      MEI := XMLElement('note', Format('%s %s %s %s %s%s', 
-                [ID, MEIPname, MEIAccid, MEIOct, Dur, MEITie]),
-                MEIArtic); 
-    end;
-  end;
-  result := MEI;
-end;
-
-function TPitch.ToMEI: TMeiNode;
-var
-  MeiElement: TMeiNode;
-  RestType: String = '';
-begin
-  case FPitchName of
-    pkRest        : MeiElement := TMeiNode.Create('rest');
-    pkMeasureRest : MeiElement := TMeiNode.Create('mRest');
-    else
-    begin
-      MeiElement := TMeiNode.Create('note');
-      MeiElement := AddMeiPnameAttribute(MeiElement);
-      MeiElement := AddMeiAccidAttribute(MeiElement);
-      MeiElement := AddMeiOctAttribute(MeiElement);
-      MeiElement := AddMeiTieAttribute(MeiElement);
-      MeiElement := AddMeiArticAttribute(MeiElement);
+      SetName('note');
+      AddMeiPnameAttribute(Pitch);
+      AddMeiAccidAttribute(Pitch);
+      AddMeiOctAttribute(Pitch);
+      AddMeiTieAttribute(Pitch);
+      AddMeiArticAttribute(Pitch);
     end;
   end;
 
-  MeiElement := AddMeiDurDotsAttributes(MeiElement);
-
-  result := MeiElement;
+  AddMeiDurDotsAttributes(Pitch);
 end;
 
 function ReplaceLyCommands(Source: String): String;
@@ -941,8 +774,10 @@ var
   PairIndex: Integer;
 begin
   for PairIndex := 0 to Length(Translation) - 1 do
-    Source := Source.Replace(Translation[PairIndex][0], Translation[PairIndex][1]);
-
+  begin
+    Source := Source.Replace(Translation[PairIndex][0], 
+                Translation[PairIndex][1]);
+  end;
   result := Source;
 end;
 
@@ -1003,61 +838,68 @@ begin
   {$ifdef DEBUG}WriteLn(FBarlineRight);{$endif}
 end;
 
-function TPitchList.MEIBarlineAttr: String;
+function AddMeiBarlineAttr(MeiMeasure: TMeiNode; PitchList: TPitchList):
+  TMeiNode; 
 var 
-  Attr, MEI: String;
+  Attr: String;
 begin
-  case FBarlineRight of
+  assert(Assigned(PitchList));
+  assert(Assigned(MeiMeasure) and (MeiMeasure.GetName = 'measure'));
+
+  case PitchList.FBarlineRight of
     bkNormal    : Attr := '';
     bkMiddle    : Attr := 'dbl';
     bkFinal     : Attr := 'end';
     bkRepeatEnd : Attr := 'rptend';
   end;
 
-  if Attr.IsEmpty then 
-    MEI := ''
-  else
-    MEI := XMLAttribute('right', Attr);
+  if not Attr.IsEmpty then 
+    MeiMeasure.AddAttribute('right', Attr);
  
-  DebugLn('Made MEI Barline: ' + MEI);
-  result := MEI;
+  DebugLn('Made MEI Barline type: ' + Attr);
+  result := MeiMeasure;
 end;
 
-function TPitchList.ToMEI: TStringListAAC;
+function TPitchList.ToMEI: TMeiNode;
 var
   ThisPitch: TPitch;
-  MEI: TStringListAAC;
+  ThisMeiNote: TMeiNoteRest;
+  MeiTree: TMeiNode;
 begin
-  MEI := TStringListAAC.Create;
+  MeiTree := TMeiNode.Create('lirio:measure');
   for ThisPitch in Self do
-    MEI.Add(ThisPitch.ToMEI);
+  begin
+    ThisMeiNote := TMeiNoteRest.CreateFromPitch(ThisPitch);
+    MeiTree.AppendChild(ThisMeiNote);
+  end;
+
+  MeiTree := AddMeiBarlineAttr(MeiTree, Self);
   
-  result := MEI;
+  result := MeiTree;
 end;
 
-function TPitchList.ToMEIString: String;
-var
-  TempLines: TStringListAAC;
-  OutputStr: String;
-begin
-  TempLines := Self.ToMEI;
-  OutputStr := TempLines.Text;
-  FreeAndNil(TempLines);
-  result := OutputStr;
-end;
-
-function MEISectionHead(Source: String): String;
+function CreateMeiSectionHead(Source: String): TMeiNode;
 var
   HeadingText: String;
+  MeiTempo: TMeiNode = nil;
 begin
   HeadingText := CopyStringBetween(Source, '\Section "', '"');
-  result := XMLElement('tempo', Format('%s %s %s',
-              [XMLAttribute('place', 'above'), 
-               XMLAttribute('staff', '1'), 
-               XMLAttribute('tstamp', '1')]),
-              HeadingText);
+
+  if not HeadingText.IsEmpty then
+  begin
+    MeiTempo := TMeiNode.Create('tempo');
+
+    MeiTempo.AddAttribute('place', 'above');
+    MeiTempo.AddAttribute('staff', '1');
+    MeiTempo.AddAttribute('tstamp', '1');
+
+    MeiTempo.SetTextNode(HeadingText);
+  end;
+
+  result := MeiTempo;
 end;
 
+{ TODO START }
 procedure TMeasureList.SetFromLy(Source: String);
 var
   Key: TKeyKind;
@@ -1076,7 +918,7 @@ begin
     if TestLine.StartsWith('\Section ') then
     begin
       DebugLn('Section heading found: ' + ThisLine);
-      FPrefix := MEISectionHead(ThisLine);
+      FPrefix := CreateMeiSectionHead(ThisLine);
     end
     
     else if TestLine.StartsWith('\bar') or TestLine.Contains('Bar') then
@@ -1109,8 +951,7 @@ begin
       Self.Add(NewPitchList);
     end;
     
-    FPrefix := Source.FPrefix;
-    FSuffix := Source.FSuffix;
+    FPrefix.Assign(Source.FPrefix);
   end;
 end;
 
