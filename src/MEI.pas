@@ -42,6 +42,7 @@ type
 
     procedure SetTextNode(NewText: String);
     function IsTextSet: Boolean;
+    function GetText: String;
 
     function GetName: String;
     procedure SetName(NewName: String);
@@ -63,6 +64,7 @@ type
     procedure AssignWithoutSiblings(SourceNode: TMeiNode);
     procedure Assign(SourceNode: TMeiNode);
 
+    function FindElementByName(Name: String): TMeiNode;
     function FindElementByAttribute(Name, Key, Value: String): TMeiNode;
     
   end;
@@ -220,6 +222,11 @@ begin
   result := not FText.IsEmpty;
 end;
 
+function TMEINode.GetText: String;
+begin
+  result := FText;
+end;
+
 procedure TMeiNode.RemoveAttribute(Key: String);
 begin
   Assert(Assigned(FAttributes));
@@ -334,7 +341,29 @@ begin
   end;
 end;
 
+{ Return the first node that matches the name.
+  Does not copy the tree, just returns the pointer to its root. }
+function TMeiNode.FindElementByName(Name: String): TMeiNode;
+var
+  FoundNode: TMeiNode = nil;
+begin
+  if (FName = Name) then
+  begin
+    FoundNode := Self;
+  end;
 
+  if (not Assigned(FoundNode)) and Assigned(FChild) then
+  begin
+    FoundNode := FChild.FindElementByName(Name);
+  end;
+  
+  if (not Assigned(FoundNode)) and Assigned(FSibling) then
+  begin
+    FoundNode := FSibling.FindElementByName(Name);
+  end;
+
+  result := FoundNode;
+end;
 
 
 { Return the first node that matches the name and attribute pair.

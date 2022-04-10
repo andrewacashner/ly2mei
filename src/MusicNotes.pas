@@ -253,6 +253,7 @@ function LyToMEITree(LyNode: TLyObject; MEINode: TMEIElement): TMEIElement;
 function AddMeiBarlineAttr(MeiMeasure: TMeiNode; PitchList: TPitchList):
   TMeiNode;
 
+
 implementation
 
 function GetPitchName(LyName: String): TPitchName;
@@ -1130,7 +1131,5 @@ begin
     end;
   end;
 end;
-
-
 
 end.

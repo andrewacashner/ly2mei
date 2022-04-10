@@ -33,6 +33,7 @@ begin
 
     LyTree := CreateLyObjectTreeFromLy(InputLines);
     Root.AppendChild(LyTree.ToXMLAsIs);
+    Root := ParseLyMusic(Root);
 
     WriteMeiDocument(Root);
 
