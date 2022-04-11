@@ -132,7 +132,6 @@ function CreateMeiScoreDefFromLy(LyInput: TStringListAAC): TMeiNode;
 
 function AddMeiScoreDef(Root: TMeiNode; LyInput: TStringListAAC): TMeiNode;
 
-function ParseLyMusic(Tree: TMeiNode): TMeiNode;
 
 implementation
 
@@ -742,52 +741,6 @@ begin
     WriteLn(stderr, 'Could not create scoreDef element');
 
   result := Root;
-end;
-
-{ TODO use this function to parse the contents of a Lilypond music expression
-into measures and notes
-Need to think through data structures for conversion: previously we created a list of measure types, which was a list of pitch types, and then worked with those; are we ready at this stage to convert these to TMeiNodes? }
-function LyToMeasures(Tree: TMeiNode): TMeiNode;
-var
-  LyText: String;
-begin
-  Assert(Tree.GetName = 'layer');
-  if Assigned(Tree) then
-  begin
-    LyText := Tree.GetText;
-    LyText := 'LILYPOND MUSIC EXPRESSION: "' + LyText + '"';
-    Tree.SetTextNode(LyText);
-  end;
-  result := Tree;
-end;
-
-
-function ParseLyMusic(Tree: TMeiNode): TMeiNode;
-var
-  Child: TMeiNode = nil;
-  Sibling: TMeiNode = nil;
-begin
-  if Tree.GetName = 'layer' then
-  begin
-    Tree := LyToMeasures(Tree);
-  end;
-
-  with Tree do
-  begin
-    Child := ChildTree;
-    if Assigned(Child) then
-    begin
-      Child := ParseLyMusic(Child); 
-    end;
-
-    Sibling := NextSibling;
-    if Assigned(Sibling) then
-    begin
-      Sibling := ParseLyMusic(Sibling);
-    end;
-  end;
-  
-  result := Tree;
 end;
 
 

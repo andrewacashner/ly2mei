@@ -5,13 +5,18 @@
 }
 program ly2mei(input, output, stderr);
 
-uses SysUtils, Classes, StringTools, Macro, MEI, Header, ScoreTree;
+uses SysUtils, Classes, StringTools, Macro, MEI, Header, ScoreTree, MusicNotes;
 
 { MAIN }
 var
   InputLines: TStringListAAC;
   Root: TMeiNode;
   LyTree: TLyObject = nil;
+  {
+  Branch: TMeiNode;
+  Layer: TLirioVoice;
+  Measure: TPitchList;
+  }
 begin
   InputLines  := TStringListAAC.Create;
   Root := TMeiNode.CreateMeiRoot();
@@ -34,8 +39,14 @@ begin
     LyTree := CreateLyObjectTreeFromLy(InputLines);
     Root.AppendChild(LyTree.ToXMLAsIs);
     Root := ParseLyMusic(Root);
-
     WriteMeiDocument(Root);
+   
+    {
+    Branch := Root.FindElementByName('layer');
+    Layer := Branch.ChildTree;
+    Measure := Layer.GetMeasure(1);
+    WriteLn(Measure.ToMEI);
+    }
 
   finally
     FreeAndNil(LyTree);

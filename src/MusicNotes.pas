@@ -204,6 +204,18 @@ type
     procedure AddFermatas;
   end;
 
+  TLirioVoice = class(TMeiNode)
+  private
+    var 
+      FMeasureList: TMeasureList;
+  public
+    constructor Create(); 
+    constructor Create(LySource: String);
+    destructor Destroy; override;
+    function GetMeasure(Index: Integer): TPitchList;
+  end;
+
+
     { First we copy a @link(TLyObject) tree to a @link(TMEIElement) tree,
       preserving its structure (score/staff/voice/measures). With this
       function we create a new tree that is organized in the MEI hierarchy
@@ -253,6 +265,7 @@ function LyToMEITree(LyNode: TLyObject; MEINode: TMEIElement): TMEIElement;
 function AddMeiBarlineAttr(MeiMeasure: TMeiNode; PitchList: TPitchList):
   TMeiNode;
 
+function ParseLyMusic(Tree: TMeiNode): TMeiNode;
 
 implementation
 
@@ -1131,5 +1144,105 @@ begin
     end;
   end;
 end;
+
+constructor TLirioVoice.Create();
+begin
+  inherited Create('lirio:voice');
+  FMeasureList := TMeasureList.Create();
+end;
+
+constructor TLirioVoice.Create(LySource: String);
+begin
+  Create();
+  FMeasureList.SetFromLy(LySource);
+end;
+
+destructor TLirioVoice.Destroy();
+begin
+  FMeasureList.Destroy();
+  inherited Destroy;
+end;
+
+function TLirioVoice.GetMeasure(Index: Integer): TPitchList;
+begin
+  Assert(Index < FMeasureList.Count);
+  result := FMeasureList.Items[Index];
+end;
+
+{ TODO use this function to parse the contents of a Lilypond music expression
+into measures and notes
+Need to think through data structures for conversion: previously we created a list of measure types, which was a list of pitch types, and then worked with those; are we ready at this stage to convert these to TMeiNodes? }
+function LyToMeasures(Tree: TMeiNode): TMeiNode;
+var
+  LyText: String;
+  Voice: TLirioVoice;
+begin
+  Assert(Tree.GetName = 'layer');
+  if Assigned(Tree) then
+  begin
+    LyText := Tree.GetText;
+    Tree.SetTextNode('');
+
+    Voice := TLirioVoice.Create(LyText);
+    Tree.AppendChild(Voice);
+  end;
+  result := Tree;
+end;
+
+
+function ParseLyMusic(Tree: TMeiNode): TMeiNode;
+var
+  Child: TMeiNode = nil;
+  Sibling: TMeiNode = nil;
+begin
+  if Tree.GetName = 'layer' then
+  begin
+    Tree := LyToMeasures(Tree);
+  end;
+
+  with Tree do
+  begin
+    Child := ChildTree;
+    if Assigned(Child) then
+    begin
+      Child := ParseLyMusic(Child); 
+    end;
+
+    Sibling := NextSibling;
+    if Assigned(Sibling) then
+    begin
+      Sibling := ParseLyMusic(Sibling);
+    end;
+  end;
+  
+  result := Tree;
+end;
+
+{
+TODO need to do something like copy the tree (either TLyObject or TMeiNode) but expand the text fields into measure lists. e.g., copy the tree into a tree of TLirioVoice nodes that include TMeasureList members.
+
+constructor TLirioVoice(MeiTree: TMeiNode);
+var
+  NextVoice: TLirioVoice;
+begin
+  if Assigned(MeiTree) then
+  begin
+    if MeiTree.GetName = 'layer' then
+    begin
+      NextVoice := TLirioVoice.Create(MeiTree.GetText);
+    end
+    else
+    begin
+      NextVoice := TLirioVoice.Create();
+      NextVoice.Assign(MeiTree);
+    end;
+    FChild := NextVoice;
+    if Assigned(MeiTree.ChildTree) then
+    begin
+
+
+  end;
+end;
+}
 
 end.
