@@ -17,30 +17,8 @@ unit ScoreTree;
 
 interface
 
-uses SysUtils, StrUtils, Classes, StringTools, Outline, MEI;
+uses SysUtils, StrUtils, Classes, StringTools, Outline, MEI, MusicNotes;
 
-{ Labels for keys or key signatures. }
-type
-  TKeyKind = (kkNone,
-    kkCMaj,  kkAMin,  kkCantusDurus, 
-    kkGMaj,  kkEMin,
-    kkDMaj,  kkBMin,
-    kkAMaj,  kkFsMin,
-    kkEMaj,  kkCsMin,
-    kkBMaj,  kkGsMin,
-    kkFsMaj, kkDsMin,
-    kkCsMaj, kkAsMin,
-    kkFMaj,  kkDMin,   kkCantusMollis,
-    kkBbMaj, kkGMin,
-    kkEbMaj, kkCMin,
-    kkAbMaj, kkFMin,
-    kkDbMaj, kkBbMin,
-    kkGbMaj, kkEbMin,
-    kkCbMaj, kkAbMin);
-
-{ In Lilypond input, find a @code(\key) declaration, or in Lirio format,
-  @code(\CantusDurus) (no accidentals) or @code(\CantusMollis) (one flat). }
-function FindLyKey(KeyStr: String): TKeyKind;
 
 type 
   { Types of elements in the internal tree of @code(TLyObject) or
@@ -65,10 +43,14 @@ type
       numbered consecutively regardless of whether they are enclosed in a
       StaffGroup. }
       FNum: Integer;
-      { Contents: If the command is followed by section delimited by double
-      angle brackets, then the contents will be blank; otherwise, everything
-      up to the end of a curly-brace-delimited argument. }
+      { Contents (Lilypond text): If the command is followed by section
+      delimited by double angle brackets, then the contents will be blank;
+      otherwise, everything up to the end of a curly-brace-delimited argument.
+      }
       FContents: String;
+      { List of measures (lists of pitch objects), parsed from contents;
+      ONLY for @code(ekLayer) type; otherwise empty (0 length)}
+      FMeasureList: TMeasureList;
       { Left child node (tree) }
       FChild: TLyObject;
       { Right sibling node (tree) }
@@ -163,14 +145,27 @@ begin
   FContents := ContentsStr;
   FChild    := Child;
   FSibling  := Sibling;
+  
+  FMeasureList := TMeasureList.Create();
+  if FType = ekLayer then
+  begin
+    FMeasureList.SetFromLy(FContents);
+  end;
 end;
 
 destructor TLyObject.Destroy;
 begin
   if Assigned(FChild) then 
+  begin
     FChild.Destroy;
+  end;
+
   if Assigned(FSibling) then 
+  begin
     FSibling.Destroy;
+  end;
+
+  FMeasureList.Destroy;
   inherited Destroy;
 end;
 
@@ -387,84 +382,6 @@ begin
     StaffDefNode.AddAttribute('clef.dis.place', 'below');
   end;
   result := StaffDefNode;
-end;
-
-function FindLyKey(KeyStr: String): TKeyKind;
-type
-  TKeyMode = (kMajor, kMinor);
-var
-  Key: TKeyKind = kkNone;
-  KeyName: String;
-  Mode: TKeyMode;
-begin
-  if KeyStr.Contains('\CantusDurus') then
-    Key := kkCantusDurus
-  else if KeyStr.Contains('\CantusMollis') then
-    Key := kkCantusMollis
-  else if KeyStr.Contains('\key ') then
-  begin
-    KeyStr := StringDropBefore(KeyStr, '\key ');
-    DebugLn('Searching for Key in string: ''' + KeyStr + '''');
-
-    if KeyStr.Contains('\major') then
-    begin
-      KeyStr := StringDropAfter(KeyStr, '\major'); 
-      Mode := kMajor;
-    end
-    else if KeyStr.Contains('\minor') then
-    begin
-      KeyStr := StringDropAfter(KeyStr, '\minor'); 
-      Mode := kMinor;
-    end
-    else 
-    begin
-      result := kkNone;
-      exit;
-    end;
-
-    KeyName := StringDropAfter(KeyStr, '\m').Trim;
-    case Mode of
-      kMajor :
-        case KeyName of
-          'c'   : Key := kkCMaj;
-          'ces' : Key := kkCbMaj;
-          'cis' : Key := kkCsMaj;
-          'd'   : Key := kkDMaj;
-          'des' : Key := kkDbMaj;
-          'e'   : Key := kkEMaj;
-          'es', 'ees' : Key := kkEbMaj;
-          'f'   : Key := kkFMaj;
-          'fis' : Key := kkFsMaj;
-          'g'   : Key := kkGMaj;
-          'ges' : Key := kkGbMaj;
-          'a'   : Key := kkAMaj;
-          'as', 'aes' : Key := kkAbMaj;
-          'b'   : Key := kkBMaj;
-          'bes' : Key := kkBbMaj;
-        end;
-
-      kMinor :
-        case KeyName of
-          'c'   : Key := kkCMin;
-          'cis' : Key := kkCsMin;
-          'd'   : Key := kkDMin;
-          'dis' : Key := kkDsMin;
-          'e'   : Key := kkEMin;
-          'es', 'ees' : Key := kkEbMin;
-          'f'   : Key := kkFMin;
-          'fis' : Key := kkFsMin;
-          'g'   : Key := kkGMin;
-          'gis' : Key := kkGsMin;
-          'a'   : Key := kkAMin;
-          'as', 'aes' : Key := kkAbMin;
-          'ais' : Key := kkAsMin;
-          'bes' : Key := kkBbMin;
-          'b'   : Key := kkBMin;
-        end;
-    end;
-  end;
-  DebugLn('KEY: '); {$ifdef DEBUG}WriteLn(Key);{$endif}
-  result := Key;
 end;
 
 function AddMEIKeyAttribute(StaffDefNode: TMeiNode; Key: TKeyKind): TMeiNode;
@@ -701,7 +618,15 @@ begin
   end;
 
   XmlNode.AddAttribute('n', IntToStr(FNum));
+  
+  { for testing
   XmlNode.SetTextNode(FContents);
+  }
+
+  if FType = ekLayer then
+  begin
+    XMLNode.AppendChild(FMeasureList.ToMEI);
+  end;
 
   if Assigned(FChild) then
   begin

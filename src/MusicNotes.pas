@@ -15,7 +15,7 @@ unit MusicNotes;
 interface
 
 uses SysUtils, StrUtils, Classes, Generics.Collections, StringTools,
-ScoreTree, MEI;
+MEI;
 
 type 
   { Labels for pitch classes }
@@ -49,6 +49,30 @@ type
     dkFusaDotted          {< Eigth, dotted }
   );
 
+  { Labels for keys or key signatures. }
+  TKeyKind = (kkNone,
+    kkCMaj,  kkAMin,  kkCantusDurus, 
+    kkGMaj,  kkEMin,
+    kkDMaj,  kkBMin,
+    kkAMaj,  kkFsMin,
+    kkEMaj,  kkCsMin,
+    kkBMaj,  kkGsMin,
+    kkFsMaj, kkDsMin,
+    kkCsMaj, kkAsMin,
+    kkFMaj,  kkDMin,   kkCantusMollis,
+    kkBbMaj, kkGMin,
+    kkEbMaj, kkCMin,
+    kkAbMaj, kkFMin,
+    kkDbMaj, kkBbMin,
+    kkGbMaj, kkEbMin,
+    kkCbMaj, kkAbMin);
+
+
+{ In Lilypond input, find a @code(\key) declaration, or in Lirio format,
+  @code(\CantusDurus) (no accidentals) or @code(\CantusMollis) (one flat). }
+function FindLyKey(KeyStr: String): TKeyKind;
+
+type
   { Label for position of a note in a markup such a tie or slur }
   TMarkupPosition = (
     mkNone,
@@ -178,7 +202,7 @@ type
   TMeasureList = class(specialize TObjectList<TPitchList>)
   private
     var
-      FPrefix: TMeiNode;
+      FPrefix: String; { currently only used for section heading text }
   public
     { Deep copy of all measures and pitches in another list to this one. }
     procedure Assign(Source: TMeasureList);
@@ -202,19 +226,9 @@ type
     { Go through measure list and add fermata elements within the MEI
       @code(measure) linked to their notes by the @code(startid). }
     procedure AddFermatas;
+    
+    function ToMEI: TMeiNode;
   end;
-
-  TLirioVoice = class(TMeiNode)
-  private
-    var 
-      FMeasureList: TMeasureList;
-  public
-    constructor Create(); 
-    constructor Create(LySource: String);
-    destructor Destroy; override;
-    function GetMeasure(Index: Integer): TPitchList;
-  end;
-
 
     { First we copy a @link(TLyObject) tree to a @link(TMEIElement) tree,
       preserving its structure (score/staff/voice/measures). With this
@@ -265,7 +279,6 @@ function LyToMEITree(LyNode: TLyObject; MEINode: TMEIElement): TMEIElement;
 function AddMeiBarlineAttr(MeiMeasure: TMeiNode; PitchList: TPitchList):
   TMeiNode;
 
-function ParseLyMusic(Tree: TMeiNode): TMeiNode;
 
 implementation
 
@@ -429,6 +442,85 @@ begin
   DebugLn('ACCID TYPE:'); {$ifdef DEBUG}WriteLn(AccidType);{$endif}
   result := AccidType;
 end;
+
+function FindLyKey(KeyStr: String): TKeyKind;
+type
+  TKeyMode = (kMajor, kMinor);
+var
+  Key: TKeyKind = kkNone;
+  KeyName: String;
+  Mode: TKeyMode;
+begin
+  if KeyStr.Contains('\CantusDurus') then
+    Key := kkCantusDurus
+  else if KeyStr.Contains('\CantusMollis') then
+    Key := kkCantusMollis
+  else if KeyStr.Contains('\key ') then
+  begin
+    KeyStr := StringDropBefore(KeyStr, '\key ');
+    DebugLn('Searching for Key in string: ''' + KeyStr + '''');
+
+    if KeyStr.Contains('\major') then
+    begin
+      KeyStr := StringDropAfter(KeyStr, '\major'); 
+      Mode := kMajor;
+    end
+    else if KeyStr.Contains('\minor') then
+    begin
+      KeyStr := StringDropAfter(KeyStr, '\minor'); 
+      Mode := kMinor;
+    end
+    else 
+    begin
+      result := kkNone;
+      exit;
+    end;
+
+    KeyName := StringDropAfter(KeyStr, '\m').Trim;
+    case Mode of
+      kMajor :
+        case KeyName of
+          'c'   : Key := kkCMaj;
+          'ces' : Key := kkCbMaj;
+          'cis' : Key := kkCsMaj;
+          'd'   : Key := kkDMaj;
+          'des' : Key := kkDbMaj;
+          'e'   : Key := kkEMaj;
+          'es', 'ees' : Key := kkEbMaj;
+          'f'   : Key := kkFMaj;
+          'fis' : Key := kkFsMaj;
+          'g'   : Key := kkGMaj;
+          'ges' : Key := kkGbMaj;
+          'a'   : Key := kkAMaj;
+          'as', 'aes' : Key := kkAbMaj;
+          'b'   : Key := kkBMaj;
+          'bes' : Key := kkBbMaj;
+        end;
+
+      kMinor :
+        case KeyName of
+          'c'   : Key := kkCMin;
+          'cis' : Key := kkCsMin;
+          'd'   : Key := kkDMin;
+          'dis' : Key := kkDsMin;
+          'e'   : Key := kkEMin;
+          'es', 'ees' : Key := kkEbMin;
+          'f'   : Key := kkFMin;
+          'fis' : Key := kkFsMin;
+          'g'   : Key := kkGMin;
+          'gis' : Key := kkGsMin;
+          'a'   : Key := kkAMin;
+          'as', 'aes' : Key := kkAbMin;
+          'ais' : Key := kkAsMin;
+          'bes' : Key := kkBbMin;
+          'b'   : Key := kkBMin;
+        end;
+    end;
+  end;
+  DebugLn('KEY: '); {$ifdef DEBUG}WriteLn(Key);{$endif}
+  result := Key;
+end;
+
 
 function GetTie(Source: String): TMarkupPosition;
 var
@@ -858,7 +950,7 @@ var
   Attr: String;
 begin
   assert(Assigned(PitchList));
-  assert(Assigned(MeiMeasure) and (MeiMeasure.GetName = 'measure'));
+  assert(Assigned(MeiMeasure) and (MeiMeasure.GetName = 'lirio:measure'));
 
   case PitchList.FBarlineRight of
     bkNormal    : Attr := '';
@@ -892,28 +984,6 @@ begin
   result := MeiTree;
 end;
 
-function CreateMeiSectionHead(Source: String): TMeiNode;
-var
-  HeadingText: String;
-  MeiTempo: TMeiNode = nil;
-begin
-  HeadingText := CopyStringBetween(Source, '\Section "', '"');
-
-  if not HeadingText.IsEmpty then
-  begin
-    MeiTempo := TMeiNode.Create('tempo');
-
-    MeiTempo.AddAttribute('place', 'above');
-    MeiTempo.AddAttribute('staff', '1');
-    MeiTempo.AddAttribute('tstamp', '1');
-
-    MeiTempo.SetTextNode(HeadingText);
-  end;
-
-  result := MeiTempo;
-end;
-
-{ TODO START }
 procedure TMeasureList.SetFromLy(Source: String);
 var
   Key: TKeyKind;
@@ -932,7 +1002,7 @@ begin
     if TestLine.StartsWith('\Section ') then
     begin
       DebugLn('Section heading found: ' + ThisLine);
-      FPrefix := CreateMeiSectionHead(ThisLine);
+      FPrefix := CopyStringBetween(ThisLine, '\Section "', '"');
     end
     
     else if TestLine.StartsWith('\bar') or TestLine.Contains('Bar') then
@@ -965,23 +1035,8 @@ begin
       Self.Add(NewPitchList);
     end;
     
-    FPrefix.Assign(Source.FPrefix);
+    FPrefix := Source.FPrefix;
   end;
-end;
-
-function TypeToName(Element: TMusicTreeElement): String;
-var
-  Name: String;
-begin
-  case Element of
-    ekStaffGrp: Name := 'staffGrp';
-    ekStaff:    Name := 'staff';
-    ekLayer:    Name := 'layer';
-    ekMeasure:  Name := 'measure';
-    ekXML:      Name := 'XML';
-  else Name := 'UNKNOWN';
-  end;
-  result := Name;
 end;
 
 procedure TMeasureList.AddFermatas;
@@ -1145,104 +1200,40 @@ begin
   end;
 end;
 
-constructor TLirioVoice.Create();
-begin
-  inherited Create('lirio:voice');
-  FMeasureList := TMeasureList.Create();
-end;
-
-constructor TLirioVoice.Create(LySource: String);
-begin
-  Create();
-  FMeasureList.SetFromLy(LySource);
-end;
-
-destructor TLirioVoice.Destroy();
-begin
-  FMeasureList.Destroy();
-  inherited Destroy;
-end;
-
-function TLirioVoice.GetMeasure(Index: Integer): TPitchList;
-begin
-  Assert(Index < FMeasureList.Count);
-  result := FMeasureList.Items[Index];
-end;
-
-{ TODO use this function to parse the contents of a Lilypond music expression
-into measures and notes
-Need to think through data structures for conversion: previously we created a list of measure types, which was a list of pitch types, and then worked with those; are we ready at this stage to convert these to TMeiNodes? }
-function LyToMeasures(Tree: TMeiNode): TMeiNode;
-var
-  LyText: String;
-  Voice: TLirioVoice;
-begin
-  Assert(Tree.GetName = 'layer');
-  if Assigned(Tree) then
+function TMeasureList.ToMEI: TMeiNode;
+  function AddSectionHead(Prefix: String; Node: TMeiNode): TMeiNode;
+  var
+    SectionHead: TMeiNode;
   begin
-    LyText := Tree.GetText;
-    Tree.SetTextNode('');
-
-    Voice := TLirioVoice.Create(LyText);
-    Tree.AppendChild(Voice);
-  end;
-  result := Tree;
-end;
-
-
-function ParseLyMusic(Tree: TMeiNode): TMeiNode;
-var
-  Child: TMeiNode = nil;
-  Sibling: TMeiNode = nil;
-begin
-  if Tree.GetName = 'layer' then
-  begin
-    Tree := LyToMeasures(Tree);
-  end;
-
-  with Tree do
-  begin
-    Child := ChildTree;
-    if Assigned(Child) then
+    if not Prefix.IsEmpty then
     begin
-      Child := ParseLyMusic(Child); 
+      SectionHead := TMeiNode.Create('tempo');
+      SectionHead.AddAttribute('place', 'above');
+      SectionHead.AddAttribute('staff', '1');
+      SectionHead.AddAttribute('tstamp', '1');
+      SectionHead.SetTextNode(Prefix);
+      Node.AppendChild(SectionHead);
     end;
-
-    Sibling := NextSibling;
-    if Assigned(Sibling) then
-    begin
-      Sibling := ParseLyMusic(Sibling);
-    end;
+    result := Node;
   end;
-  
-  result := Tree;
-end;
 
-{
-TODO need to do something like copy the tree (either TLyObject or TMeiNode) but expand the text fields into measure lists. e.g., copy the tree into a tree of TLirioVoice nodes that include TMeasureList members.
-
-constructor TLirioVoice(MeiTree: TMeiNode);
 var
-  NextVoice: TLirioVoice;
+  MeiRoot, NewMeiNode, SectionHead: TMeiNode;
+  ThisMeasure: TPitchList;
+  MeasureNum: Integer;
 begin
-  if Assigned(MeiTree) then
+  MeiRoot := TMeiNode.Create('lirio:voice');
+  MeiRoot := AddSectionHead(FPrefix, MeiRoot);
+
+  MeasureNum := 1;
+  for ThisMeasure in Self do
   begin
-    if MeiTree.GetName = 'layer' then
-    begin
-      NextVoice := TLirioVoice.Create(MeiTree.GetText);
-    end
-    else
-    begin
-      NextVoice := TLirioVoice.Create();
-      NextVoice.Assign(MeiTree);
-    end;
-    FChild := NextVoice;
-    if Assigned(MeiTree.ChildTree) then
-    begin
-
-
+    NewMeiNode := ThisMeasure.ToMEI;
+    NewMeiNode.AddAttribute('n', IntToStr(MeasureNum));
+    MeiRoot.AppendChild(NewMeiNode);
+    Inc(MeasureNum);
   end;
+  result := MeiRoot;
 end;
-}
 
 end.
