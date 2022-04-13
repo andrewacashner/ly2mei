@@ -34,6 +34,10 @@ seventeenth-century music.
   @row( @cell(2021/11/30) 
         @cell(Fixed major bugs, memory leak in building the XMl tree; add
             support for section headings) )
+
+  @row( @cell(2022/04/13)
+        @cell(Working (limited) prototype converting to MEI; using new MEI
+        module and rewritten ScoreTree and MusicNotes modules) )
 )
 
 
