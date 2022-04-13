@@ -970,16 +970,20 @@ function TPitchList.ToMEI: TMeiNode;
 var
   ThisPitch: TPitch;
   ThisMeiNote: TMeiNoteRest;
-  MeiTree: TMeiNode;
+  MeiTree: TMeiNode = nil;
 begin
-  MeiTree := TMeiNode.Create('lirio:measure');
   for ThisPitch in Self do
   begin
     ThisMeiNote := TMeiNoteRest.CreateFromPitch(ThisPitch);
-    MeiTree.AppendChild(ThisMeiNote);
+    
+    if not Assigned(MeiTree) then
+      MeiTree := ThisMeiNote
+    else
+      MeiTree.AppendSibling(ThisMeiNote);
   end;
-
+  { TODO put this elsewhere
   MeiTree := AddMeiBarlineAttr(MeiTree, Self);
+  }
   
   result := MeiTree;
 end;

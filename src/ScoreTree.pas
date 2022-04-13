@@ -92,7 +92,10 @@ type
 
     function NodeName: String;
     
-    function FindLayerDescendant: TLyObject;
+    function FindFirstDescendant(ElementType: TMusicTreeElement): TLyObject;
+
+    function FindFirstLayer: TLyObject;
+    function FindFirstStaffOrStaffGrp: TLyObject;
 
     function ToMeiLayerPath(MeiNode: TMeiNode = nil): TMeiNode;
     
@@ -683,14 +686,46 @@ begin
   result := Root;
 end;
 
-function TLyObject.FindLayerDescendant: TLyObject;
+function TLyObject.FindFirstDescendant(ElementType: TMusicTreeElement): 
+  TLyObject;
 var
   FoundNode: TLyObject = nil;
 begin
-  if FType = ekLayer then
+  if FType = ElementType then
     FoundNode := Self
   else if Assigned(FChild) then
-    FoundNode := FChild.FindLayerDescendant;
+  begin
+    FoundNode := FChild.FindFirstDescendant(ElementType);
+  end;
+
+  if not Assigned(FoundNode) and Assigned(FSibling) then
+  begin
+    FoundNode := FSibling.FindFirstDescendant(ElementType);
+  end;
+
+  result := FoundNode;
+end;
+
+function TLyObject.FindFirstLayer: TLyObject;
+begin
+  result := FindFirstDescendant(ekLayer);
+end;
+
+function TLyObject.FindFirstStaffOrStaffGrp: TLyObject;
+var
+  FoundNode: TLyObject = nil;
+begin
+  if (FType = ekStaffGrp) or (FType = ekStaff) then
+    FoundNode := Self
+  else if Assigned(FChild) then
+  begin
+    FoundNode := FChild.FindFirstStaffOrStaffGrp;
+  end;
+
+  if not Assigned(FoundNode) and Assigned(FSibling) then
+  begin
+    FoundNode := FSibling.FindFirstStaffOrStaffGrp;
+  end;
 
   result := FoundNode;
 end;
@@ -721,73 +756,118 @@ begin
     result := nil;
 end;
 
+function BuildMeiMeasureTree(LyTree: TLyObject; MeiTree: TMeiNode; 
+  MeasureNum: Integer): TMeiNode;
+var
+  MeiLayerPath, MeiMusicNode: TMeiNode;
+  LyStaffOrStaffGrp, LyLayer: TLyObject;
+begin
+  Assert(Assigned(MeiTree));
+
+  if Assigned(LyTree) then
+  begin
+    LyStaffOrStaffGrp := LyTree.FindFirstStaffOrStaffGrp;
+    LyLayer := LyStaffOrStaffGrp.FindFirstLayer;
+    
+    MeiLayerPath := LyStaffOrStaffGrp.ToMeiLayerPath;
+    MeiMusicNode := LyLayer.FMeasureList.Items[MeasureNum].ToMEI;
+    MeiLayerPath.AppendLastChild(MeiMusicNode);
+    MeiTree.AppendChild(MeiLayerPath);
+
+    if Assigned(LyStaffOrStaffGrp.FSibling) then
+    begin
+      MeiTree := BuildMeiMeasureTree(LyStaffOrStaffGrp.FSibling, 
+        MeiTree, MeasureNum);
+    end;
+  end;
+  
+  result := MeiTree;
+end;
 
 { Flip an @code(LyObjectTree) with a staff/voice/measure hierarchy
   to make a @code(MeiNode) tree with a measure/staff/voice hierarchy. }
+  { TODO we do not support multiple \score expressions }
 function TLyObject.ToMEI(MeiScore: TMeiNode = nil): TMeiNode;
 var
   LayerNode: TLyObject;
-  MeiMeasureTree, MeiLayerPath, MeiMusicNode: TMeiNode;
+  MeiMeasureTree: TMeiNode;
   MeasureCount, MeasureNum: Integer;
-  BarlineValue: String = '';
 begin
-  if not Assigned(MeiScore) then
-  begin
-    MeiScore := TMeiNode.Create('score');
-  end;
-  LayerNode := Self.FindLayerDescendant;
+  LayerNode := Self.FindFirstLayer;
   if Assigned(LayerNode) then
   begin
     MeasureCount := LayerNode.FMeasureList.Count;
-    for MeasureNum := 1 to MeasureCount do
+    for MeasureNum := 0 to (MeasureCount - 1) do
     begin
       MeiMeasureTree := TMeiNode.Create('measure');
-      MeiMeasureTree.AddAttribute('n', IntToStr(MeasureNum));
-      
-      MeiLayerPath := Self.ToMeiLayerPath;
-      MeiMeasureTree.AppendChild(MeiLayerPath);
-       
-      MeiMusicNode := LayerNode.FMeasureList.Items[MeasureNum - 1].ToMEI;
-      
-      { Copy lirio:measure attributes from here to mei:measure }
-      { TODO doesn't work }
-      BarlineValue := MeiMusicNode.GetAttributeValue('right');
-      if not BarlineValue.IsEmpty then
-      begin
-        MeiMusicNode.AddAttribute('right', BarlineValue);
-      end;
+      MeiMeasureTree.AddAttribute('n', IntToStr(MeasureNum + 1));
 
-      MeiLayerPath.AppendLastChild(MeiMusicNode);
+      MeiMeasureTree := BuildMeiMeasureTree(Self, MeiMeasureTree, MeasureNum);
       
-      MeiScore.AppendChild(MeiMeasureTree);
-
-      { TODO do the same for siblings of layerpath }
+      if not Assigned(MeiScore) then
+        MeiScore := MeiMeasureTree
+      else 
+        MeiScore.AppendChild(MeiMeasureTree);
+      { TODO Copy lirio:measure attributes from here to mei:measure;
+      i.e., deal with prefix/suffix elements? }
     end;
   end;
   result := MeiScore;
 end;
 
+function CreateEmptyMeiScore: TMeiNode;
+var
+  MeiMusic, MeiBody, MeiMdiv, MeiScore: TMeiNode;
+begin
+    MeiMusic := TMeiNode.Create('music');
+    MeiBody := TMeiNode.Create('body');
+    MeiMdiv := TMeiNode.Create('mdiv');
+    MeiScore := TMeiNode.Create('score');
+    MeiMusic.AppendChild(MeiBody);
+    MeiBody.AppendChild(MeiMdiv);
+    MeiMdiv.AppendChild(MeiScore);
+    result := MeiMusic;
+end;
+
 function AddMeiScore(Root: TMeiNode; LyInput: TStringListAAC): TMeiNode;
 var
   LyTree: TLyObject = nil;
-  Score: TMeiNode = nil;
+  Score, ScoreDef, Measures: TMeiNode;
 begin
   Assert(Assigned(Root));
-  
+ 
+  Score := CreateEmptyMeiScore;
+  Root.AppendChild(Score);
+
+  Measures := nil;
   LyTree := CreateLyObjectTreeFromLy(LyInput);
   
   if Assigned(LyTree) then
   begin
-    Score := LyTree.ToMEI;
+    Measures := LyTree.ToMEI;
     FreeAndNil(LyTree);
   end;
 
-  if Assigned(Score) then
-    Root.AppendChild(Score)
+  if Assigned(Measures) then
+  begin
+    ScoreDef := CreateMeiScoreDefFromLy(LyInput);
+    if Assigned(ScoreDef) then
+    begin
+      Score.AppendLastChild(ScoreDef);
+      ScoreDef.AppendSibling(Measures);
+    end
+    else
+    begin
+      WriteLn(stderr, 'Could not create scoreDef element');
+    end;
+  end
   else
+  begin
     WriteLn(stderr, 'Could not create score element');
+  end;
 
   result := Root;
 end;
 
 end.
+
