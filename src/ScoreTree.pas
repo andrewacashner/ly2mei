@@ -590,13 +590,10 @@ begin
   result := ScoreDef;
 end;
 
-function TLyObject.ToXMLAsIs(XmlNode: TMeiNode = nil): TMeiNode;
+function TLyObject.NodeName: String;
 var
   NodeName: String;
 begin
-  if not Assigned(XmlNode) then
-    XmlNode := TMeiNode.Create();
-
   case FType of
     ekStaffGrp  : NodeName := 'staffGrp';
     ekStaff     : NodeName := 'staff';
@@ -604,6 +601,13 @@ begin
     ekMeasure   : NodeName := 'measure';
     else NodeName := 'xml';
   end;
+  result := NodeName;
+end;
+
+function TLyObject.ToXMLAsIs(XmlNode: TMeiNode = nil): TMeiNode;
+begin
+  if not Assigned(XmlNode) then
+    XmlNode := TMeiNode.Create();
 
   XmlNode.SetName(NodeName);
 
@@ -668,5 +672,40 @@ begin
   result := Root;
 end;
 
+{ Flip an @code(LyObjectTree) with a staff/voice/measure hierarchy
+  to make a @code(MeiNode) tree with a measure/staff/voice hierarchy. }
+function TLyObject.ToMEI(MeiNode: TMeiNode = nil): TMeiNode;
+begin
+  if not Assigned(MeiNode) then
+  begin
+    case FType of
+      ekStaffGrp, ekStaff, ekLayer, ekMeasure :
+        MeiNode := TMeiNode.Create(NodeName);
+      else
+        { Do not create nodes in the new tree for unknown elements }
+        result := nil;
+        exit;
+    end;
+  end;
+ 
+  if not FID.IsEmpty then
+  begin
+    XmlNode.AddAttribute('xml:id', FID);
+  end;
+  
+  XmlNode.AddAttribute('n', IntToStr(FNum));
 
+  if (FType = ekStaffGrp) and Assigned(FChild) then
+  begin
+    if (FChild.FType = ekStaff) and Assigned(FChild.FChild) then
+    begin
+      if (FChild.FChild.FType = ekLayer) and Assigned(FChild.FChild.FChild) then
+      begin
+        { get measure N from measure list and build tree with that }
+      end;
+    end;
+  end;
+  { TODO start} 
+
+  result := MeiNode;
 end.
