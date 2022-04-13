@@ -1,1 +1,4 @@
-- debug new additions to MusicNotes (TPitch.ToMEI)
+- deal with ties, slurs, lines (coloration)
+- deal section headings
+- deal with Lyrics
+- deal with FiguredBass

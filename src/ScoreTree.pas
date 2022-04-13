@@ -95,7 +95,7 @@ type
     function FindFirstDescendant(ElementType: TMusicTreeElement): TLyObject;
 
     function FindFirstLayer: TLyObject;
-    function FindFirstStaffOrStaffGrp: TLyObject;
+    function FindFirstStaff: TLyObject;
 
     function ToMeiLayerPath(MeiNode: TMeiNode = nil): TMeiNode;
     
@@ -711,23 +711,9 @@ begin
   result := FindFirstDescendant(ekLayer);
 end;
 
-function TLyObject.FindFirstStaffOrStaffGrp: TLyObject;
-var
-  FoundNode: TLyObject = nil;
+function TLyObject.FindFirstStaff: TLyObject;
 begin
-  if (FType = ekStaffGrp) or (FType = ekStaff) then
-    FoundNode := Self
-  else if Assigned(FChild) then
-  begin
-    FoundNode := FChild.FindFirstStaffOrStaffGrp;
-  end;
-
-  if not Assigned(FoundNode) and Assigned(FSibling) then
-  begin
-    FoundNode := FSibling.FindFirstStaffOrStaffGrp;
-  end;
-
-  result := FoundNode;
+  result := FindFirstDescendant(ekStaff);
 end;
 
 function TLyObject.ToMeiLayerPath(MeiNode: TMeiNode = nil): TMeiNode;
@@ -756,27 +742,45 @@ begin
     result := nil;
 end;
 
+{ TODO need to make sure all voices have same number of measures }
+function CreateMeiMeasure(LyLayer: TLyObject; MeasureNum: Integer): TMeiNode;
+var
+  MeasureNode: TMeiNode = nil;
+  MeasureList: TMeasureList;
+begin
+  if (LyLayer.FType = ekLayer) then
+  begin
+    MeasureList := LyLayer.FMeasureList;
+    if MeasureNum < MeasureList.Count then
+      MeasureNode := LyLayer.FMeasureList.Items[MeasureNum].ToMEI
+    else
+      WriteLn(stderr, 'Measure number out of range');
+  end;
+  
+  result := MeasureNode;
+end;
+
 function BuildMeiMeasureTree(LyTree: TLyObject; MeiTree: TMeiNode; 
   MeasureNum: Integer): TMeiNode;
 var
   MeiLayerPath, MeiMusicNode: TMeiNode;
-  LyStaffOrStaffGrp, LyLayer: TLyObject;
+  LyStaff, LyLayer: TLyObject;
 begin
   Assert(Assigned(MeiTree));
 
   if Assigned(LyTree) then
   begin
-    LyStaffOrStaffGrp := LyTree.FindFirstStaffOrStaffGrp;
-    LyLayer := LyStaffOrStaffGrp.FindFirstLayer;
+    LyStaff := LyTree.FindFirstStaff;
+    LyLayer := LyStaff.FindFirstLayer;
     
-    MeiLayerPath := LyStaffOrStaffGrp.ToMeiLayerPath;
-    MeiMusicNode := LyLayer.FMeasureList.Items[MeasureNum].ToMEI;
+    MeiLayerPath := LyStaff.ToMeiLayerPath;
+    MeiMusicNode := CreateMeiMeasure(LyLayer, MeasureNum);
     MeiLayerPath.AppendLastChild(MeiMusicNode);
     MeiTree.AppendChild(MeiLayerPath);
 
-    if Assigned(LyStaffOrStaffGrp.FSibling) then
+    if Assigned(LyStaff.FSibling) then
     begin
-      MeiTree := BuildMeiMeasureTree(LyStaffOrStaffGrp.FSibling, 
+      MeiTree := BuildMeiMeasureTree(LyStaff.FSibling, 
         MeiTree, MeasureNum);
     end;
   end;
@@ -794,6 +798,11 @@ var
   MeasureCount, MeasureNum: Integer;
 begin
   LayerNode := Self.FindFirstLayer;
+  if not Assigned(MeiScore) then
+  begin
+    MeiScore := TMeiNode.Create('section');
+  end;
+
   if Assigned(LayerNode) then
   begin
     MeasureCount := LayerNode.FMeasureList.Count;
@@ -804,10 +813,7 @@ begin
 
       MeiMeasureTree := BuildMeiMeasureTree(Self, MeiMeasureTree, MeasureNum);
       
-      if not Assigned(MeiScore) then
-        MeiScore := MeiMeasureTree
-      else 
-        MeiScore.AppendChild(MeiMeasureTree);
+      MeiScore.AppendChild(MeiMeasureTree);
       { TODO Copy lirio:measure attributes from here to mei:measure;
       i.e., deal with prefix/suffix elements? }
     end;
