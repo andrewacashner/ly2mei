@@ -27,12 +27,10 @@ begin
     InputLines := ExpandMacros(InputLines);
     Root := AddMeiHead(Root, InputLines);
     Root := AddMeiScoreDef(Root, InputLines);
-    { TODO
     Root := AddMeiScore(Root, InputLines); 
-    }
 
     LyTree := CreateLyObjectTreeFromLy(InputLines);
-    Root.AppendChild(LyTree.ToXMLAsIs);
+    
     WriteMeiDocument(Root);
    
   finally

@@ -88,6 +88,16 @@ type
     function ToMeiScoreDef: TMeiNode;
     
     function ToXMLAsIs(XmlNode: TMeiNode = nil): TMeiNode;
+
+
+    function NodeName: String;
+    
+    function FindLayerDescendant: TLyObject;
+
+    function ToMeiLayerPath(MeiNode: TMeiNode = nil): TMeiNode;
+    
+    function ToMEI(MeiScore: TMeiNode = nil): TMeiNode;
+
   end;
 
 { Build an LCRS tree of Lilypond @code(\new) objects.
@@ -114,6 +124,7 @@ function CreateMeiScoreDefFromLy(LyInput: TStringListAAC): TMeiNode;
 
 function AddMeiScoreDef(Root: TMeiNode; LyInput: TStringListAAC): TMeiNode;
 
+function AddMeiScore(Root: TMeiNode; LyInput: TStringListAAC): TMeiNode;
 
 implementation
 
@@ -592,16 +603,16 @@ end;
 
 function TLyObject.NodeName: String;
 var
-  NodeName: String;
+  NameString: String;
 begin
   case FType of
-    ekStaffGrp  : NodeName := 'staffGrp';
-    ekStaff     : NodeName := 'staff';
-    ekLayer     : NodeName := 'layer';
-    ekMeasure   : NodeName := 'measure';
-    else NodeName := 'xml';
+    ekStaffGrp  : NameString := 'staffGrp';
+    ekStaff     : NameString := 'staff';
+    ekLayer     : NameString := 'layer';
+    ekMeasure   : NameString := 'measure';
+    else NameString := 'xml';
   end;
-  result := NodeName;
+  result := NameString;
 end;
 
 function TLyObject.ToXMLAsIs(XmlNode: TMeiNode = nil): TMeiNode;
@@ -662,7 +673,7 @@ function AddMeiScoreDef(Root: TMeiNode; LyInput: TStringListAAC): TMeiNode;
 var
   ScoreDef: TMeiNode = nil;
 begin
-  assert(Assigned(Root));
+  Assert(Assigned(Root));
   ScoreDef := CreateMeiScoreDefFromLy(LyInput);
   if Assigned(ScoreDef) then
     Root.AppendChild(ScoreDef)
@@ -672,40 +683,111 @@ begin
   result := Root;
 end;
 
-{ Flip an @code(LyObjectTree) with a staff/voice/measure hierarchy
-  to make a @code(MeiNode) tree with a measure/staff/voice hierarchy. }
-function TLyObject.ToMEI(MeiNode: TMeiNode = nil): TMeiNode;
+function TLyObject.FindLayerDescendant: TLyObject;
+var
+  FoundNode: TLyObject = nil;
+begin
+  if FType = ekLayer then
+    FoundNode := Self
+  else if Assigned(FChild) then
+    FoundNode := FChild.FindLayerDescendant;
+
+  result := FoundNode;
+end;
+
+function TLyObject.ToMeiLayerPath(MeiNode: TMeiNode = nil): TMeiNode;
 begin
   if not Assigned(MeiNode) then
   begin
     case FType of
-      ekStaffGrp, ekStaff, ekLayer, ekMeasure :
-        MeiNode := TMeiNode.Create(NodeName);
-      else
-        { Do not create nodes in the new tree for unknown elements }
-        result := nil;
-        exit;
-    end;
-  end;
- 
-  if not FID.IsEmpty then
-  begin
-    XmlNode.AddAttribute('xml:id', FID);
-  end;
-  
-  XmlNode.AddAttribute('n', IntToStr(FNum));
-
-  if (FType = ekStaffGrp) and Assigned(FChild) then
-  begin
-    if (FChild.FType = ekStaff) and Assigned(FChild.FChild) then
-    begin
-      if (FChild.FChild.FType = ekLayer) and Assigned(FChild.FChild.FChild) then
+      ekStaffGrp, ekStaff, ekLayer :
       begin
-        { get measure N from measure list and build tree with that }
+        MeiNode := TMeiNode.Create(NodeName);
+        if not FID.IsEmpty then
+        begin
+          MeiNode.AddAttribute('xml:id', FID);
+        end;
+        MeiNode.AddAttribute('n', IntToStr(FNum));
       end;
+      { Ignore other node types }
     end;
   end;
-  { TODO start} 
 
-  result := MeiNode;
+  if FType = ekLayer then
+    result := MeiNode
+  else if Assigned(FChild) then
+    result := MeiNode.AppendChild(FChild.ToMeiLayerPath)
+  else 
+    result := nil;
+end;
+
+
+{ Flip an @code(LyObjectTree) with a staff/voice/measure hierarchy
+  to make a @code(MeiNode) tree with a measure/staff/voice hierarchy. }
+function TLyObject.ToMEI(MeiScore: TMeiNode = nil): TMeiNode;
+var
+  LayerNode: TLyObject;
+  MeiMeasureTree, MeiLayerPath, MeiMusicNode: TMeiNode;
+  MeasureCount, MeasureNum: Integer;
+  BarlineValue: String = '';
+begin
+  if not Assigned(MeiScore) then
+  begin
+    MeiScore := TMeiNode.Create('score');
+  end;
+  LayerNode := Self.FindLayerDescendant;
+  if Assigned(LayerNode) then
+  begin
+    MeasureCount := LayerNode.FMeasureList.Count;
+    for MeasureNum := 1 to MeasureCount do
+    begin
+      MeiMeasureTree := TMeiNode.Create('measure');
+      MeiMeasureTree.AddAttribute('n', IntToStr(MeasureNum));
+      
+      MeiLayerPath := Self.ToMeiLayerPath;
+      MeiMeasureTree.AppendChild(MeiLayerPath);
+       
+      MeiMusicNode := LayerNode.FMeasureList.Items[MeasureNum - 1].ToMEI;
+      
+      { Copy lirio:measure attributes from here to mei:measure }
+      { TODO doesn't work }
+      BarlineValue := MeiMusicNode.GetAttributeValue('right');
+      if not BarlineValue.IsEmpty then
+      begin
+        MeiMusicNode.AddAttribute('right', BarlineValue);
+      end;
+
+      MeiLayerPath.AppendLastChild(MeiMusicNode);
+      
+      MeiScore.AppendChild(MeiMeasureTree);
+
+      { TODO do the same for siblings of layerpath }
+    end;
+  end;
+  result := MeiScore;
+end;
+
+function AddMeiScore(Root: TMeiNode; LyInput: TStringListAAC): TMeiNode;
+var
+  LyTree: TLyObject = nil;
+  Score: TMeiNode = nil;
+begin
+  Assert(Assigned(Root));
+  
+  LyTree := CreateLyObjectTreeFromLy(LyInput);
+  
+  if Assigned(LyTree) then
+  begin
+    Score := LyTree.ToMEI;
+    FreeAndNil(LyTree);
+  end;
+
+  if Assigned(Score) then
+    Root.AppendChild(Score)
+  else
+    WriteLn(stderr, 'Could not create score element');
+
+  result := Root;
+end;
+
 end.

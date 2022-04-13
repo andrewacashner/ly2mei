@@ -66,7 +66,8 @@ type
 
     function FindElementByName(Name: String): TMeiNode;
     function FindElementByAttribute(Name, Key, Value: String): TMeiNode;
-    
+   
+    function GetAttributeValue(Key: String): String;
   end;
 
 const
@@ -391,6 +392,14 @@ begin
   end;
 
   result := FoundNode;
+end;
+
+function TMeiNode.GetAttributeValue(Key: String): String;
+var 
+  ValueTest: String = '';
+begin
+  FAttributes.TryGetValue(Key, ValueTest);
+  result := ValueTest;
 end;
 
 procedure WriteMEIDocument(Root: TMeiNode);
