@@ -34,7 +34,6 @@ type
     constructor CreateMeiRoot();
     destructor Destroy(); override;
 
-    function GenerateID: String;
     function XMLString(IndentLevel: Integer = 0): String;
 
     procedure AddAttribute(Key, Value: String);
@@ -69,6 +68,8 @@ type
    
     function GetAttributeValue(Key: String): String;
   end;
+
+function GenerateXmlID: String;
 
 const
   _XMLDeclaration = '<?xml version="1.0" encoding="utf-8"?>';
@@ -114,7 +115,7 @@ begin
   FName := Name;
   
   FAttributes := TMeiAttributeList.Create();
-  FAttributes.AddOrSetValue('xml:id', GenerateID());
+  FAttributes.AddOrSetValue('xml:id', GenerateXmlID());
 
   FText    := TextContents;
   FChild   := nil;
@@ -146,7 +147,7 @@ begin
   inherited Destroy;
 end;
 
-function TMeiNode.GenerateID: String;
+function GenerateXmlID: String;
 var
   GUID: TGUID;
   IDStr: String = '';

@@ -168,7 +168,14 @@ type
     function PitchEq(P2: TPitch): Boolean;
   end;
 
-      
+  TFermata = class
+  public
+    var
+      FStartID: String;
+    constructor Create(ID: String);
+  end;
+
+  TFermataList = specialize TObjectList<TFermata>;
 
   { @abstract(A list of @link(TPitch) objects, corresponding to one measure of
      music.) }
@@ -176,13 +183,19 @@ type
   private
     var
       FLines: String; { TODO make a slur class }
-      FFermata: String; { TODO make a fermata class }
       FBarlineRight: TBarline;
   public
+    var
+      FFermata: TFermataList;
+
+    constructor Create(); 
+
     { Create a new list of pitches from the Lilypond input string for a single
       measure of music, and the key relevant to this music. Recursively create
       all the pitches contained in the list. }
     constructor CreateFromLy(Source: String; Key: TKeyKind);
+
+    destructor Destroy(); override;
 
     { Deep copy of all pitches from another list to this one. }
     procedure Assign(Source: TPitchList);
@@ -623,7 +636,7 @@ var
   ); 
 begin
   inherited Create;
-  FID := GenerateID;
+  FID := GenerateXmlID;
   FArticulations := Spec;
 end;
 
@@ -860,6 +873,7 @@ begin
     else
     begin
       SetName('note');
+      AddAttribute('xml:id', Pitch.FID);
       AddMeiPnameAttribute(Pitch);
       AddMeiAccidAttribute(Pitch);
       AddMeiOctAttribute(Pitch);
@@ -889,13 +903,25 @@ begin
   result := Source;
 end;
 
+constructor TFermata.Create(ID: String);
+begin
+  inherited Create;
+  FStartID := ID;
+end;
+
+constructor TPitchList.Create();
+begin
+  FFermata := TFermataList.Create();
+  inherited Create;
+end;
+
 constructor TPitchList.CreateFromLy(Source: String; Key: TKeyKind);
 var
   ThisNote: String;
   Notes: TStringArray;
   NewPitch: TPitch;
 begin
-  inherited Create;
+  Create;
   DebugLn('Trying to make new pitch list from string: ' + Source);
 
   { TODO replace full command strings }
@@ -913,6 +939,12 @@ begin
       FreeAndNil(NewPitch);
     end;
   end;
+end;
+
+destructor TPitchList.Destroy();
+begin
+  FFermata.Destroy;
+  inherited Destroy;
 end;
 
 procedure TPitchList.Assign(Source: TPitchList);
@@ -1026,6 +1058,7 @@ begin
       Self.Add(TPitchList.CreateFromLy(MeasureStr, Key));
     end;
   end;
+  Self.AddFermatas;
   FreeAndNil(LyLines);
 end;
 
@@ -1050,18 +1083,16 @@ procedure TMeasureList.AddFermatas;
 var
   ThisMeasure: TPitchList;
   ThisPitch: TPitch;
-  PitchIndex: Integer;
+  NewFermata: TFermata;
 begin
   for ThisMeasure in Self do
   begin
-    PitchIndex := 0;
-    for PitchIndex := 0 to ThisMeasure.Count - 1 do
+    for ThisPitch in ThisMeasure do 
     begin
-      ThisPitch := ThisMeasure[PitchIndex];
       if ThisPitch.FArticulations.FFermata then
       begin
-        ThisMeasure.FFermata:= ThisMeasure.FFermata + XMLElement('fermata',
-          XMLAttribute('startid', ThisPitch.FID)); 
+        NewFermata := TFermata.Create(ThisPitch.FID);
+        ThisMeasure.FFermata.Add(NewFermata);
       end;
     end;
   end;

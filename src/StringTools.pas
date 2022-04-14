@@ -80,8 +80,6 @@ type
   (from start to close tag, including the tags). }
 function CopyXMLElement(Source, Tag: String): String;
 
-{ Return a string with an automatically generated GUID. }
-function GenerateID: String;
 
 implementation
 
@@ -267,17 +265,6 @@ const
   MeiNamespace = 'xmlns="http://www.music-encoding.org/ns/mei" meiversion="4.0.0"';
 begin
   result := Self.XMLDocStr('mei', MEINamespace);
-end;
-
-function GenerateID: String;
-var
-  GUID: TGUID;
-  IDStr: String = '';
-begin
-  if CreateGUID(GUID) = 0 then
-    IDStr := GUIDToString(GUID);
-
-  result := IDStr;
 end;
 
 

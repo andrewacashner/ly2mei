@@ -597,10 +597,12 @@ begin
 end;
 
 var
-  ScoreDef: TMeiNode;
+  ScoreDef, MainStaffGrp: TMeiNode;
 begin
   ScoreDef := TMeiNode.Create('scoreDef');
-  ScoreDef.AppendChild(InnerScoreDef(Self, nil));
+  MainStaffGrp := TMeiNode.Create('staffGrp');
+  ScoreDef.AppendChild(MainStaffGrp);
+  MainStaffGrp.AppendChild(InnerScoreDef(Self, nil));
   result := ScoreDef;
 end;
 
@@ -721,7 +723,7 @@ begin
   if not Assigned(MeiNode) then
   begin
     case FType of
-      ekStaffGrp, ekStaff, ekLayer :
+      ekStaff, ekLayer :
       begin
         MeiNode := TMeiNode.Create(NodeName);
         if not FID.IsEmpty then
@@ -762,6 +764,39 @@ begin
   result := MeasureNode;
 end;
 
+function AddMeiFermatas(LyNode: TLyObject; MeiMeasure: TMeiNode; 
+  MeasureNum: Integer): TMeiNode;
+var
+  ThisMeasureList: TMeasureList;
+  ThisMeasure: TPitchList;
+  LyFermatas: TFermataList;
+  ThisFermata: TFermata;
+  FermataNode: TMeiNode;
+begin
+  Assert(Assigned(MeiMeasure) and Assigned(MeiMeasure));
+  Assert(LyNode.FType = ekLayer);
+
+  ThisMeasureList := LyNode.FMeasureList;
+  if MeasureNum < ThisMeasureList.Count then
+  begin
+    ThisMeasure := ThisMeasureList.Items[MeasureNum];
+    LyFermatas := ThisMeasure.FFermata;
+    for ThisFermata in LyFermatas do
+    begin
+      FermataNode := TMeiNode.Create('fermata');
+      FermataNode.AddAttribute('startid', ThisFermata.FStartID);
+      MeiMeasure.AppendChild(FermataNode);
+    end;
+  end
+  else
+  begin
+    WriteLn(stderr, 'AddMeiFermatas: Measure number out of bounds')
+  end;
+
+  result := MeiMeasure;
+end;
+
+
 function BuildMeiMeasureTree(LyTree: TLyObject; MeiTree: TMeiNode; 
   MeasureNum: Integer): TMeiNode;
 var
@@ -779,16 +814,22 @@ begin
     MeiMusicNode := CreateMeiMeasure(LyLayer, MeasureNum);
     MeiLayerPath.AppendLastChild(MeiMusicNode);
     MeiTree.AppendChild(MeiLayerPath);
+    MeiTree := AddMeiFermatas(LyLayer, MeiTree, MeasureNum);
 
     if Assigned(LyStaff.FSibling) then
     begin
-      MeiTree := BuildMeiMeasureTree(LyStaff.FSibling, 
-        MeiTree, MeasureNum);
+      MeiTree := BuildMeiMeasureTree(LyStaff.FSibling, MeiTree, MeasureNum);
+    end;
+  
+    if (LyTree.FType <> ekStaff) and Assigned(LyTree.FSibling) then
+    begin
+      MeiTree := BuildMeiMeasureTree(LyTree.FSibling, MeiTree, MeasureNum);
     end;
   end;
   
   result := MeiTree;
 end;
+
 
 { Flip an @code(LyObjectTree) with a staff/voice/measure hierarchy
   to make a @code(MeiNode) tree with a measure/staff/voice hierarchy. }
@@ -815,19 +856,20 @@ begin
       MeiMeasureTree := TMeiNode.Create('measure');
       MeiMeasureTree.AddAttribute('n', IntToStr(MeasureNum + 1));
 
+      { Section heading (from MeasureList), first measure only }
       if MeasureNum = 0 then
       begin
         MeiMeasureTree := MeasureList.AddMeiSectionHead(MeiMeasureTree);
       end;
 
+      { Barline for this measure (from PitchList = lirio:measure) }
       MeiMeasureTree := AddMeiBarlineAttr(MeiMeasureTree, 
         MeasureList.Items[MeasureNum]);
 
+      { For this measure, staff/layer/notes }
       MeiMeasureTree := BuildMeiMeasureTree(Self, MeiMeasureTree, MeasureNum);
       MeiScore.AppendChild(MeiMeasureTree);
 
-      { TODO Copy lirio:measure attributes from here to mei:measure;
-      i.e., deal with prefix/suffix elements? }
     end;
   end;
   result := MeiScore;
