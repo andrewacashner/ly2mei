@@ -752,7 +752,9 @@ begin
   begin
     MeasureList := LyLayer.FMeasureList;
     if MeasureNum < MeasureList.Count then
-      MeasureNode := LyLayer.FMeasureList.Items[MeasureNum].ToMEI
+    begin
+      MeasureNode := LyLayer.FMeasureList.Items[MeasureNum].ToMEI;
+    end
     else
       WriteLn(stderr, 'Measure number out of range');
   end;
@@ -794,6 +796,7 @@ end;
 function TLyObject.ToMEI(MeiScore: TMeiNode = nil): TMeiNode;
 var
   LayerNode: TLyObject;
+  MeasureList: TMeasureList;
   MeiMeasureTree: TMeiNode;
   MeasureCount, MeasureNum: Integer;
 begin
@@ -805,15 +808,24 @@ begin
 
   if Assigned(LayerNode) then
   begin
-    MeasureCount := LayerNode.FMeasureList.Count;
+    MeasureList := LayerNode.FMeasureList;
+    MeasureCount := MeasureList.Count;
     for MeasureNum := 0 to (MeasureCount - 1) do
     begin
       MeiMeasureTree := TMeiNode.Create('measure');
       MeiMeasureTree.AddAttribute('n', IntToStr(MeasureNum + 1));
 
+      if MeasureNum = 0 then
+      begin
+        MeiMeasureTree := MeasureList.AddMeiSectionHead(MeiMeasureTree);
+      end;
+
+      MeiMeasureTree := AddMeiBarlineAttr(MeiMeasureTree, 
+        MeasureList.Items[MeasureNum]);
+
       MeiMeasureTree := BuildMeiMeasureTree(Self, MeiMeasureTree, MeasureNum);
-      
       MeiScore.AppendChild(MeiMeasureTree);
+
       { TODO Copy lirio:measure attributes from here to mei:measure;
       i.e., deal with prefix/suffix elements? }
     end;

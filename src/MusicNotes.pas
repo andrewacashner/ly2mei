@@ -227,6 +227,8 @@ type
       @code(measure) linked to their notes by the @code(startid). }
     procedure AddFermatas;
     
+    function AddMeiSectionHead(MeiMeasure: TMeiNode): TMeiNode;
+    
     function ToMEI: TMeiNode;
   end;
 
@@ -949,8 +951,9 @@ function AddMeiBarlineAttr(MeiMeasure: TMeiNode; PitchList: TPitchList):
 var 
   Attr: String;
 begin
-  assert(Assigned(PitchList));
-  assert(Assigned(MeiMeasure) and (MeiMeasure.GetName = 'lirio:measure'));
+  Assert(Assigned(PitchList));
+  Assert(Assigned(MeiMeasure));
+  Assert((MeiMeasure.GetName = 'lirio:measure') or (MeiMeasure.GetName = 'measure'));
 
   case PitchList.FBarlineRight of
     bkNormal    : Attr := '';
@@ -1204,30 +1207,33 @@ begin
   end;
 end;
 
-function TMeasureList.ToMEI: TMeiNode;
-  function AddSectionHead(Prefix: String; Node: TMeiNode): TMeiNode;
-  var
-    SectionHead: TMeiNode;
-  begin
-    if not Prefix.IsEmpty then
-    begin
-      SectionHead := TMeiNode.Create('tempo');
-      SectionHead.AddAttribute('place', 'above');
-      SectionHead.AddAttribute('staff', '1');
-      SectionHead.AddAttribute('tstamp', '1');
-      SectionHead.SetTextNode(Prefix);
-      Node.AppendChild(SectionHead);
-    end;
-    result := Node;
-  end;
-
+function TMeasureList.AddMeiSectionHead(MeiMeasure: TMeiNode): TMeiNode;
 var
-  MeiRoot, NewMeiNode, SectionHead: TMeiNode;
+  SectionHead: TMeiNode = nil;
+begin
+  Assert(Assigned(MeiMeasure));
+  Assert((MeiMeasure.GetName = 'lirio:voice') or (MeiMeasure.GetName = 'measure'));
+
+  if not FPrefix.IsEmpty then
+  begin
+    SectionHead := TMeiNode.Create('tempo');
+    SectionHead.AddAttribute('place', 'above');
+    SectionHead.AddAttribute('staff', '1');
+    SectionHead.AddAttribute('tstamp', '1');
+    SectionHead.SetTextNode(FPrefix);
+    MeiMeasure.AppendChild(SectionHead);
+  end;
+  result := MeiMeasure;
+end;
+
+function TMeasureList.ToMEI: TMeiNode;
+var
+  MeiRoot, NewMeiNode: TMeiNode;
   ThisMeasure: TPitchList;
   MeasureNum: Integer;
 begin
   MeiRoot := TMeiNode.Create('lirio:voice');
-  MeiRoot := AddSectionHead(FPrefix, MeiRoot);
+  MeiRoot := AddMeiSectionHead(MeiRoot);
 
   MeasureNum := 1;
   for ThisMeasure in Self do

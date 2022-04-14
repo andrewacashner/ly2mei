@@ -1,4 +1,5 @@
+- (DONE) deal section headings
+- (DONE) deal with barlines
 - deal with ties, slurs, lines (coloration)
-- deal section headings
 - deal with Lyrics
 - deal with FiguredBass
