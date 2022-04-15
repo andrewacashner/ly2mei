@@ -773,14 +773,14 @@ var
   ThisFermata: TFermata;
   FermataNode: TMeiNode;
 begin
-  Assert(Assigned(MeiMeasure) and Assigned(MeiMeasure));
+  Assert(Assigned(LyNode) and Assigned(MeiMeasure));
   Assert(LyNode.FType = ekLayer);
 
   ThisMeasureList := LyNode.FMeasureList;
   if MeasureNum < ThisMeasureList.Count then
   begin
     ThisMeasure := ThisMeasureList.Items[MeasureNum];
-    LyFermatas := ThisMeasure.FFermata;
+    LyFermatas := ThisMeasure.FFermataList;
     for ThisFermata in LyFermatas do
     begin
       FermataNode := TMeiNode.Create('fermata');
@@ -796,6 +796,24 @@ begin
   result := MeiMeasure;
 end;
 
+function AddMeiLines(LyNode: TLyObject; MeiMeasure: TMeiNode): TMeiNode;
+var 
+  ThisMeasure: TPitchList;
+  LyLines: TLineList;
+  ThisMeiLineTree: TMeiNode = nil;
+begin
+  Assert(Assigned(LyNode) and Assigned(MeiMeasure));
+  Assert(LyNode.FType = ekLayer);
+
+  for ThisMeasure in LyNode.FMeasureList do
+  begin
+    LyLines := ThisMeasure.FLineList;
+    ThisMeiLineTree := LyLines.ToMEI;
+    { TODO START LyLine.ToMEI is giving nil result }
+    MeiMeasure.AppendChild(ThisMeiLineTree);
+  end;
+  result := MeiMeasure;
+end;
 
 function BuildMeiMeasureTree(LyTree: TLyObject; MeiTree: TMeiNode; 
   MeasureNum: Integer): TMeiNode;
@@ -815,6 +833,7 @@ begin
     MeiLayerPath.AppendLastChild(MeiMusicNode);
     MeiTree.AppendChild(MeiLayerPath);
     MeiTree := AddMeiFermatas(LyLayer, MeiTree, MeasureNum);
+    MeiTree := AddMeiLines(LyLayer, MeiTree);
 
     if Assigned(LyStaff.FSibling) then
     begin

@@ -177,16 +177,34 @@ type
 
   TFermataList = specialize TObjectList<TFermata>;
 
+  TLine = class
+  public
+    var
+      FName, FStartID, FEndID, FLineFunction, FLineForm: String;
+    constructor Create(Name: String;
+      StartID: String = ''; 
+      EndID: String = '';
+      LineFunction: String = '';
+      LineForm: String = '');
+    function ToMEI: TMeiNode;
+  end;
+
+  TLineList = class(specialize TObjectList<TLine>)
+  public
+    function ToMEI: TMeiNode;
+  end;
+
+
   { @abstract(A list of @link(TPitch) objects, corresponding to one measure of
      music.) }
   TPitchList = class(specialize TObjectList<TPitch>)
   private
     var
-      FLines: String; { TODO make a slur class }
       FBarlineRight: TBarline;
   public
     var
-      FFermata: TFermataList;
+      FFermataList: TFermataList;
+      FLineList: TLineList;
 
     constructor Create(); 
 
@@ -911,9 +929,61 @@ begin
   FStartID := ID;
 end;
 
+constructor TLine.Create(Name: String;
+  StartID: String = ''; 
+  EndID: String = '';
+  LineFunction: String = '';
+  LineForm: String = '');
+begin
+  inherited Create;
+  FName := Name;
+  FStartID := StartID;
+  FEndID := EndID;
+  FLineFunction := LineFunction;
+  FLineForm := LineForm;
+end;
+
+function TLine.ToMEI: TMeiNode;
+var
+  MeiLine: TMeiNode;
+begin
+  MeiLine := TMeiNode.Create(FName);
+  MeiLine.AddAttribute('startid', FStartID);
+  MeiLine.AddAttribute('endid', FEndID);
+
+  if not FLineFunction.IsEmpty then
+  begin
+    MeiLine.AddAttribute('func', FLineFunction);
+  end;
+
+  if not FLineForm.IsEmpty then
+  begin
+    MeiLine.AddAttribute('lform', FLineForm);
+  end;
+  
+  result := MeiLine;
+end;
+
+{ makes a chain of sibling elements (no parent element enclosing them all) }
+function TLineList.ToMEI: TMeiNode;
+var
+  Root: TMeiNode = nil;
+  ThisLine: TLine;
+begin
+  for ThisLine in Self do
+  begin
+    if not Assigned(Root) then
+      Root := ThisLine.ToMEI
+    else
+      Root.AppendSibling(ThisLine.ToMEI);
+  end;
+  result := Root;
+end;
+
 constructor TPitchList.Create();
 begin
-  FFermata := TFermataList.Create();
+  FFermataList := TFermataList.Create();
+  FLineList := TLineList.Create();
   inherited Create;
 end;
 
@@ -945,7 +1015,8 @@ end;
 
 destructor TPitchList.Destroy();
 begin
-  FFermata.Destroy;
+  FFermataList.Destroy;
+  FLineList.Destroy;
   inherited Destroy;
 end;
 
@@ -961,9 +1032,11 @@ begin
       NewPitch.Assign(ThisPitch);
       Self.Add(NewPitch);
     end;
-    FLines := Source.FLines;
-    FFermata := Source.FFermata;
     FBarlineRight := Source.FBarlineRight;
+    { TODO not needed? does Assign work?
+    FLines.Assign(Source.FLines);
+    FFermataList.Assign(Source.FFermataList);
+    }
   end;
 end;
 
@@ -1097,7 +1170,7 @@ begin
       if ThisPitch.FArticulations.FFermata then
       begin
         NewFermata := TFermata.Create(ThisPitch.FID);
-        ThisMeasure.FFermata.Add(NewFermata);
+        ThisMeasure.FFermataList.Add(NewFermata);
       end;
     end;
   end;
@@ -1139,7 +1212,7 @@ begin
   end;
 end;
 
-
+{ slurs, coloration brackets }
 procedure TMeasureList.AddLines(LineKind: TLineKind);
 var 
   ThisMeasure: TPitchList;
@@ -1148,7 +1221,7 @@ var
   StartID, EndID, NextStartID: String;
   MeasureNum: Integer;
   LinePosition: TMarkupPosition;
-  ElementName, LocationAttr, FunctionAttr, MEI: String;
+  NewLine: TLine;
 begin
   DebugLn('Looking for line type:'); {$ifdef DEBUG}WriteLn(LineKind);{$endif}
   FoundStart    := False;
@@ -1165,23 +1238,22 @@ begin
         lkSlur : 
         begin
           LinePosition := ThisPitch.FSlur;
-          ElementName := 'slur';
-          FunctionAttr := '';
+          NewLine := TLine.Create('slur');
         end;
 
         lkColoration : 
         begin
           LinePosition := ThisPitch.FColoration;
-          ElementName := 'bracketSpan';
-          FunctionAttr := ' ' + XMLAttribute('func', 'coloration');
+          NewLine := TLine.Create('bracketSpan');
+          NewLine.FLineFunction := 'coloration';
         end;
 
         lkLigature : 
         begin
           LinePosition := ThisPitch.FLigature;
-          ElementName := 'bracketSpan';
-          FunctionAttr := Format(' %s %s', [XMLAttribute('func', 'ligature'),
-                                           XMLAttribute('lform', 'solid')]);
+          NewLine := TLine.Create('bracketSpan');
+          NewLine.FLineFunction := 'ligature';
+          NewLine.FLineForm := 'solid';
         end;
       end;
 
@@ -1227,12 +1299,9 @@ begin
         DebugLn('FOUND A LINE');
         with ThisMeasure do
         begin
-          { TODO use an object instead of XML string? }
-          LocationAttr := Format('%s %s', [XMLAttribute('startid', '#' + StartID), 
-                                           XMLAttribute('endid', '#' + EndID)]);
-         
-          MEI := XMLElement(ElementName, LocationAttr + FunctionAttr);
-          FLines := Flines + MEI;
+          NewLine.FStartID := StartID;
+          NewLine.FEndID := EndID;
+          FLineList.Add(NewLine);
         end;
         FoundEnd := False;
       end;
