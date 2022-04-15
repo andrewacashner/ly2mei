@@ -285,7 +285,7 @@ function LyToMEITree(LyNode: TLyObject; MEINode: TMEIElement): TMEIElement;
     procedure AddMeiTieAttribute(Pitch: TPitch);
 
     { Generate one or more MEI @code(artic) elements within a @code(note). }
-    procedure AddMeiArticAttribute(Pitch: TPitch);
+    procedure AddMeiArticulation(Pitch: TPitch);
 
   public
     constructor CreateFromPitch(Pitch: TPitch);
@@ -828,32 +828,34 @@ begin
   end;
 end;
 
-procedure TMeiNoteRest.AddMeiArticAttribute(Pitch: TPitch);
-var
-  ArticKind: String = '';
-  MeiArticNode: TMeiNode;
+procedure TMeiNoteRest.AddMeiArticulation(Pitch: TPitch);
+  procedure AddArticNode(Value: String);
+  var
+    Artic: TMeiNode;
+  begin
+    Artic := TMeiNode.Create('artic');
+    Artic.AddAttribute('artic', Value);
+    AppendChild(Artic);
+  end;
+
 begin
   assert(IsNote);
-
   { Fermata is handled separately in TMeasureList.AddFermatas }
   with Pitch.FArticulations do
   begin
     if FAccent or FStaccato or FTenuto or FStaccatissimo or FMarcato then
     begin
+      { Add as many articulation attributes as needed to the artic element }
       if FAccent then
-        ArticKind := 'acc';
+        AddArticNode('acc');
       if FStaccato then
-        ArticKind := 'stacc';
+        AddArticNode('stacc');
       if FTenuto then
-        ArticKind := 'ten';
+        AddArticNode('ten');
       if FStaccatissimo then
-        ArticKind := 'stacciss';
+        AddArticNode('stacciss');
       if FMarcato then
-        ArticKind := 'marc';
-      
-      MeiArticNode := TMeiNode.Create('artic');
-      MeiArticNode.AddAttribute('artic', ArticKind);
-      AppendChild(MeiArticNode);
+        AddArticNode('marc');
     end;
   end;
 end;
@@ -878,7 +880,7 @@ begin
       AddMeiAccidAttribute(Pitch);
       AddMeiOctAttribute(Pitch);
       AddMeiTieAttribute(Pitch);
-      AddMeiArticAttribute(Pitch);
+      AddMeiArticulation(Pitch);
     end;
   end;
 
@@ -1058,7 +1060,10 @@ begin
       Self.Add(TPitchList.CreateFromLy(MeasureStr, Key));
     end;
   end;
+
+  Self.AddTies;
   Self.AddFermatas;
+
   FreeAndNil(LyLines);
 end;
 
