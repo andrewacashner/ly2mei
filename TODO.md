@@ -1,7 +1,9 @@
 - (DONE) deal section headings
 - (DONE) deal with barlines
-- deal with (DONE) ties, slurs, lines (coloration)
+- deal with (DONE) ties
+- deal with lines:  slurs, lines (coloration) (IN PROGRESS)
     - ? Verovio gives warning message about ties
+    - Avoid creating duplicates
 - (DONE) deal with multiple articulations on one note
 - deal with Lyrics
 - deal with FiguredBass
