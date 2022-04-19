@@ -254,6 +254,8 @@ type
       ligature brackets (MEI @code(slur) and @code(bracketSpan) elements). }
     procedure AddLines(LineKind: TLineKind);
 
+    procedure AddAllLines;
+
     { Go through measure list and add fermata elements within the MEI
       @code(measure) linked to their notes by the @code(startid). }
     procedure AddFermatas;
@@ -1060,7 +1062,8 @@ var
 begin
   Assert(Assigned(PitchList));
   Assert(Assigned(MeiMeasure));
-  Assert((MeiMeasure.GetName = 'lirio:measure') or (MeiMeasure.GetName = 'measure'));
+  Assert((MeiMeasure.GetName = 'lirio:measure') 
+    or (MeiMeasure.GetName = 'measure'));
 
   case PitchList.FBarlineRight of
     bkNormal    : Attr := '';
@@ -1091,9 +1094,6 @@ begin
     else
       MeiTree.AppendSibling(ThisMeiNote);
   end;
-  { TODO put this elsewhere
-  MeiTree := AddMeiBarlineAttr(MeiTree, Self);
-  }
   
   result := MeiTree;
 end;
@@ -1136,6 +1136,7 @@ begin
 
   Self.AddTies;
   Self.AddFermatas;
+  Self.AddAllLines;
 
   FreeAndNil(LyLines);
 end;
@@ -1218,7 +1219,7 @@ var
   ThisMeasure: TPitchList;
   ThisPitch: TPitch;
   FoundStart, FoundEnd, FoundEndStart: Boolean;
-  StartID, EndID, NextStartID: String;
+  LineName, LineFunction, LineForm, StartID, EndID, NextStartID: String;
   MeasureNum: Integer;
   LinePosition: TMarkupPosition;
   NewLine: TLine;
@@ -1238,22 +1239,22 @@ begin
         lkSlur : 
         begin
           LinePosition := ThisPitch.FSlur;
-          NewLine := TLine.Create('slur');
+          LineName := 'slur';
         end;
 
         lkColoration : 
         begin
           LinePosition := ThisPitch.FColoration;
-          NewLine := TLine.Create('bracketSpan');
-          NewLine.FLineFunction := 'coloration';
+          LineName := 'bracketSpan';
+          LineFunction := 'coloration';
         end;
 
         lkLigature : 
         begin
           LinePosition := ThisPitch.FLigature;
-          NewLine := TLine.Create('bracketSpan');
-          NewLine.FLineFunction := 'ligature';
-          NewLine.FLineForm := 'solid';
+          LineName := 'bracketSpan';
+          LineFunction := 'ligature';
+          LineForm := 'solid';
         end;
       end;
 
@@ -1299,6 +1300,14 @@ begin
         DebugLn('FOUND A LINE');
         with ThisMeasure do
         begin
+          NewLine := TLine.Create(LineName);
+
+          if not LineFunction.IsEmpty then
+            NewLine.FLineFunction := LineFunction;
+        
+          if not LineForm.IsEmpty then
+            NewLine.FLineForm := LineForm;
+
           NewLine.FStartID := StartID;
           NewLine.FEndID := EndID;
           FLineList.Add(NewLine);
@@ -1310,6 +1319,13 @@ begin
         StartID := NextStartID;
     end;
   end;
+end;
+
+procedure TMeasureList.AddAllLines;
+begin
+  AddLines(lkSlur);
+  AddLines(lkColoration);
+  AddLines(lkLigature);
 end;
 
 function TMeasureList.AddMeiSectionHead(MeiMeasure: TMeiNode): TMeiNode;
@@ -1333,7 +1349,7 @@ end;
 
 function TMeasureList.ToMEI: TMeiNode;
 var
-  MeiRoot, NewMeiNode: TMeiNode;
+  MeiRoot, MeiMeasure, MeiLines: TMeiNode;
   ThisMeasure: TPitchList;
   MeasureNum: Integer;
 begin
@@ -1343,9 +1359,14 @@ begin
   MeasureNum := 1;
   for ThisMeasure in Self do
   begin
-    NewMeiNode := ThisMeasure.ToMEI;
-    NewMeiNode.AddAttribute('n', IntToStr(MeasureNum));
-    MeiRoot.AppendChild(NewMeiNode);
+    MeiMeasure := ThisMeasure.ToMEI;
+    MeiMeasure.AddAttribute('n', IntToStr(MeasureNum));
+    
+    MeiLines := ThisMeasure.FLineList.ToMEI;
+    { TODO avoid creating duplicate lines }
+    MeiMeasure.AppendChild(MeiLines);
+
+    MeiRoot.AppendChild(MeiMeasure);
     Inc(MeasureNum);
   end;
   result := MeiRoot;
