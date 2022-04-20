@@ -173,9 +173,14 @@ type
     var
       FStartID: String;
     constructor Create(ID: String);
+    function ToMEI: TMeiNode;
   end;
 
-  TFermataList = specialize TObjectList<TFermata>;
+  TFermataList = class(specialize TObjectList<TFermata>)
+  public
+    function ToMEI: TMeiNode;
+  end;
+
 
   TLine = class
   public
@@ -277,6 +282,18 @@ type
       measure, where the child element is the entire original tree
       (staff/layer), but we include only a single measure in the list at the
       bottom, corresponding to the music for this measure. }
+
+  TLinePosition = class
+  public
+    var
+      FStartID, FEndID: String;
+  end;
+
+  TLinePositionList = class(specialize TObjectList<TLinePosition>)
+  public
+    constructor Create(MeasureList: TMeasureList; LineKind: TLineKind);
+  end;
+
 
 { Convert a @code(TLyObject) tree to a @code(TMEIElement) tree, preserving the
   same hierarchy from the Lilypond input. 
@@ -933,6 +950,38 @@ begin
   FStartID := ID;
 end;
 
+function TFermata.ToMEI: TMeiNode;
+var
+  FermataNode: TMeiNode = nil;
+begin
+  if not FStartID.IsEmpty then
+  begin
+    FermataNode := TMeiNode.Create('fermata');
+    FermataNode.AddAttribute('startid', FStartID);
+  end;
+  result := FermataNode;
+end;
+
+function TFermataList.ToMEI: TMeiNode;
+var
+  FermataListNode: TMeiNode = nil;
+  NewFermataNode: TMeiNode;
+  ThisFermata: TFermata;
+begin
+  if Self.Count > 0 then
+  begin
+    for ThisFermata in Self do
+    begin
+      NewFermataNode := ThisFermata.ToMEI;
+      if Assigned(FermataListNode) then
+        FermataListNode.AppendSibling(NewFermataNode)
+      else
+        FermataListNode := NewFermataNode;
+    end;
+  end;
+  result := FermataListNode;
+end;
+
 constructor TLine.Create();
 begin
   inherited Create();
@@ -1194,7 +1243,8 @@ begin
   end;
 end;
 
-
+{ TODO replace with adding <tie> elements like we do with slurs and other
+lines }
 procedure TMeasureList.AddTies;
 var
   ThisMeasure: TPitchList;
@@ -1230,7 +1280,8 @@ begin
   end;
 end;
 
-procedure TMeasureList.AddLines(LineKind: TLineKind);
+constructor TLinePositionList.Create(MeasureList: TMeasureList; 
+  LineKind: TLineKind);
 
   function SelectLineField(Pitch: TPitch; LineKind: TLineKind): TMarkupPosition;
   var 
@@ -1243,6 +1294,57 @@ procedure TMeasureList.AddLines(LineKind: TLineKind);
     end;
     result := LineField;
   end;
+
+  function CreateStartPosition(ID: String): TLinePosition;
+  var
+    Position: TLinePosition;
+  begin
+    Position := TLinePosition.Create();
+    Position.FStartID := ID;
+    result := Position;
+  end;
+
+  function AddCompletePosition(PositionList: TLinePositionList; 
+    ThisPosition: TLinePosition; ID: String): TLinePositionList;
+  begin
+    ThisPosition.FEndID := ID;
+    PositionList.Add(ThisPosition);
+    result := PositionList;
+  end;
+
+var
+  ThisMeasure: TPitchList;
+  ThisPitch: TPitch;
+  LineField: TMarkupPosition;
+  ThisPitchID: String;
+  NewLinePosition: TLinePosition;
+begin
+  Assert(Assigned(MeasureList));
+  inherited Create();
+
+  for ThisMeasure in MeasureList do
+  begin
+    for ThisPitch in ThisMeasure do
+    begin
+      LineField := SelectLineField(ThisPitch, LineKind);
+      ThisPitchID := ThisPitch.FID;
+      case LineField of
+        mkStart : NewLinePosition := CreateStartPosition(ThisPitchID);
+        mkEnd : AddCompletePosition(Self, NewLinePosition, ThisPitchID);
+        mkEndStart :
+        begin
+          AddCompletePosition(Self, NewLinePosition, ThisPitchID);
+          NewLinePosition := CreateStartPosition(ThisPitchID);
+          { TODO what if NewLinePosition is incomplete: we have a start but no
+          end? or an end but no start? or overlapping, nested? }
+        end;
+      end;
+    end;
+  end;
+end;
+
+
+procedure TMeasureList.AddLines(LineKind: TLineKind);
 
   function GetLineName(LineKind: TLineKind): String;
   var
@@ -1276,39 +1378,9 @@ procedure TMeasureList.AddLines(LineKind: TLineKind);
     result := LineForm;
   end;
 
-  procedure ListStartEndPositions(MeasureList: TMeasureList; 
-    StartPositions, EndPositions: TStringList);
-  var
-    ThisMeasure: TPitchList;
-    ThisPitch: TPitch;
-    LineField: TMarkupPosition;
-    ThisPitchID: String;
-  begin
-    Assert(Assigned(MeasureList) 
-      and Assigned(StartPositions) and Assigned(EndPositions));
-
-    for ThisMeasure in MeasureList do
-    begin
-      for ThisPitch in ThisMeasure do
-      begin
-        LineField := SelectLineField(ThisPitch, LineKind);
-        ThisPitchID := ThisPitch.FID;
-        case LineField of
-          mkStart : StartPositions.Add(ThisPitchID);
-          mkEnd   : EndPositions.Add(ThisPitchID);
-          mkEndStart :
-          begin
-            StartPositions.Add(ThisPitchID);
-            EndPositions.Add(ThisPitchID);
-          end;
-        end;
-      end;
-    end;
-  end;
-
 var
-  StartPositions: TStringList;
-  EndPositions: TStringList;
+  LinePositionList: TLinePositionList;
+  ThisLinePosition: TLinePosition;
   NewLine, ThisLine: TLine;
   LineList: TLineList;
   IDCount: Integer;
@@ -1317,24 +1389,18 @@ var
 begin
   if LineKind <> lkNone then
   begin
-    StartPositions := TStringList.Create();
-    EndPositions   := TStringList.Create();
     LineList := TLineList.Create();
+    LinePositionList := TLinePositionList.Create(Self, LineKind);
 
-    { better to have a function with one output (of start/end pairs) }
-    ListStartEndPositions(Self, StartPositions, EndPositions);
-  
-    if StartPositions.Count = EndPositions.Count then
+    for ThisLinePosition in LinePositionList do
     begin
-      for IDCount := 0 to StartPositions.Count - 1 do
-      begin
-        NewLine := TLine.Create(GetLineName(LineKind),
-          StartPositions[IDCount],
-          EndPositions[IDCount],
-          GetLineFunction(LineKind),
-          GetLineForm(LineKind));
-        LineList.Add(NewLine);
-      end;
+      NewLine := TLine.Create(GetLineName(LineKind), 
+        ThisLinePosition.FStartID,
+        ThisLinePosition.FEndID,
+        GetLineFunction(LineKind),
+        GetLineForm(LineKind));
+
+      LineList.Add(NewLine);
     end;
 
     for ThisLine in LineList do
@@ -1354,8 +1420,7 @@ begin
     end;
 
     FreeAndNil(LineList);
-    FreeAndNil(StartPositions);
-    FreeAndNil(EndPositions);
+    FreeAndNil(LinePositionList);
   end;
 end;
 
@@ -1371,7 +1436,8 @@ var
   SectionHead: TMeiNode = nil;
 begin
   Assert(Assigned(MeiMeasure));
-  Assert((MeiMeasure.GetName = 'lirio:voice') or (MeiMeasure.GetName = 'measure'));
+  Assert((MeiMeasure.GetName = 'lirio:voice') 
+    or (MeiMeasure.GetName = 'measure'));
 
   if not FPrefix.IsEmpty then
   begin
@@ -1401,7 +1467,6 @@ begin
     MeiMeasure.AddAttribute('n', IntToStr(MeasureNum));
     
     MeiLines := ThisMeasure.FLineList.ToMEI;
-    { TODO avoid creating duplicate lines }
     MeiMeasure.AppendChild(MeiLines);
 
     MeiRoot.AppendChild(MeiMeasure);
