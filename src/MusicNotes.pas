@@ -1213,113 +1213,269 @@ begin
   end;
 end;
 
-{ slurs, coloration brackets }
 procedure TMeasureList.AddLines(LineKind: TLineKind);
-var 
-  ThisMeasure: TPitchList;
-  ThisPitch: TPitch;
-  FoundStart, FoundEnd, FoundEndStart: Boolean;
-  LineName, LineFunction, LineForm, StartID, EndID, NextStartID: String;
-  MeasureNum: Integer;
-  LinePosition: TMarkupPosition;
-  NewLine: TLine;
-begin
-  DebugLn('Looking for line type:'); {$ifdef DEBUG}WriteLn(LineKind);{$endif}
-  FoundStart    := False;
-  FoundEnd      := False;
-  FoundEndStart := False;
 
-  for MeasureNum := 0 to Self.Count - 1 do
+  function SelectLineField(Pitch: TPitch; LineKind: TLineKind): TMarkupPosition;
+  var 
+    LineField: TMarkupPosition;
   begin
-    ThisMeasure := Self[MeasureNum];
-    
-    for ThisPitch in ThisMeasure do 
+    case LineKind of
+      lkSlur       : LineField := Pitch.FSlur;
+      lkColoration : LineField := Pitch.FColoration;
+      lkLigature   : LineField := Pitch.FLigature;
+    end;
+    result := LineField;
+  end;
+
+  function GetLineName(LineKind: TLineKind): String;
+  var
+    LineName: String = '';
+  begin
+    case LineKind of
+      lkSlur : LineName := 'slur';
+      lkColoration, lkLigature : LineName := 'bracketSpan';
+    end;
+    result := LineName;
+  end;
+
+  function GetLineFunction(LineKind: TLineKind): String;
+  var
+    LineFunction: String = '';
+  begin
+    case LineKind of
+      lkColoration : LineFunction := 'coloration';
+      lkLigature   : LineFunction := 'ligature';
+    end;
+    result := LineFunction;
+  end;
+
+  function GetLineForm(LineKind: TLineKind): String;
+  var
+    LineForm: String = '';
+  begin
+    case LineKind of
+      lkLigature : LineForm := 'solid';
+    end;
+    result := LineForm;
+  end;
+
+  procedure ListStartEndPositions(MeasureList: TMeasureList; 
+    StartPositions, EndPositions: TStringList);
+  var
+    ThisMeasure: TPitchList;
+    ThisPitch: TPitch;
+    LineField: TMarkupPosition;
+    ThisPitchID: String;
+  begin
+    Assert(Assigned(MeasureList) 
+      and Assigned(StartPositions) and Assigned(EndPositions));
+
+    for ThisMeasure in MeasureList do
     begin
-      case LineKind of
-        lkSlur : 
-        begin
-          LinePosition := ThisPitch.FSlur;
-          LineName := 'slur';
-        end;
-
-        lkColoration : 
-        begin
-          LinePosition := ThisPitch.FColoration;
-          LineName := 'bracketSpan';
-          LineFunction := 'coloration';
-        end;
-
-        lkLigature : 
-        begin
-          LinePosition := ThisPitch.FLigature;
-          LineName := 'bracketSpan';
-          LineFunction := 'ligature';
-          LineForm := 'solid';
-        end;
-      end;
-
-      case LinePosition of
-        mkStart :
-        begin
-          if not FoundStart then
-          begin
-            FoundStart := True;
-            StartID := ThisPitch.FID;
-            DebugLn('Found line start on ID ' + StartID);
-          end;
-        end;
-
-        mkEnd :
-        begin
-          if FoundStart then
-          begin
-            FoundEnd := True;
-            EndID := ThisPitch.FID;
-            FoundStart := False;
-            DebugLn('Found line end on ID ' + EndID);
-          end;
-        end;
-
-        mkEndStart :
-        begin
-          if FoundStart then
-          begin
-            FoundEndStart := True;
-            FoundEnd := True;
-            EndID := ThisPitch.FID;
-          end;
-          
-          FoundStart := True;
-          NextStartID := ThisPitch.FID;
-          DebugLn('Found line end and start on ID ' + EndID);
-        end;
-      end;
-
-      if FoundEnd then
+      for ThisPitch in ThisMeasure do
       begin
-        DebugLn('FOUND A LINE');
-        with ThisMeasure do
-        begin
-          NewLine := TLine.Create(LineName);
-
-          if not LineFunction.IsEmpty then
-            NewLine.FLineFunction := LineFunction;
-        
-          if not LineForm.IsEmpty then
-            NewLine.FLineForm := LineForm;
-
-          NewLine.FStartID := StartID;
-          NewLine.FEndID := EndID;
-          FLineList.Add(NewLine);
+        LineField := SelectLineField(ThisPitch, LineKind);
+        ThisPitchID := ThisPitch.FID;
+        case LineField of
+          mkStart : StartPositions.Add(ThisPitchID);
+          mkEnd   : EndPositions.Add(ThisPitchID);
+          mkEndStart :
+          begin
+            StartPositions.Add(ThisPitchID);
+            EndPositions.Add(ThisPitchID);
+          end;
         end;
-        FoundEnd := False;
+      end;
+    end;
+  end;
+
+var
+  StartPositions: TStringList;
+  EndPositions: TStringList;
+  NewLine: TLine;
+  IDCount: Integer;
+begin
+  if LineKind <> lkNone then
+  begin
+    StartPositions := TStringList.Create();
+    EndPositions   := TStringList.Create();
+
+    { better to have a function with one output (of start/end pairs) }
+    ListStartEndPositions(Self, StartPositions, EndPositions);
+  
+    if StartPositions.Count = EndPositions.Count then
+    begin
+      for IDCount := 0 to StartPositions.Count - 1 do
+      begin
+        NewLine := TLine.Create(GetLineName(LineKind),
+          StartPositions[IDCount],
+          EndPositions[IDCount],
+          GetLineFunction(LineKind),
+          GetLineForm(LineKind));
+
+        FreeAndNil(NewLine);
+        { TODO there is no FLineList at the MeasureList level;
+          it must be added at the Measure/PitchList level 
+        Self.FLineList.Add(NewLine);
+        }
+      end;
+    end;
+
+    FreeAndNil(StartPositions);
+    FreeAndNil(EndPositions);
+  end;
+end;
+
+{
+{ slurs, coloration brackets }
+procedure TMeasureList.AddLines_V1(LineKind: TLineKind);
+
+type TLineData = record
+  FPosition: TMarkupPosition;
+  FName, FFunction, FForm, FStartID, FEndID, FNextStartID: String;
+end;
+
+function SetLineData(LineKind: TLineKind; ThisPitch: TPitch): TLineData;
+var
+  LineData: TLineData;
+begin
+  with LineData do
+  begin
+    FPosition := mkNone;
+    FName     := '';
+    FFunction := '';
+    FForm     := '';
+    FStartID  := '';
+    FEndID    := '';
+    FNextStartID := '';
+
+    case LineKind of
+      lkSlur : 
+      begin
+        FPosition := ThisPitch.FSlur;
+        FName := 'slur';
       end;
 
-      if FoundEndStart then
-        StartID := NextStartID;
+      lkColoration : 
+      begin
+        FPosition := ThisPitch.FColoration;
+        FName := 'bracketSpan';
+        FFunction := 'coloration';
+      end;
+
+      lkLigature : 
+      begin
+        FPosition := ThisPitch.FLigature;
+        FName := 'bracketSpan';
+        FFunction := 'ligature';
+        FForm := 'solid';
+      end;
+    end;
+  end;
+  result := LineData;
+end;
+
+type TSearchState = record
+  FFoundStart, FFoundEnd, FFoundEndStart: Boolean;
+end;
+
+function InitialSearchState: TSearchState;
+var
+  SearchState: TSearchState;
+begin
+  with SearchState do
+  begin
+    FFoundStart    := False;
+    FFoundEnd      := False;
+    FFoundEndStart := False;
+  end;
+  result := SearchState;
+end;
+
+procedure UpdateSearch(SearchState: TSearchState; LineData: TLineData; 
+  ThisPitch: TPitch);
+begin
+  case LineData.FPosition of
+    mkStart :
+    begin
+      if not SearchState.FFoundStart then
+      begin
+        SearchState.FFoundStart := True;
+        LineData.FStartID := ThisPitch.FID;
+        DebugLn('Found line start on ID ' + LineData.FStartID);
+      end;
+    end;
+
+    mkEnd :
+    begin
+      if SearchState.FFoundStart then
+      begin
+        SearchState.FFoundEnd := True;
+        SearchState.FFoundStart := False;
+        LineData.FEndID := ThisPitch.FID;
+        DebugLn('Found line end on ID ' + LineData.FEndID);
+      end;
+    end;
+
+    mkEndStart :
+    begin
+      if SearchState.FFoundStart then
+      begin
+        SearchState.FFoundEndStart := True;
+        SearchState.FFoundEnd := True;
+        LineData.FEndID := ThisPitch.FID;
+      end;
+      
+      SearchState.FFoundStart := True;
+      LineData.FNextStartID := ThisPitch.FID;
+      DebugLn('Found line end and start on ID ' + LineData.FEndID);
     end;
   end;
 end;
+
+function CreateLineFromData(LineData: TLineData): TLine;
+var
+  NewLine: TLine;
+begin
+  with LineData do
+    NewLine := TLine.Create(FName, FStartID, FEndID, FFunction, FForm); 
+
+  result := NewLine;
+end;
+
+var 
+  ThisMeasure: TPitchList;
+  ThisPitch: TPitch;
+  NewLine: TLine;
+  LineData: TLineData;
+  SearchState: TSearchState;
+begin
+  DebugLn('Looking for line type:'); {$ifdef DEBUG}WriteLn(LineKind);{$endif}
+  SearchState := InitialSearchState;
+
+  for ThisMeasure in Self do 
+  begin
+    for ThisPitch in ThisMeasure do 
+    begin
+      LineData := SetLineData(LineKind, ThisPitch);
+      UpdateSearch(SearchState, LineData, ThisPitch);
+
+      if SearchState.FFoundEnd then
+      begin
+        DebugLn('FOUND A LINE');
+        NewLine := CreateLineFromData(LineData);
+        ThisMeasure.FLineList.Add(NewLine);
+        SearchState.FFoundEnd := False;
+      end;
+
+      if SearchState.FFoundEndStart then
+        LineData.FStartID := LineData.FNextStartID;
+    end;
+  end;
+end;
+
+{ TODO attempt to refactor above function with sub-functions broke it }
+}
 
 procedure TMeasureList.AddAllLines;
 begin
