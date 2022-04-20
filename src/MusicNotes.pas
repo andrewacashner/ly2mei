@@ -181,11 +181,13 @@ type
   public
     var
       FName, FStartID, FEndID, FLineFunction, FLineForm: String;
+    constructor Create(); 
     constructor Create(Name: String;
       StartID: String = ''; 
       EndID: String = '';
       LineFunction: String = '';
       LineForm: String = '');
+    procedure Assign(OrigLine: TLine);
     function ToMEI: TMeiNode;
   end;
 
@@ -931,19 +933,34 @@ begin
   FStartID := ID;
 end;
 
+constructor TLine.Create();
+begin
+  inherited Create();
+end;
+
 constructor TLine.Create(Name: String;
   StartID: String = ''; 
   EndID: String = '';
   LineFunction: String = '';
   LineForm: String = '');
 begin
-  inherited Create;
+  inherited Create();
   FName := Name;
   FStartID := StartID;
   FEndID := EndID;
   FLineFunction := LineFunction;
   FLineForm := LineForm;
 end;
+
+procedure TLine.Assign(OrigLine: TLine);
+begin
+  FName         := OrigLine.FName;
+  FStartID      := OrigLine.FStartID;
+  FEndID        := OrigLine.FEndID;
+  FLineFunction := OrigLine.FLineFunction;
+  FLineForm     := OrigLine.FLineForm;
+end;
+
 
 function TLine.ToMEI: TMeiNode;
 var
@@ -1292,13 +1309,17 @@ procedure TMeasureList.AddLines(LineKind: TLineKind);
 var
   StartPositions: TStringList;
   EndPositions: TStringList;
-  NewLine: TLine;
+  NewLine, ThisLine: TLine;
+  LineList: TLineList;
   IDCount: Integer;
+  ThisMeasure: TPitchList;
+  ThisPitch: TPitch;
 begin
   if LineKind <> lkNone then
   begin
     StartPositions := TStringList.Create();
     EndPositions   := TStringList.Create();
+    LineList := TLineList.Create();
 
     { better to have a function with one output (of start/end pairs) }
     ListStartEndPositions(Self, StartPositions, EndPositions);
@@ -1312,170 +1333,31 @@ begin
           EndPositions[IDCount],
           GetLineFunction(LineKind),
           GetLineForm(LineKind));
-
-        FreeAndNil(NewLine);
-        { TODO there is no FLineList at the MeasureList level;
-          it must be added at the Measure/PitchList level 
-        Self.FLineList.Add(NewLine);
-        }
+        LineList.Add(NewLine);
       end;
     end;
 
+    for ThisLine in LineList do
+    begin
+      for ThisMeasure in Self do
+      begin
+        for ThisPitch in ThisMeasure do
+        begin
+          if ThisPitch.FID = ThisLine.FStartID then
+          begin
+            NewLine := TLine.Create();
+            NewLine.Assign(ThisLine);
+            ThisMeasure.FLineList.Add(NewLine);
+          end;
+        end;
+      end;
+    end;
+
+    FreeAndNil(LineList);
     FreeAndNil(StartPositions);
     FreeAndNil(EndPositions);
   end;
 end;
-
-{
-{ slurs, coloration brackets }
-procedure TMeasureList.AddLines_V1(LineKind: TLineKind);
-
-type TLineData = record
-  FPosition: TMarkupPosition;
-  FName, FFunction, FForm, FStartID, FEndID, FNextStartID: String;
-end;
-
-function SetLineData(LineKind: TLineKind; ThisPitch: TPitch): TLineData;
-var
-  LineData: TLineData;
-begin
-  with LineData do
-  begin
-    FPosition := mkNone;
-    FName     := '';
-    FFunction := '';
-    FForm     := '';
-    FStartID  := '';
-    FEndID    := '';
-    FNextStartID := '';
-
-    case LineKind of
-      lkSlur : 
-      begin
-        FPosition := ThisPitch.FSlur;
-        FName := 'slur';
-      end;
-
-      lkColoration : 
-      begin
-        FPosition := ThisPitch.FColoration;
-        FName := 'bracketSpan';
-        FFunction := 'coloration';
-      end;
-
-      lkLigature : 
-      begin
-        FPosition := ThisPitch.FLigature;
-        FName := 'bracketSpan';
-        FFunction := 'ligature';
-        FForm := 'solid';
-      end;
-    end;
-  end;
-  result := LineData;
-end;
-
-type TSearchState = record
-  FFoundStart, FFoundEnd, FFoundEndStart: Boolean;
-end;
-
-function InitialSearchState: TSearchState;
-var
-  SearchState: TSearchState;
-begin
-  with SearchState do
-  begin
-    FFoundStart    := False;
-    FFoundEnd      := False;
-    FFoundEndStart := False;
-  end;
-  result := SearchState;
-end;
-
-procedure UpdateSearch(SearchState: TSearchState; LineData: TLineData; 
-  ThisPitch: TPitch);
-begin
-  case LineData.FPosition of
-    mkStart :
-    begin
-      if not SearchState.FFoundStart then
-      begin
-        SearchState.FFoundStart := True;
-        LineData.FStartID := ThisPitch.FID;
-        DebugLn('Found line start on ID ' + LineData.FStartID);
-      end;
-    end;
-
-    mkEnd :
-    begin
-      if SearchState.FFoundStart then
-      begin
-        SearchState.FFoundEnd := True;
-        SearchState.FFoundStart := False;
-        LineData.FEndID := ThisPitch.FID;
-        DebugLn('Found line end on ID ' + LineData.FEndID);
-      end;
-    end;
-
-    mkEndStart :
-    begin
-      if SearchState.FFoundStart then
-      begin
-        SearchState.FFoundEndStart := True;
-        SearchState.FFoundEnd := True;
-        LineData.FEndID := ThisPitch.FID;
-      end;
-      
-      SearchState.FFoundStart := True;
-      LineData.FNextStartID := ThisPitch.FID;
-      DebugLn('Found line end and start on ID ' + LineData.FEndID);
-    end;
-  end;
-end;
-
-function CreateLineFromData(LineData: TLineData): TLine;
-var
-  NewLine: TLine;
-begin
-  with LineData do
-    NewLine := TLine.Create(FName, FStartID, FEndID, FFunction, FForm); 
-
-  result := NewLine;
-end;
-
-var 
-  ThisMeasure: TPitchList;
-  ThisPitch: TPitch;
-  NewLine: TLine;
-  LineData: TLineData;
-  SearchState: TSearchState;
-begin
-  DebugLn('Looking for line type:'); {$ifdef DEBUG}WriteLn(LineKind);{$endif}
-  SearchState := InitialSearchState;
-
-  for ThisMeasure in Self do 
-  begin
-    for ThisPitch in ThisMeasure do 
-    begin
-      LineData := SetLineData(LineKind, ThisPitch);
-      UpdateSearch(SearchState, LineData, ThisPitch);
-
-      if SearchState.FFoundEnd then
-      begin
-        DebugLn('FOUND A LINE');
-        NewLine := CreateLineFromData(LineData);
-        ThisMeasure.FLineList.Add(NewLine);
-        SearchState.FFoundEnd := False;
-      end;
-
-      if SearchState.FFoundEndStart then
-        LineData.FStartID := LineData.FNextStartID;
-    end;
-  end;
-end;
-
-{ TODO attempt to refactor above function with sub-functions broke it }
-}
 
 procedure TMeasureList.AddAllLines;
 begin
