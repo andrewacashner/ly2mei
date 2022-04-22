@@ -83,7 +83,7 @@ type
   );
 
   { Label for types of lines extending from one note to another }
-  TLineKind = (lkNone, lkSlur, lkColoration, lkLigature);
+  TLineKind = (lkNone, lkTie, lkSlur, lkColoration, lkLigature);
 
   { Records which articulations a pitch has (correspond to MEI
     @code(data.ARTICULATION) }
@@ -319,9 +319,6 @@ function LyToMEITree(LyNode: TLyObject; MEINode: TMEIElement): TMEIElement;
     { Generate the MEI @code(dur) and @code(dots) attributes for the rhythmic
       duration. }
     procedure AddMeiDurDotsAttributes(Pitch: TPitch);
-
-    { Generate the MEI @code(tie) attribute. }
-    procedure AddMeiTieAttribute(Pitch: TPitch);
 
     { Generate one or more MEI @code(artic) elements within a @code(note). }
     procedure AddMeiArticulation(Pitch: TPitch);
@@ -850,23 +847,6 @@ begin
     AddAttribute('dots', '1');
 end;
 
-procedure TMeiNoteRest.AddMeiTieAttribute(Pitch: TPitch);
-var 
-  Position: String;
-begin
-  assert(IsNote);
-
-  if Pitch.FTie <> mkNone then
-  begin
-    case Pitch.FTie of
-      mkStart    : Position := 'i';
-      mkMiddle   : Position := 'm';
-      mkEnd      : Position := 't';
-    end;
-    AddAttribute('tie', Position);
-  end;
-end;
-
 procedure TMeiNoteRest.AddMeiArticulation(Pitch: TPitch);
   procedure AddArticNode(Value: String);
   var
@@ -918,7 +898,6 @@ begin
       AddMeiPnameAttribute(Pitch);
       AddMeiAccidAttribute(Pitch);
       AddMeiOctAttribute(Pitch);
-      AddMeiTieAttribute(Pitch);
       AddMeiArticulation(Pitch);
     end;
   end;
@@ -1267,7 +1246,7 @@ begin
       else if FoundTie then
       begin
         if ThisPitch.PitchEq(TiedPitch) then
-          ThisPitch.FTie := mkMiddle
+          ThisPitch.FTie := mkEndStart
         else
         begin
           ThisMeasure[PitchIndex - 1].FTie := mkEnd;
@@ -1288,6 +1267,7 @@ constructor TLinePositionList.Create(MeasureList: TMeasureList;
     LineField: TMarkupPosition;
   begin
     case LineKind of
+      lkTie        : LineField := Pitch.FTie;
       lkSlur       : LineField := Pitch.FSlur;
       lkColoration : LineField := Pitch.FColoration;
       lkLigature   : LineField := Pitch.FLigature;
@@ -1351,8 +1331,10 @@ procedure TMeasureList.AddLines(LineKind: TLineKind);
     LineName: String = '';
   begin
     case LineKind of
-      lkSlur : LineName := 'slur';
-      lkColoration, lkLigature : LineName := 'bracketSpan';
+      lkTie         : LineName := 'tie';
+      lkSlur        : LineName := 'slur';
+      lkColoration, 
+        lkLigature  : LineName := 'bracketSpan';
     end;
     result := LineName;
   end;
@@ -1426,6 +1408,7 @@ end;
 
 procedure TMeasureList.AddAllLines;
 begin
+  AddLines(lkTie);
   AddLines(lkSlur);
   AddLines(lkColoration);
   AddLines(lkLigature);
