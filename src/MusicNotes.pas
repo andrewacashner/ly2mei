@@ -17,19 +17,6 @@ interface
 uses SysUtils, StrUtils, Classes, Generics.Collections, StringTools, MEI;
 
 type 
-  
-  TMeiNodeGenerated = class(TMeiNode)
-  public
-    constructor Create(FromFermata: TFermata);
-    constructor Create(FromFermataList: TFermataList);
-    constructor Create(FromLine: TLine);
-    constructor Create(FromLineList: TLineList);
-    constructor Create(FromPitchList: TPitchList);
-    constructor Create(FromMeasureList: TMeasureList);
-  end;
-  { TODO redo ToMEI methods as Create methods and use TMeiNodeGenerated
-  instead of TMeiNode }
-
   { Labels for pitch classes }
   TPitchName = (pkNone, pkC, pkD, pkE, pkF, pkG, pkA, pkB, pkRest,
     pkMeasureRest);
@@ -330,7 +317,7 @@ type
       bottom, corresponding to the music for this measure. }
 
   
-  TMeiNoteRest = class(TMeiNodeGenerated)
+  TMeiNoteRest = class(TMeiNode)
   private
     function IsNote: Boolean;
     function IsRest: Boolean;
@@ -353,14 +340,12 @@ type
     { Generate one or more MEI @code(artic) elements within a @code(note). }
     procedure AddMeiArticulation(Pitch: TPitch);
 
-    procedure AddMeiBarlineAttr(PitchList: TPitchList);
-
   public
     constructor CreateFromPitch(Pitch: TPitch);
   end;
 
 { TODO make this a class function of TMeiNode or descendant }
-function AddMeiBarlineAttr(MeiMeasure: TMeiNodeGenerated; PitchList: TPitchList):
+function AddMeiBarlineAttr(MeiMeasure: TMeiNode; PitchList: TPitchList):
   TMeiNode;
 
 
