@@ -197,9 +197,10 @@ type
 
 
   TLine = class
-  public
+  private
     var
       FName, FStartID, FEndID, FLineFunction, FLineForm: String;
+  public
     constructor Create(); 
     constructor Create(Name: String;
       StartID: String = ''; 
@@ -208,6 +209,12 @@ type
       LineForm: String = '');
     procedure Assign(OrigLine: TLine);
     function ToMEI: TMeiNode;
+
+    property Name:          String read FName;
+    property StartID:       String read FStartID;
+    property EndID:         String read FEndID;
+    property LineFunction:  String read FLineFunction;
+    property LineForm:      String read FLineForm;
   end;
 
   TLineList = class(specialize TObjectList<TLine>)
@@ -222,11 +229,9 @@ type
   private
     var
       FBarlineRight: TBarline;
-  public
-    var
       FFermataList: TFermataList;
       FLineList: TLineList;
-
+  public
     constructor Create(); 
 
     { Create a new list of pitches from the Lilypond input string for a single
@@ -241,6 +246,10 @@ type
     { Generate an MEI @code(measure) element, recursively generating the
       @code(note) elements it contains. }
     function ToMEI: TMeiNode;
+
+    property BarlineRight:  TBarline      read FBarlineRight;
+    property FermataList:   TFermataList  read FFermataList;
+    property LineList:      TLineList     read FLineList;
   end;
 
 
@@ -968,11 +977,11 @@ end;
 
 procedure TLine.Assign(OrigLine: TLine);
 begin
-  FName         := OrigLine.FName;
-  FStartID      := OrigLine.FStartID;
-  FEndID        := OrigLine.FEndID;
-  FLineFunction := OrigLine.FLineFunction;
-  FLineForm     := OrigLine.FLineForm;
+  FName         := OrigLine.Name;
+  FStartID      := OrigLine.StartID;
+  FEndID        := OrigLine.EndID;
+  FLineFunction := OrigLine.LineFunction;
+  FLineForm     := OrigLine.LineForm;
 end;
 
 
@@ -1076,7 +1085,7 @@ begin
   Assert((MeiMeasure.GetName = 'lirio:measure') 
     or (MeiMeasure.GetName = 'measure'));
 
-  case PitchList.FBarlineRight of
+  case PitchList.BarlineRight of
     bkNormal    : Attr := '';
     bkMiddle    : Attr := 'dbl';
     bkFinal     : Attr := 'end';
@@ -1338,7 +1347,7 @@ begin
       begin
         for ThisPitch in ThisMeasure do
         begin
-          if ThisPitch.ID = ThisLine.FStartID then
+          if ThisPitch.ID = ThisLine.StartID then
           begin
             NewLine := TLine.Create();
             NewLine.Assign(ThisLine);

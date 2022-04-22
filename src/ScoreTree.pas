@@ -781,11 +781,11 @@ begin
   if MeasureNum < ThisMeasureList.Count then
   begin
     ThisMeasure := ThisMeasureList.Items[MeasureNum];
-    LyFermatas := ThisMeasure.FFermataList;
+    LyFermatas := ThisMeasure.FermataList;
     MeiFermatas := LyFermatas.ToMEI;
     MeiMeasure.AppendChild(MeiFermatas);
 
-    LyLines := ThisMeasure.FLineList;
+    LyLines := ThisMeasure.LineList;
     MeiLines := LyLines.ToMEI;
     MeiMeasure.AppendChild(MeiLines);
   end;
