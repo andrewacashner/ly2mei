@@ -17,6 +17,19 @@ interface
 uses SysUtils, StrUtils, Classes, Generics.Collections, StringTools, MEI;
 
 type 
+  
+  TMeiNodeGenerated = class(TMeiNode)
+  public
+    constructor Create(FromFermata: TFermata);
+    constructor Create(FromFermataList: TFermataList);
+    constructor Create(FromLine: TLine);
+    constructor Create(FromLineList: TLineList);
+    constructor Create(FromPitchList: TPitchList);
+    constructor Create(FromMeasureList: TMeasureList);
+  end;
+  { TODO redo ToMEI methods as Create methods and use TMeiNodeGenerated
+  instead of TMeiNode }
+
   { Labels for pitch classes }
   TPitchName = (pkNone, pkC, pkD, pkE, pkF, pkG, pkA, pkB, pkRest,
     pkMeasureRest);
@@ -183,9 +196,10 @@ type
   end;
 
   TFermata = class
-  public
+  private
     var
       FStartID: String;
+  public
     constructor Create(ID: String);
     function ToMEI: TMeiNode;
   end;
@@ -260,7 +274,7 @@ type
   TMeasureList = class(specialize TObjectList<TPitchList>)
   private
     var
-      FPrefix: String; { currently only used for section heading text }
+      FHeaderText: String; { section heading text }
   public
     { Set the contents of a list from the Lilypond input string for a
       single voice. Find the key for this music and then recursively create
@@ -289,6 +303,21 @@ type
     function ToMEI: TMeiNode;
   end;
 
+  TLinePosition = class
+  public
+    var
+      FStartID, FEndID: String;
+  public
+    property StartID: String read FStartID write FStartID;
+    property EndID:   String read FEndID   write FEndID;
+  end;
+
+  TLinePositionList = class(specialize TObjectList<TLinePosition>)
+  public
+    constructor Create(MeasureList: TMeasureList; LineKind: TLineKind);
+  end;
+
+
     { First we copy a @link(TLyObject) tree to a @link(TMEIElement) tree,
       preserving its structure (score/staff/voice/measures). With this
       function we create a new tree that is organized in the MEI hierarchy
@@ -300,24 +329,8 @@ type
       (staff/layer), but we include only a single measure in the list at the
       bottom, corresponding to the music for this measure. }
 
-  TLinePosition = class
-  public
-    var
-      FStartID, FEndID: String;
-  end;
-
-  TLinePositionList = class(specialize TObjectList<TLinePosition>)
-  public
-    constructor Create(MeasureList: TMeasureList; LineKind: TLineKind);
-  end;
-
-
-{ Convert a @code(TLyObject) tree to a @code(TMEIElement) tree, preserving the
-  same hierarchy from the Lilypond input. 
-function LyToMEITree(LyNode: TLyObject; MEINode: TMEIElement): TMEIElement;
-}
-
-  TMeiNoteRest = class(TMeiNode)
+  
+  TMeiNoteRest = class(TMeiNodeGenerated)
   private
     function IsNote: Boolean;
     function IsRest: Boolean;
@@ -340,11 +353,14 @@ function LyToMEITree(LyNode: TLyObject; MEINode: TMEIElement): TMEIElement;
     { Generate one or more MEI @code(artic) elements within a @code(note). }
     procedure AddMeiArticulation(Pitch: TPitch);
 
+    procedure AddMeiBarlineAttr(PitchList: TPitchList);
+
   public
     constructor CreateFromPitch(Pitch: TPitch);
   end;
 
-function AddMeiBarlineAttr(MeiMeasure: TMeiNode; PitchList: TPitchList):
+{ TODO make this a class function of TMeiNode or descendant }
+function AddMeiBarlineAttr(MeiMeasure: TMeiNodeGenerated; PitchList: TPitchList):
   TMeiNode;
 
 
@@ -1136,7 +1152,7 @@ begin
     if TestLine.StartsWith('\Section ') then
     begin
       DebugLn('Section heading found: ' + ThisLine);
-      FPrefix := CopyStringBetween(ThisLine, '\Section "', '"');
+      FHeaderText := CopyStringBetween(ThisLine, '\Section "', '"');
     end
     
     else if TestLine.StartsWith('\bar') or TestLine.Contains('Bar') then
@@ -1174,7 +1190,7 @@ begin
       if ThisPitch.HasFermata then
       begin
         NewFermata := TFermata.Create(ThisPitch.ID);
-        ThisMeasure.FFermataList.Add(NewFermata);
+        ThisMeasure.FermataList.Add(NewFermata);
       end;
     end;
   end;
@@ -1236,14 +1252,14 @@ constructor TLinePositionList.Create(MeasureList: TMeasureList;
     Position: TLinePosition;
   begin
     Position := TLinePosition.Create();
-    Position.FStartID := ID;
+    Position.StartID := ID;
     result := Position;
   end;
 
   function AddCompletePosition(PositionList: TLinePositionList; 
     ThisPosition: TLinePosition; ID: String): TLinePositionList;
   begin
-    ThisPosition.FEndID := ID;
+    ThisPosition.EndID := ID;
     PositionList.Add(ThisPosition);
     result := PositionList;
   end;
@@ -1321,7 +1337,6 @@ var
   ThisLinePosition: TLinePosition;
   NewLine, ThisLine: TLine;
   LineList: TLineList;
-  IDCount: Integer;
   ThisMeasure: TPitchList;
   ThisPitch: TPitch;
 begin
@@ -1333,8 +1348,8 @@ begin
     for ThisLinePosition in LinePositionList do
     begin
       NewLine := TLine.Create(GetLineName(LineKind), 
-        ThisLinePosition.FStartID,
-        ThisLinePosition.FEndID,
+        ThisLinePosition.StartID,
+        ThisLinePosition.EndID,
         GetLineFunction(LineKind),
         GetLineForm(LineKind));
 
@@ -1351,7 +1366,7 @@ begin
           begin
             NewLine := TLine.Create();
             NewLine.Assign(ThisLine);
-            ThisMeasure.FLineList.Add(NewLine);
+            ThisMeasure.LineList.Add(NewLine);
           end;
         end;
       end;
@@ -1378,13 +1393,13 @@ begin
   Assert((MeiMeasure.GetName = 'lirio:voice') 
     or (MeiMeasure.GetName = 'measure'));
 
-  if not FPrefix.IsEmpty then
+  if not FHeaderText.IsEmpty then
   begin
     SectionHead := TMeiNode.Create('tempo');
     SectionHead.AddAttribute('place', 'above');
     SectionHead.AddAttribute('staff', '1');
     SectionHead.AddAttribute('tstamp', '1');
-    SectionHead.SetTextNode(FPrefix);
+    SectionHead.SetTextNode(FHeaderText);
     MeiMeasure.AppendChild(SectionHead);
   end;
   result := MeiMeasure;
@@ -1405,7 +1420,7 @@ begin
     MeiMeasure := ThisMeasure.ToMEI;
     MeiMeasure.AddAttribute('n', IntToStr(MeasureNum));
     
-    MeiLines := ThisMeasure.FLineList.ToMEI;
+    MeiLines := ThisMeasure.LineList.ToMEI;
     MeiMeasure.AppendChild(MeiLines);
 
     MeiRoot.AppendChild(MeiMeasure);
