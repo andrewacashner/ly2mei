@@ -14,8 +14,7 @@ unit MusicNotes;
 
 interface
 
-uses SysUtils, StrUtils, Classes, Generics.Collections, StringTools,
-MEI;
+uses SysUtils, StrUtils, Classes, Generics.Collections, StringTools, MEI;
 
 type 
   { Labels for pitch classes }
@@ -144,16 +143,12 @@ type
       { A string with additional text paired with this pitch. }
       FAnnotation: String;
 
-      
   public
     constructor Create(); 
 
     { Create from a Lilypond input string; set the accidental relative to the
       given key. }
     constructor CreateFromLy(Source: String; Key: TKeyKind);
-
-    { Copy all the fields from an existing pitch to this one. }
-    procedure Assign(Source: TPitch); 
 
     { When we find invalid input, we construct invalid pitches, with the
       fields set to "none" or negative values. Did we find a valid pitch? }
@@ -166,6 +161,25 @@ type
     { Is the pitch class and accidental the same as another? (Ignoring
       duration and other fields) }
     function PitchEq(P2: TPitch): Boolean;
+
+    property ID:         String      read FID;
+    property Name:       TPitchName  read FPitchName;
+    property Accid:      TAccidental read FAccid;
+    property AccidType:  TAccidType  read FAccidType;
+    property Oct:        Integer     read FOct;
+    property Dur:        TDuration   read FDur;
+
+    property Tie:        TMarkupPosition read FTie write FTie;
+    property Slur:       TMarkupPosition read FSlur;
+    property Coloration: TMarkupPosition read FColoration;
+    property Ligature:   TMarkupPosition read FLigature;
+
+    property HasFermata:       Boolean read FArticulations.FFermata;
+    property HasAccent:        Boolean read FArticulations.FAccent;
+    property HasStaccato:      Boolean read FArticulations.FStaccato;
+    property HasTenuto:        Boolean read FArticulations.FTenuto;
+    property HasStaccatissimo: Boolean read FArticulations.FStaccatissimo;
+    property HasMarcato:       Boolean read FArticulations.FMarcato;
   end;
 
   TFermata = class
@@ -222,9 +236,6 @@ type
 
     destructor Destroy(); override;
 
-    { Deep copy of all pitches from another list to this one. }
-    procedure Assign(Source: TPitchList);
-
     procedure SetBarlineRight(Source: String);
 
     { Generate an MEI @code(measure) element, recursively generating the
@@ -242,9 +253,6 @@ type
     var
       FPrefix: String; { currently only used for section heading text }
   public
-    { Deep copy of all measures and pitches in another list to this one. }
-    procedure Assign(Source: TMeasureList);
-
     { Set the contents of a list from the Lilypond input string for a
       single voice. Find the key for this music and then recursively create
       all the measures, and in turn all the pitches, it contains. }
@@ -734,25 +742,6 @@ begin
   FAnnotation := EtcLy; { TODO just holding surplus text in case we need it }
 end;
 
-procedure TPitch.Assign(Source: TPitch);
-begin
-  if Assigned(Source) then
-  begin
-    FID            := Source.FID;
-    FPitchName     := Source.FPitchName;
-    FAccid         := Source.FAccid;
-    FAccidType     := Source.FAccidType;
-    FOct           := Source.FOct;
-    FDur           := Source.FDur;
-    FTie           := Source.FTie;
-    FSlur          := Source.FSlur;
-    FColoration    := Source.FColoration;
-    FLigature      := Source.FLigature;
-    FArticulations := Source.FArticulations;
-    FAnnotation    := Source.FAnnotation;
-  end;
-end;
-
 function TPitch.IsValid: Boolean;
 begin
   result := not ((FPitchName = pkNone) or (FOct = -1) or (FDur = dkNone));
@@ -779,7 +768,7 @@ var
   Pname: String;
 begin
   assert(IsNote);
-  case Pitch.FPitchName of
+  case Pitch.Name of
     pkC : Pname := 'c';
     pkD : Pname := 'd';
     pkE : Pname := 'e';
@@ -797,7 +786,7 @@ var
 begin
   assert(IsNote);
 
-  case Pitch.FAccid of
+  case Pitch.Accid of
     akNatural : AccidSounded := 'n';
     akFlat    : AccidSounded := 'f';
     akSharp   : AccidSounded := 's';
@@ -805,14 +794,14 @@ begin
 
   AddAttribute('accid.ges', AccidSounded);
 
-  if Pitch.FAccidType = akExplicit then
+  if Pitch.AccidType = akExplicit then
     AddAttribute('accid', AccidSounded);
 end;
 
 procedure TMeiNoteRest.AddMeiOctAttribute(Pitch: TPitch);
 begin
   assert(IsNote);
-  AddAttribute('oct', IntToStr(Pitch.FOct));
+  AddAttribute('oct', IntToStr(Pitch.Oct));
 end;
 
 procedure TMeiNoteRest.AddMeiDurDotsAttributes(Pitch: TPitch);
@@ -822,7 +811,7 @@ var
 begin
   assert(IsNote or IsRest);
   
-  case Pitch.FDur of 
+  case Pitch.Dur of 
     dkBreve           : DurBase := 'breve';
     dkSemibreve       : DurBase := '1';
     dkMinim           : DurBase := '2';
@@ -836,7 +825,7 @@ begin
     dkFusaDotted      : DurBase := '8';
   end;
 
-  case Pitch.FDur of
+  case Pitch.Dur of
     dkBreve .. dkSemifusa         : Dots := False;
     dkBreveDotted .. dkFusaDotted : Dots := True;
   end;
@@ -860,41 +849,38 @@ procedure TMeiNoteRest.AddMeiArticulation(Pitch: TPitch);
 begin
   assert(IsNote);
   { Fermata is handled separately in TMeasureList.AddFermatas }
-  with Pitch.FArticulations do
+  with Pitch do
   begin
-    if FAccent or FStaccato or FTenuto or FStaccatissimo or FMarcato then
-    begin
-      { Add as many articulation attributes as needed to the artic element }
-      if FAccent then
-        AddArticNode('acc');
-      if FStaccato then
-        AddArticNode('stacc');
-      if FTenuto then
-        AddArticNode('ten');
-      if FStaccatissimo then
-        AddArticNode('stacciss');
-      if FMarcato then
-        AddArticNode('marc');
-    end;
+    { Add as many articulation attributes as needed to the artic element }
+    if HasAccent then
+      AddArticNode('acc');
+    if HasStaccato then
+      AddArticNode('stacc');
+    if HasTenuto then
+      AddArticNode('ten');
+    if HasStaccatissimo then
+      AddArticNode('stacciss');
+    if HasMarcato then
+      AddArticNode('marc');
   end;
 end;
 
 function TPitch.PitchEq(P2: TPitch): Boolean;
 begin
-  result := (FPitchName = P2.FPitchName) and (FAccid = P2.FAccid);
+  result := (Name = P2.Name) and (Accid = P2.Accid);
 end;
 
 constructor TMeiNoteRest.CreateFromPitch(Pitch: TPitch);
 begin
   inherited Create();
 
-  case Pitch.FPitchName of
+  case Pitch.Name of
     pkRest        : SetName('rest');
     pkMeasureRest : SetName('mRest');
     else
     begin
       SetName('note');
-      AddAttribute('xml:id', Pitch.FID);
+      AddAttribute('xml:id', Pitch.ID);
       AddMeiPnameAttribute(Pitch);
       AddMeiAccidAttribute(Pitch);
       AddMeiOctAttribute(Pitch);
@@ -1067,26 +1053,6 @@ begin
   inherited Destroy;
 end;
 
-procedure TPitchList.Assign(Source: TPitchList);
-var
-  ThisPitch, NewPitch: TPitch;
-begin
-  if Assigned(Source) then
-  begin
-    for ThisPitch in Source do
-    begin
-      NewPitch := TPitch.Create;
-      NewPitch.Assign(ThisPitch);
-      Self.Add(NewPitch);
-    end;
-    FBarlineRight := Source.FBarlineRight;
-    { TODO not needed? does Assign work?
-    FLines.Assign(Source.FLines);
-    FFermataList.Assign(Source.FFermataList);
-    }
-  end;
-end;
-
 procedure TPitchList.SetBarlineRight(Source: String);
 begin
   FBarlineRight := bkNormal;
@@ -1186,23 +1152,6 @@ begin
   FreeAndNil(LyLines);
 end;
 
-procedure TMeasureList.Assign(Source: TMeasureList);
-var
-  ThisMeasure, NewPitchList: TPitchList;
-begin
-  if Assigned(Source) then
-  begin
-    for ThisMeasure in Source do
-    begin
-      NewPitchList := TPitchList.Create;
-      NewPitchList.Assign(ThisMeasure);
-      Self.Add(NewPitchList);
-    end;
-    
-    FPrefix := Source.FPrefix;
-  end;
-end;
-
 procedure TMeasureList.AddFermatas;
 var
   ThisMeasure: TPitchList;
@@ -1213,17 +1162,15 @@ begin
   begin
     for ThisPitch in ThisMeasure do 
     begin
-      if ThisPitch.FArticulations.FFermata then
+      if ThisPitch.HasFermata then
       begin
-        NewFermata := TFermata.Create(ThisPitch.FID);
+        NewFermata := TFermata.Create(ThisPitch.ID);
         ThisMeasure.FFermataList.Add(NewFermata);
       end;
     end;
   end;
 end;
 
-{ TODO replace with adding <tie> elements like we do with slurs and other
-lines }
 procedure TMeasureList.AddTies;
 var
   ThisMeasure: TPitchList;
@@ -1236,9 +1183,9 @@ begin
     PitchIndex := 0;
     while PitchIndex < ThisMeasure.Count do
     begin
-      ThisPitch := ThisMeasure[PitchIndex];
+      ThisPitch := ThisMeasure.Items[PitchIndex];
 
-      if ThisPitch.FTie = mkStart then
+      if ThisPitch.Tie = mkStart then
       begin
         TiedPitch := ThisPitch; 
         FoundTie := True;
@@ -1246,10 +1193,10 @@ begin
       else if FoundTie then
       begin
         if ThisPitch.PitchEq(TiedPitch) then
-          ThisPitch.FTie := mkEndStart
+          ThisPitch.Tie := mkEndStart
         else
         begin
-          ThisMeasure[PitchIndex - 1].FTie := mkEnd;
+          ThisMeasure.Items[PitchIndex - 1].Tie := mkEnd;
           FoundTie := False;
           Dec(PitchIndex);
         end;
@@ -1267,10 +1214,10 @@ constructor TLinePositionList.Create(MeasureList: TMeasureList;
     LineField: TMarkupPosition;
   begin
     case LineKind of
-      lkTie        : LineField := Pitch.FTie;
-      lkSlur       : LineField := Pitch.FSlur;
-      lkColoration : LineField := Pitch.FColoration;
-      lkLigature   : LineField := Pitch.FLigature;
+      lkTie        : LineField := Pitch.Tie;
+      lkSlur       : LineField := Pitch.Slur;
+      lkColoration : LineField := Pitch.Coloration;
+      lkLigature   : LineField := Pitch.Ligature;
     end;
     result := LineField;
   end;
@@ -1307,7 +1254,7 @@ begin
     for ThisPitch in ThisMeasure do
     begin
       LineField := SelectLineField(ThisPitch, LineKind);
-      ThisPitchID := ThisPitch.FID;
+      ThisPitchID := ThisPitch.ID;
       case LineField of
         mkStart : NewLinePosition := CreateStartPosition(ThisPitchID);
         mkEnd : AddCompletePosition(Self, NewLinePosition, ThisPitchID);
@@ -1391,7 +1338,7 @@ begin
       begin
         for ThisPitch in ThisMeasure do
         begin
-          if ThisPitch.FID = ThisLine.FStartID then
+          if ThisPitch.ID = ThisLine.FStartID then
           begin
             NewLine := TLine.Create();
             NewLine.Assign(ThisLine);
