@@ -507,8 +507,6 @@ begin
   AccidType := akExplicit;
   if Accid = AccidInKey(PitchName, Key) then 
     AccidType := akImplicit;
-
-  DebugLn('ACCID TYPE:'); {$ifdef DEBUG}WriteLn(AccidType);{$endif}
   result := AccidType;
 end;
 
@@ -527,7 +525,6 @@ begin
   else if KeyStr.Contains('\key ') then
   begin
     KeyStr := StringDropBefore(KeyStr, '\key ');
-    DebugLn('Searching for Key in string: ''' + KeyStr + '''');
 
     if KeyStr.Contains('\major') then
     begin
@@ -586,7 +583,6 @@ begin
         end;
     end;
   end;
-  DebugLn('KEY: '); {$ifdef DEBUG}WriteLn(Key);{$endif}
   result := Key;
 end;
 
@@ -1037,8 +1033,6 @@ var
   NewPitch: TPitch;
 begin
   Create;
-  DebugLn('Trying to make new pitch list from string: ' + Source);
-
   { TODO replace full command strings }
   Source := ReplaceLyCommands(Source);
 
@@ -1050,7 +1044,6 @@ begin
       Self.Add(NewPitch)
     else
     begin
-      DebugLn('Invalid Pitch found in source ''' + ThisNote + '''');
       FreeAndNil(NewPitch);
     end;
   end;
@@ -1072,8 +1065,6 @@ begin
     FBarlineRight := bkMiddle
   else if Source.Contains('\RepeatBarEnd') or Source.Contains('\bar ":|."') then
     FBarlineRight := bkRepeatEnd;
-  DebugLn('Set BARLINE to :');
-  {$ifdef DEBUG}WriteLn(FBarlineRight);{$endif}
 end;
 
 function AddMeiBarlineAttr(MeiMeasure: TMeiNode; PitchList: TPitchList):
@@ -1096,7 +1087,6 @@ begin
   if not Attr.IsEmpty then 
     MeiMeasure.AddAttribute('right', Attr);
  
-  DebugLn('Made MEI Barline type: ' + Attr);
   result := MeiMeasure;
 end;
 
@@ -1136,13 +1126,11 @@ begin
     TestLine := ThisLine.TrimLeft;
     if TestLine.StartsWith('\Section ') then
     begin
-      DebugLn('Section heading found: ' + ThisLine);
       FHeaderText := CopyStringBetween(ThisLine, '\Section "', '"');
     end
     
     else if TestLine.StartsWith('\bar') or TestLine.Contains('Bar') then
     begin
-      DebugLn('Barline found: ' + ThisLine);
       Self.Last.SetBarlineRight(ThisLine);
     end
 
@@ -1150,7 +1138,6 @@ begin
     begin
       MeasureStr := StringDropBefore(ThisLine, '| ');
 
-      DebugLn('Adding new TPitchList to TMeasureList...');
       Self.Add(TPitchList.CreateFromLy(MeasureStr, Key));
     end;
   end;

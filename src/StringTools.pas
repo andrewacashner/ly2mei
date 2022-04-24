@@ -1,4 +1,4 @@
-{$mode objfpc}{$H+}{$J-}{$ASSERTIONS+}
+{$mode objfpc}{$H+}{$J-}
 
 { @abstract(Utilities for handling strings including XML generation.)
   @author(Andrew Cashner) }
@@ -12,10 +12,10 @@ uses SysUtils, Classes;
 procedure DebugLn(Msg: String);
 
 { Copy the portion of a string that follows the end of a given substring. }
-function StringDropBefore(Source, Cut: String): String;
+function StringDropBefore(Source, StartAfter: String): String;
 
 { Return the portion of a string before a given delimiter. }
-function StringDropAfter(InputStr: String; Delim: String): String;
+function StringDropAfter(Source, EndBefore: String): String;
 
 { Return the portion of a string between two substrings (exclusive); if the
   substrings are not found, return the original string unchanged. }
@@ -28,20 +28,6 @@ function CopyFirstQuotedString(Source: String): String;
 { Is this a single quoted string without any other quotes within it? }
 function IsASingleQuotedString(Source: String): Boolean;
 
-{ Return a string of spaces for indenting, 2 spaces for each degree of
-indentation. }
-function IndentStr(Degree: Integer = 1): String;
-
-{ Create an XML attribute string: @code(key = "value") }
-function XMLAttribute(Tag, Value: String): String;
-
-{ Create an XML element string, with optional attributes and content }
-function XMLElement(Tag: String; Attributes: String = ''; 
-  Contents: String = ''): String; 
-
-{ Create XML attributes @@xml:id and @@n }
-function XMLAttributeIDNum(ID: String; Num: Integer): String;
-
 type 
   { @abstract(Custom string-list class with added methods) }
   TStringListAAC = class(TStringList)
@@ -50,6 +36,11 @@ type
 
     { Create a string list from a string by splitting at newlines }
     constructor Create(InputStr: String);
+
+    { Create a string list that is a copy of another string list, starting at
+    a given index }
+    constructor CreateCopyFromIndex(SourceList: TStringList;
+      StartIndex: Integer); 
 
     { Return a string consisting of the text of a stringlist starting at a
       given index. }
@@ -62,23 +53,7 @@ type
     { Modify a stringlist to delete lines that are empty or contain only
       whitespace. }
     procedure RemoveBlankLines;
-
-    { Enclose list contents inside a given XML tag and optional attributes }
-    procedure EncloseInXML(
-      { Text of XML tag }
-      Tag: String;
-      { @bold(Optional): Attributes to be included in opening tag }
-      Attributes: String = '');
-
-    function XMLDocStr(RootElement: String = 'xml';
-      RootAttributes: String = ''): String;
-
-    function MEIDocStr: String;
   end;
-
-{ Extract the complete XML element from a source string with the given tag
-  (from start to close tag, including the tags). }
-function CopyXMLElement(Source, Tag: String): String;
 
 
 implementation
@@ -90,70 +65,50 @@ begin
   {$endif}
 end;
 
-function StringDropBefore(Source, Cut: String): String;
+function StringDropBefore(Source, StartAfter: String): String;
+var
+  OutputStr: String;
 begin
-  result := Source.Substring(Source.IndexOf(Cut) + Length(Cut));
+  OutputStr := Source;
+  if Source.Contains(StartAfter) then
+  begin
+    OutputStr := Source.Substring(Source.IndexOf(StartAfter) 
+                  + Length(StartAfter));
+  end;
+  result := OutputStr;
 end;
 
-function StringDropAfter(InputStr: String; Delim: String): String;
+function StringDropAfter(Source, EndBefore: String): String;
+var
+  OutputStr: String;
 begin
-  if InputStr.Contains(Delim) then
-    InputStr := InputStr.Substring(0, InputStr.IndexOf(Delim));
-  result := InputStr;
+  OutputStr := Source;
+  if Source.Contains(EndBefore) then
+  begin
+    OutputStr := Source.Substring(0, Source.IndexOf(EndBefore));
+  end;
+  result := OutputStr;
 end;
 
 function CopyStringBetween(Source, StartAfter, EndBefore: String): String;
 var
-  OutputStr, TempStr: String;
-  CutFrom, CutTo: Integer;
+  TempStr, OutputStr: String;
 begin
   OutputStr := Source;
-
-  CutFrom := Source.IndexOf(StartAfter);
-  if CutFrom >= 0 then
-  begin
-    TempStr := Source.Substring(CutFrom + Length(StartAfter));
-
-    CutTo := TempStr.IndexOf(EndBefore);
-    if CutTo >= 0 then
-    begin
-      TempStr := TempStr.Substring(0, CutTo);
-      OutputStr := TempStr;
-    end;
-  end;
-
-  result := OutputStr;
-end;
-
-function CopyXMLElement(Source, Tag: String): String;
-var
-  CopyFrom, CopyTo: Integer;
-  StartTag, EndTag, OutputStr: String;
-begin
-  StartTag := '<' + Tag;
-  EndTag   := '</' + Tag + '>';
-  CopyFrom := Source.IndexOf(StartTag);
-  CopyTo   := Source.IndexOf(EndTag);
-
-  OutputStr := '';
-  if (CopyFrom <> -1) and (CopyTo <> -1) then
-    OutputStr := Source.Substring(CopyFrom, CopyTo + Length(EndTag));
-  
+  TempStr := StringDropBefore(Source, StartAfter);
+  OutputStr := StringDropAfter(TempStr, EndBefore);
   result := OutputStr;
 end;
 
 function CopyFirstQuotedString(Source: String): String;
 var
-  OutputStr: String;
+  OutputStr: String = '';
 begin
   if Source.Contains('"') and (Source.CountChar('"') > 1) then
   begin
-    OutputStr := StringDropBefore(Source, '"');
-    OutputStr := OutputStr.Substring(0, OutputStr.IndexOf('"'));
+    OutputStr := CopyStringBetween(Source, '"', '"');
     result := OutputStr;
-  end
-  else
-    result := '';
+  end;
 end;
 
 function IsASingleQuotedString(Source: String): Boolean;
@@ -163,38 +118,7 @@ begin
             and Source.EndsWith('"');
 end;
 
-
-function IndentStr(Degree: Integer = 1): String;
-begin
-  result := StringOfChar(' ', 2 * Degree);
-end;
-
-function XMLAttribute(Tag, Value: String): String;
-begin
-  result := Format('%s="%s"', [Tag, Value]);
-end;
-
-function XMLElement(Tag: String; Attributes: String = ''; Contents: String =
-  ''): String; 
-begin
-  if Attributes <> '' then
-    Attributes := ' ' + Attributes;
-
-  result := Format('<%s%s>%s</%s>', [Tag, Attributes, Contents, Tag]);
-end;
-
-function XMLAttributeIDNum(ID: String; Num: Integer): String;
-var
-  IDStr: String;
-begin
-  if ID.IsEmpty then
-    IDStr := ''
-  else 
-    IDStr := XMLAttribute('xml:id', ID) + ' ';
-
-  result := IDStr + XMLAttribute('n', IntToStr(Num));
-end;
-
+{ TODO evaluate if we really need stringlists like this }
 constructor TStringListAAC.Create;
 begin
   inherited Create;
@@ -207,9 +131,27 @@ begin
   DelimitedText := InputStr;
 end;
 
-function TStringListAAC.ToStringFromIndex(Index: Integer): String;
+constructor TStringListAAC.CreateCopyFromIndex(SourceList: TStringList;
+  StartIndex: Integer); 
+var
+  ThisIndex: Integer;
 begin
-  result := Self.Text.Substring(Self.Text.IndexOf(Self[Index]));
+  inherited Create;
+  for ThisIndex := StartIndex to SourceList.Count - 1 do
+  begin
+    Self.Add(SourceList[ThisIndex]);
+  end;
+end;
+
+function TStringListAAC.ToStringFromIndex(Index: Integer): String;
+var
+  NewStringList: TStringListAAC;
+  OutputStr: String;
+begin
+  NewStringList := TStringListAAC.CreateCopyFromIndex(Self, Index);
+  OutputStr := NewStringList.Text;
+  FreeAndNil(NewStringList);
+  result := OutputStr;
 end;
 
 procedure TStringListAAC.RemoveComments;
@@ -230,42 +172,10 @@ var
   Index: Integer;
 begin
   for Index := Count - 1 downto 0 do
+  begin
     if Self[Index].Trim.IsEmpty then
       Self.Delete(Index);
+  end;
 end;
-
-procedure TStringListAAC.EncloseInXML(Tag: String; Attributes: String = '');
-var
-  HeadTag: String;
-  Index: Integer;
-begin
-  HeadTag := Tag;
-  if Attributes <> '' then
-    HeadTag := Format('%s %s', [Tag, Attributes]);
-  
-  for Index := Count -1 downto 0 do
-    Self[Index] := IndentStr + Self[Index];
- 
-  Self.Insert(0, Format('<%s>', [HeadTag]));
-  Self.Add(Format('</%s>', [Tag]));
-end;
-
-function TStringListAAC.XMLDocStr(RootElement: String = 'xml';
-  RootAttributes: String = ''): String;
-const
-  XMLversion = '<?xml version="1.0" encoding="UTF-8"?>';
-begin
-  Self.EncloseInXML(RootElement, RootAttributes);
-  Self.Insert(0, XMLversion);
-  result := Self.Text;
-end;
-
-function TStringListAAC.MEIDocStr: String;
-const
-  MeiNamespace = 'xmlns="http://www.music-encoding.org/ns/mei" meiversion="4.0.0"';
-begin
-  result := Self.XMLDocStr('mei', MEINamespace);
-end;
-
 
 end.

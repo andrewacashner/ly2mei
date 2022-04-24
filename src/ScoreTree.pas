@@ -81,10 +81,6 @@ type
       (Should we?) }
     procedure SetNumbers;
 
-    { Return a string with a DIY XMl representation of the object tree, for
-      testing/debugging. }
-    function ToString: String; override;
-
     function ToMeiScoreDef: TMeiNode;
     
     function ToXMLAsIs(XmlNode: TMeiNode = nil): TMeiNode;
@@ -197,36 +193,6 @@ begin
     result := Self
   else
     result := FSibling.LastSibling;
-end;
-
-function TLyObject.ToString: String; 
-function TreeToString(Parent: TLyObject; Generation: Integer): String;
-var
-  Indent: String;
-  ParentStr, ChildStr, SibStr: String;
-begin
-  if Assigned(Parent) then
-  begin
-    Indent := IndentStr(Generation);
-    
-    ParentStr := Format('<lyobject %s %s %s>%s', 
-        [XMLAttribute('type', Parent.FName),
-         XMLAttribute('id', Parent.FID),
-         XMLAttribute('n', IntToStr(Parent.FNum)), 
-         Parent.FContents]);
-
-    if Assigned(Parent.FChild) then
-      ChildStr := LineEnding + TreeToString(Parent.FChild, Generation + 1) + Indent;
-
-    SibStr := LineEnding;
-    if Assigned(Parent.FSibling) then 
-      SibStr := LineEnding + TreeToString(Parent.FSibling, Generation);
-
-    result := Indent + ParentStr + ChildStr + '</lyobject>' + SibStr;
-  end;
-end;
-begin
-  result := TreeToString(Self, 0);
 end;
 
 function BuildLyObjectTree(Source: String; Tree: TLyObject): TLyObject;
@@ -357,9 +323,6 @@ begin
     end;
   end;
   
-  DebugLn('CLEF test string: ''' + ClefStr + '''');
-  DebugLn('CLEF kind: '); {$ifdef DEBUG}WriteLn(Clef);{$endif}
-
   result := Clef;
 end;
 
@@ -456,15 +419,11 @@ begin
     Meter.FKind := mkModern;
     SearchStr := StringDropBefore(MeterStr, '\time ');
     NumStr := ExtractWord(1, SearchStr, [' ', LineEnding]);
-    DebugLn(Format('Looking for meter in string: ''%s''', [NumStr]));
 
     MeterNums := NumStr.Split(['/'], 2);
     Meter.FCount := StrToInt(MeterNums[0]);
     Meter.FUnit := StrToInt(MeterNums[1]);
   end;
-
-  DebugLn('METER Kind: '); {$ifdef DEBUG}WriteLn(Meter.FKind);{$endif}
-  DebugLn(Format('METER Count: %d, Unit: %d', [Meter.FCount, Meter.FUnit])); 
 
   result := Meter;
 end;
