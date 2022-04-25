@@ -26,7 +26,7 @@ type
   @code(label = \command < arg >) where @code(<>) are curly braces. We
   don't accept @code(label = "string") or other formats. The label must be
   at the beginning of a line. }
-procedure ExtractMacros(SourceLines: TStringList; Dict: TMacroDict);
+function ExtractMacros(InputStr: String; Dict: TMacroDict): String;
 
 type
   { A single key-value pair used in the dictionary. }
@@ -38,29 +38,26 @@ type
 
   A macro call must be followed by a space or newline. Otherwise we could not
   have commands like @code(\SopranoI) and @code(\SopranoII). }
-function FindReplaceMacros(SourceLines: TStringList; Dict: TMacroDict):
-  TStringList; 
+function FindReplaceMacros(InputStr: String; Dict: TMacroDict): String; 
 
 { Write out Lilypond multimeasure rests as individual rests: @code(| R1*2)
 becomes @code(| R1\n| R1). }
-function ExpandMultiRests(SourceLines: TStringList): TStringList;
+function ExpandMultiRests(InputStr: String): String;
 
 { Process macros in the source text: modify the stringlist by expanding all
   macros, including nested ones. Also expand multimeasure rests. }
-function ExpandMacros(SourceLines: TStringList): TStringList;
+function ExpandMacros(InputStr: String): String;
 
 
 implementation
 
-function FindReplaceMacros(SourceLines: TStringList; Dict: TMacroDict):
-  TStringList; 
+function FindReplaceMacros(InputStr: String; Dict: TMacroDict): String; 
 var
   OutputStr: String;
   Macro: TMacroKeyValue;
   HasMacros: Boolean;
-  OutputLines: TStringList;
 begin
-  OutputStr := SourceLines.Text;
+  OutputStr := InputStr;
   HasMacros := True;
   while HasMacros do
   begin
@@ -76,32 +73,31 @@ begin
       if OutputStr.Contains(Macro.Key) then
         HasMacros := True;
   end;
-  OutputLines := Lines(OutputStr);
-  result := OutputLines;
+  result := OutputStr;
 end;
 
-procedure ExtractMacros(SourceLines: TStringList; Dict: TMacroDict);
+function ExtractMacros(InputStr: String; Dict: TMacroDict): String;
 var
   FindOutline, CopyOutline: TIndexPair;
   CommandArg: TCommandArg;
-  InputStr, ThisString, NextStr, Key, Value, TestStr: String;
+  OutputStr, ThisString, NextStr, Key, Value, TestStr: String;
   BufferStr: String = '';
   LineIndex: Integer = 0;
   Found: Boolean;
-  OutputLines: TStringList;
+  InputLines: TStringList;
 begin
-  Assert(Assigned(SourceLines));
   Assert(Assigned(Dict));
   CopyOutline.FStart := 0;
   CopyOutline.FValid := True;
-  InputStr := SourceLines.Text;
+
+  InputLines := Lines(InputStr);
   { Look for a @code(key = value) pair at the start of each line }
-  for ThisString in SourceLines do
+  for ThisString in InputLines do
   begin
     Found := False;
     if ThisString.Contains('=') and not ThisString.StartsWith(' ') then
     begin
-      SourceLines.GetNameValue(LineIndex, Key, Value);
+      InputLines.GetNameValue(LineIndex, Key, Value);
       if Key.IsEmpty or Value.IsEmpty then
         continue;
       
@@ -115,7 +111,7 @@ begin
       '{':
         { Value is a brace-delimited argument }
         begin
-          TestStr := ToStringFromIndex(SourceLines, LineIndex);
+          TestStr := ToStringFromIndex(InputLines, LineIndex);
           FindOutline := FindMatchedBraces(TestStr);
           if FindOutline.FValid then
           begin
@@ -127,7 +123,7 @@ begin
       '\':
         { Value is a command, possibly followed by argument }
         begin
-          TestStr := ToStringFromIndex(SourceLines, LineIndex);
+          TestStr := ToStringFromIndex(InputLines, LineIndex);
           CommandArg := FindCommandArg(TestStr, '\', '{', '}');
           case CommandArg.FStatus of
           { Found only a command }
@@ -163,22 +159,24 @@ begin
   end;
   { Add remaining text after last macro definition to output }
   BufferStr := BufferStr + InputStr.Substring(CopyOutline.FStart);
-  OutputLines := Lines(BufferStr);
-  SourceLines.Assign(OutputLines);
-  FreeAndNil(OutputLines);
+  OutputStr := BufferStr;
+
+  FreeAndNil(InputLines);
+
+  result := OutputStr;
 end;
 
-function ExpandMultiRests(SourceLines: TStringList): TStringList;
+function ExpandMultiRests(InputStr: String): String;
 var
-  ThisLine, RestStr, DurStr: String;
+  OutputStr, ThisLine, RestStr, DurStr: String;
   RestData: Array of String;
   Repeats, RestCount: Integer;
-  OutputLines: TStringList;
+  InputLines, OutputLines: TStringList;
 begin
-  Assert(Assigned(SourceLines));
   OutputLines := TStringList.Create;
+  InputLines := Lines(InputStr);
 
-  for ThisLine in SourceLines do
+  for ThisLine in InputLines do
   begin
     if ThisLine.TrimLeft.StartsWith('|') and ThisLine.Contains(' R') then
     begin
@@ -200,33 +198,30 @@ begin
     else
       OutputLines.Add(ThisLine);
   end;
-  result := OutputLines;
+  OutputStr := OutputLines.Text;
+
+  FreeAndNil(InputLines);
+  FreeAndNil(OutputLines);
+
+  result := OutputStr;
 end;
 
-function ExpandMacros(SourceLines: TStringList): TStringList;
+function ExpandMacros(InputStr: String): String;
 var
   Macros: TMacroDict;
-  OutputLines, NoBlanks, NoComments, ExpandedMacros: TStringList; 
+  OutputStr: String;
 begin
-  Assert(Assigned(SourceLines));
- 
   Macros := TMacroDict.Create;
-  
-  NoComments := RemoveComments(SourceLines);
+  OutputStr := RemoveComments(InputStr);
 
   { TODO procedure modifies both arguments }
-  ExtractMacros(NoComments, Macros);
+  OutputStr := ExtractMacros(OutputStr, Macros);
   
-  ExpandedMacros := FindReplaceMacros(NoComments, Macros);
-  NoBlanks       := RemoveBlankLines(ExpandedMacros);
-  OutputLines    := ExpandMultiRests(NoBlanks);
+  OutputStr := FindReplaceMacros(OutputStr, Macros);
+  OutputStr := ExpandMultiRests(RemoveBlankLines(OutputStr));
 
   FreeAndNil(Macros);
-  FreeAndNil(NoBlanks);
-  FreeAndNil(NoComments);
-  FreeAndNil(ExpandedMacros);
-
-  result := OutputLines;
+  result := OutputStr;
 end;
 
    

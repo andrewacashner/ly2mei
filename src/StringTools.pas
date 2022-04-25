@@ -42,11 +42,11 @@ function ToStringFromIndex(SourceLines: TStringList; Index: Integer): String;
 
 { Return a copy of the given stringlist with comments removed. Strip out
   everything between a comment char (@code('%')) and the next newline. }
-function RemoveComments(SourceLines: TStringList): TStringList;
+function RemoveComments(InputStr: String): String;
 
 { Return a copy of the given stringlist with blank lines removed. Blank lines
   are those that are empty or contain only whitespace. }
-function RemoveBlankLines(SourceLines: TStringList): TStringList;
+function RemoveBlankLines(InputStr: String): String;
 
 implementation
 
@@ -148,13 +148,14 @@ begin
   result := OutputStr;
 end;
 
-function RemoveComments(SourceLines: TStringList): TStringList;
+function RemoveComments(InputStr: String): String;
 var
-  ThisString, CleanString: String;
-  OutputLines: TStringList;
+  OutputStr, ThisString, CleanString: String;
+  InputLines, OutputLines: TStringList;
 begin
   OutputLines := TStringList.Create;
-  for ThisString in SourceLines do
+  InputLines := Lines(InputStr);
+  for ThisString in InputLines do
   begin
     if not ThisString.StartsWith('%') then
     begin
@@ -162,21 +163,29 @@ begin
       OutputLines.Add(CleanString);
     end;
   end;
-  result := OutputLines;
+  OutputStr := OutputLines.Text;
+  FreeAndNil(InputLines);
+  FreeAndNil(OutputLines);
+  result := OutputStr;
 end;
 
-function RemoveBlankLines(SourceLines: TStringList): TStringList;
+function RemoveBlankLines(InputStr: String): String;
 var
-  ThisString: String;
-  OutputLines: TStringList;
+  ThisString, OutputStr: String;
+  InputLines, OutputLines: TStringList;
 begin
   OutputLines := TStringList.Create;
-  for ThisString in SourceLines do
+  InputLines := Lines(InputStr);
+  for ThisString in InputLines do
   begin
     if not ThisString.Trim.IsEmpty then
       OutputLines.Add(ThisString);
   end;
-  result := OutputLines;
+  OutputStr := OutputLines.Text;
+  FreeAndNil(InputLines);
+  FreeAndNil(OutputLines);
+  result := OutputStr;
 end;
+
 
 end.
