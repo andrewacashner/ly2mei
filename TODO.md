@@ -19,4 +19,5 @@
         - current system works and is consistent
         - using constructors does not work when the function needs to be able
           to return nil (e.g., List.ToMEI => nil when List.Count = 0)
+- try/finally more?
 - Remove unused code

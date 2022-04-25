@@ -33,7 +33,7 @@ type
   @code(label = \command < arg >) where @code(<>) are curly braces. We
   don't accept @code(label = "string") or other formats. The label must be
   at the beginning of a line. }
-procedure ExtractMacros(SourceLines: TStringListAAC; Dict: TMacroDict);
+procedure ExtractMacros(SourceLines: TStringList; Dict: TMacroDict);
 
 type
   { A single key-value pair used in the dictionary. }
@@ -45,16 +45,16 @@ type
 
   A macro call must be followed by a space or newline. Otherwise we could not
   have commands like @code(\SopranoI) and @code(\SopranoII). }
-function FindReplaceMacros(SourceLines: TStringListAAC; Dict: TMacroDict):
-  TStringListAAC; 
+function FindReplaceMacros(SourceLines: TStringList; Dict: TMacroDict):
+  TStringList; 
 
 { Write out Lilypond multimeasure rests as individual rests: @code(| R1*2)
 becomes @code(| R1\n| R1). }
-function ExpandMultiRests(SourceLines: TStringListAAC): TStringListAAC;
+function ExpandMultiRests(SourceLines: TStringList): TStringList;
 
 { Process macros in the source text: modify the stringlist by expanding all
   macros, including nested ones. Also expand multimeasure rests. }
-function ExpandMacros(SourceLines: TStringListAAC): TStringListAAC;
+function ExpandMacros(SourceLines: TStringList): TStringList;
 
 
 implementation
@@ -76,8 +76,8 @@ begin
   result := OutputStr;
 end;
     
-function FindReplaceMacros(SourceLines: TStringListAAC; Dict: TMacroDict):
-  TStringListAAC; 
+function FindReplaceMacros(SourceLines: TStringList; Dict: TMacroDict):
+  TStringList; 
 var
   OutputStr: String;
   Macro: TMacroKeyValue;
@@ -100,13 +100,11 @@ begin
       if OutputStr.Contains(Macro.Key) then
         HasMacros := True;
   end;
-  OutputLines := TStringListAAC.Create(OutputStr);
-  SourceLines.Assign(OutputLines);
-  FreeAndNil(OutputLines);
-  result := SourceLines;
+  OutputLines := Lines(OutputStr);
+  result := OutputLines;
 end;
 
-procedure ExtractMacros(SourceLines: TStringListAAC; Dict: TMacroDict);
+procedure ExtractMacros(SourceLines: TStringList; Dict: TMacroDict);
 var
   FindOutline, CopyOutline: TIndexPair;
   CommandArg: TCommandArg;
@@ -114,7 +112,7 @@ var
   BufferStr: String = '';
   LineIndex: Integer = 0;
   Found: Boolean;
-  OutputLines: TStringListAAC;
+  OutputLines: TStringList;
 begin
   Assert(Assigned(SourceLines));
   Assert(Assigned(Dict));
@@ -142,7 +140,7 @@ begin
       '{':
         { Value is a brace-delimited argument }
         begin
-          TestStr := SourceLines.ToStringFromIndex(LineIndex);
+          TestStr := ToStringFromIndex(SourceLines, LineIndex);
           FindOutline := FindMatchedBraces(TestStr);
           if FindOutline.FValid then
           begin
@@ -154,7 +152,7 @@ begin
       '\':
         { Value is a command, possibly followed by argument }
         begin
-          TestStr := SourceLines.ToStringFromIndex(LineIndex);
+          TestStr := ToStringFromIndex(SourceLines, LineIndex);
           CommandArg := FindCommandArg(TestStr, '\', '{', '}');
           case CommandArg.FStatus of
           { Found only a command }
@@ -190,20 +188,20 @@ begin
   end;
   { Add remaining text after last macro definition to output }
   BufferStr := BufferStr + InputStr.Substring(CopyOutline.FStart);
-  OutputLines := TStringListAAC.Create(BufferStr);
+  OutputLines := Lines(BufferStr);
   SourceLines.Assign(OutputLines);
   FreeAndNil(OutputLines);
 end;
 
-function ExpandMultiRests(SourceLines: TStringListAAC): TStringListAAC;
+function ExpandMultiRests(SourceLines: TStringList): TStringList;
 var
   ThisLine, RestStr, DurStr: String;
   RestData: Array of String;
   Repeats, RestCount: Integer;
-  EditedLines: TStringListAAC;
+  OutputLines: TStringList;
 begin
   Assert(Assigned(SourceLines));
-  EditedLines := TStringListAAC.Create;
+  OutputLines := TStringList.Create;
 
   for ThisLine in SourceLines do
   begin
@@ -220,34 +218,40 @@ begin
       
           for RestCount := Repeats - 1 downto 0 do
           begin
-            EditedLines.Add('| R' + DurStr);
+            OutputLines.Add('| R' + DurStr);
           end;
       end;
     end
     else
-      EditedLines.Add(ThisLine);
+      OutputLines.Add(ThisLine);
   end;
-  SourceLines.Assign(EditedLines);
-  FreeAndNil(EditedLines);
-  result := SourceLines;
+  result := OutputLines;
 end;
 
-function ExpandMacros(SourceLines: TStringListAAC): TStringListAAC;
+function ExpandMacros(SourceLines: TStringList): TStringList;
 var
   Macros: TMacroDict;
+  OutputLines, NoBlanks, NoComments, ExpandedMacros: TStringList; 
 begin
   Assert(Assigned(SourceLines));
+ 
   Macros := TMacroDict.Create;
-  try
-    SourceLines.RemoveComments;
-    ExtractMacros(SourceLines, Macros);
-    SourceLines := FindReplaceMacros(SourceLines, Macros);
-    SourceLines.RemoveBlankLines;
-    SourceLines := ExpandMultiRests(SourceLines);
-  finally
-    FreeAndNil(Macros);
-    result := SourceLines;
-  end;
+  
+  NoComments := RemoveComments(SourceLines);
+
+  { TODO procedure modifies both arguments }
+  ExtractMacros(NoComments, Macros);
+  
+  ExpandedMacros := FindReplaceMacros(NoComments, Macros);
+  NoBlanks       := RemoveBlankLines(ExpandedMacros);
+  OutputLines    := ExpandMultiRests(NoBlanks);
+
+  FreeAndNil(Macros);
+  FreeAndNil(NoBlanks);
+  FreeAndNil(NoComments);
+  FreeAndNil(ExpandedMacros);
+
+  result := OutputLines;
 end;
 
    

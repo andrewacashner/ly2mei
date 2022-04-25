@@ -117,13 +117,13 @@ type
 function BuildLyObjectTree(Source: String; Tree: TLyObject): TLyObject;
 
 
-function CreateLyObjectTreeFromLy(LyInput: TStringListAAC): TLyObject;
+function CreateLyObjectTreeFromLy(LyInput: TStringList): TLyObject;
 
-function CreateMeiScoreDefFromLy(LyInput: TStringListAAC): TMeiNode;
+function CreateMeiScoreDefFromLy(LyInput: TStringList): TMeiNode;
 
-function AddMeiScoreDef(Root: TMeiNode; LyInput: TStringListAAC): TMeiNode;
+function AddMeiScoreDef(Root: TMeiNode; LyInput: TStringList): TMeiNode;
 
-function AddMeiScore(Root: TMeiNode; LyInput: TStringListAAC): TMeiNode;
+function AddMeiScore(Root: TMeiNode; LyInput: TStringList): TMeiNode;
 
 implementation
 
@@ -287,7 +287,7 @@ begin
   NumberElementsInOrder(ekLayer);
 end;
 
-function CreateLyObjectTreeFromLy(LyInput: TStringListAAC): TLyObject;
+function CreateLyObjectTreeFromLy(LyInput: TStringList): TLyObject;
 var 
   LyTree: TLyObject = nil;
 begin
@@ -620,7 +620,7 @@ begin
   result := XmlNode;
 end;
 
-function CreateMeiScoreDefFromLy(LyInput: TStringListAAC): TMeiNode;
+function CreateMeiScoreDefFromLy(LyInput: TStringList): TMeiNode;
 var 
   LyTree: TLyObject;
   MeiScoreDef: TMeiNode = nil;
@@ -633,7 +633,7 @@ begin
   result := MeiScoreDef;
 end;
 
-function AddMeiScoreDef(Root: TMeiNode; LyInput: TStringListAAC): TMeiNode;
+function AddMeiScoreDef(Root: TMeiNode; LyInput: TStringList): TMeiNode;
 var
   ScoreDef: TMeiNode = nil;
 begin
@@ -845,7 +845,7 @@ begin
     result := MeiMusic;
 end;
 
-function AddMeiScore(Root: TMeiNode; LyInput: TStringListAAC): TMeiNode;
+function AddMeiScore(Root: TMeiNode; LyInput: TStringList): TMeiNode;
 var
   LyTree: TLyObject = nil;
   Score, ScoreDef, Measures: TMeiNode;

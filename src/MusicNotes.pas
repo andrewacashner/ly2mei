@@ -1112,7 +1112,7 @@ end;
 procedure TMeasureList.SetFromLy(Source: String);
 var
   Key: TKeyKind;
-  LyLines: TStringListAAC;
+  LyLines: TStringList;
   SearchStr, ThisLine, TestLine, MeasureStr: String;
 begin
   { Find the key signature for this voice }
@@ -1120,7 +1120,7 @@ begin
   Key := FindLyKey(SearchStr);
 
   { Find measures and parse the notes in them }
-  LyLines := TStringListAAC.Create(Source);
+  LyLines := Lines(Source);
   for ThisLine in LyLines do
   begin
     TestLine := ThisLine.TrimLeft;

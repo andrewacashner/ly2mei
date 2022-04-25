@@ -8,7 +8,7 @@ unit Outline;
 
 interface
 
-uses SysUtils, Classes, StrUtils, StringTools;
+uses SysUtils, Classes, StrUtils;
 
 type 
   { @abstract(Stores the start and end positions in a string or other sequence.) }
@@ -229,11 +229,11 @@ end;
 
 function ExtractQuotedStrings(Source: String): String;
 var
-  MarkupStrings: TStringListAAC;
+  MarkupStrings: TStringList;
   Markup: String;
   Outline: TIndexPair;
 begin
-  MarkupStrings := TStringListAAC.Create;
+  MarkupStrings := TStringList.Create;
   try
     while Source.CountChar('"') > 1 do
     begin

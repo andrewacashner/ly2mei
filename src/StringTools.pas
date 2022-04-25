@@ -1,6 +1,6 @@
 {$mode objfpc}{$H+}{$J-}
 
-{ @abstract(Utilities for handling strings including XML generation.)
+{ @abstract(Utilities for handling strings and stringlists, all functional.)
   @author(Andrew Cashner) }
 unit StringTools;
 
@@ -28,33 +28,25 @@ function CopyFirstQuotedString(Source: String): String;
 { Is this a single quoted string without any other quotes within it? }
 function IsASingleQuotedString(Source: String): Boolean;
 
-type 
-  { @abstract(Custom string-list class with added methods) }
-  TStringListAAC = class(TStringList)
-  public
-    constructor Create;
+{ Return a new stringlist containing the text of an input string, separated at
+  newlines. }
+function Lines(InputStr: String): TStringList;
 
-    { Create a string list from a string by splitting at newlines }
-    constructor Create(InputStr: String);
+{ Return a new string list that is a copy of another string list, starting at
+  a given index }
+function CopyFromIndex(SourceList: TStringList; StartIndex: Integer): TStringList;
 
-    { Create a string list that is a copy of another string list, starting at
-    a given index }
-    constructor CreateCopyFromIndex(SourceList: TStringList;
-      StartIndex: Integer); 
+{ Return a string consisting of the text of a stringlist starting at a
+  given index. }
+function ToStringFromIndex(SourceLines: TStringList; Index: Integer): String; 
 
-    { Return a string consisting of the text of a stringlist starting at a
-      given index. }
-    function ToStringFromIndex(Index: Integer): String;
-    
-    { Modify a stringlist to strip out everything between a comment char and
-      the next newline. }
-    procedure RemoveComments;
-    
-    { Modify a stringlist to delete lines that are empty or contain only
-      whitespace. }
-    procedure RemoveBlankLines;
-  end;
+{ Return a copy of the given stringlist with comments removed. Strip out
+  everything between a comment char (@code('%')) and the next newline. }
+function RemoveComments(SourceLines: TStringList): TStringList;
 
+{ Return a copy of the given stringlist with blank lines removed. Blank lines
+  are those that are empty or contain only whitespace. }
+function RemoveBlankLines(SourceLines: TStringList): TStringList;
 
 implementation
 
@@ -118,64 +110,73 @@ begin
             and Source.EndsWith('"');
 end;
 
-{ TODO evaluate if we really need stringlists like this }
-constructor TStringListAAC.Create;
+function Lines(InputStr: String): TStringList;
+var
+  OutputLines: TStringList;
 begin
-  inherited Create;
+  OutputLines := TStringList.Create;
+  with OutputLines do
+  begin
+    Delimiter := LineEnding;
+    StrictDelimiter := True;
+    DelimitedText := InputStr;
+  end;
+  result := OutputLines;
 end;
 
-constructor TStringListAAC.Create(InputStr: String);
-begin
-  Delimiter := LineEnding;
-  StrictDelimiter := True;
-  DelimitedText := InputStr;
-end;
-
-constructor TStringListAAC.CreateCopyFromIndex(SourceList: TStringList;
-  StartIndex: Integer); 
+function CopyFromIndex(SourceList: TStringList; StartIndex: Integer): TStringList;
 var
   ThisIndex: Integer;
+  OutputLines: TStringList;
 begin
-  inherited Create;
+  OutputLines := TStringList.Create;
   for ThisIndex := StartIndex to SourceList.Count - 1 do
   begin
-    Self.Add(SourceList[ThisIndex]);
+    OutputLines.Add(SourceList[ThisIndex]);
   end;
+  result := OutputLines;
 end;
 
-function TStringListAAC.ToStringFromIndex(Index: Integer): String;
+function ToStringFromIndex(SourceLines: TStringList; Index: Integer): String; 
 var
-  NewStringList: TStringListAAC;
+  NewLines: TStringList;
   OutputStr: String;
 begin
-  NewStringList := TStringListAAC.CreateCopyFromIndex(Self, Index);
-  OutputStr := NewStringList.Text;
-  FreeAndNil(NewStringList);
+  NewLines := CopyFromIndex(SourceLines, Index);
+  OutputStr := NewLines.Text;
+  FreeAndNil(NewLines);
   result := OutputStr;
 end;
 
-procedure TStringListAAC.RemoveComments;
+function RemoveComments(SourceLines: TStringList): TStringList;
 var
-  ThisString: String;
-  Index: Integer;
+  ThisString, CleanString: String;
+  OutputLines: TStringList;
 begin
-  for Index := 0 to Count - 1 do 
+  OutputLines := TStringList.Create;
+  for ThisString in SourceLines do
   begin
-    ThisString := Self[Index];
     if not ThisString.StartsWith('%') then
-      Self[Index] := ThisString.Remove(ThisString.IndexOf('%'));
+    begin
+      CleanString := StringDropAfter(ThisString, '%');
+      OutputLines.Add(CleanString);
+    end;
   end;
+  result := OutputLines;
 end;
 
-procedure TStringListAAC.RemoveBlankLines;
-var 
-  Index: Integer;
+function RemoveBlankLines(SourceLines: TStringList): TStringList;
+var
+  ThisString: String;
+  OutputLines: TStringList;
 begin
-  for Index := Count - 1 downto 0 do
+  OutputLines := TStringList.Create;
+  for ThisString in SourceLines do
   begin
-    if Self[Index].Trim.IsEmpty then
-      Self.Delete(Index);
+    if not ThisString.Trim.IsEmpty then
+      OutputLines.Add(ThisString);
   end;
+  result := OutputLines;
 end;
 
 end.

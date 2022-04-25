@@ -19,19 +19,19 @@ type
       FPoet, FEditor, FCopyright, FSource: String;
       FValid: Boolean;
   public
-    constructor CreateFromLy(InputLines: TStringListAAC);
+    constructor CreateFromLy(InputLines: TStringList);
     function ToMEI(): TMeiNode;
   end;
 
-function CreateMeiHeadFromLy(LyInput: TStringListAAC): TMeiNode;
+function CreateMeiHeadFromLy(LyInput: TStringList): TMeiNode;
 
-function AddMeiHead(Root: TMeiNode; LyInput: TStringListAAC): TMeiNode;
+function AddMeiHead(Root: TMeiNode; LyInput: TStringList): TMeiNode;
 
 implementation
 
-constructor THeader.CreateFromLy(InputLines: TStringListAAC);
+constructor THeader.CreateFromLy(InputLines: TStringList);
 var
-  LyHeaderLines: TStringListAAC;
+  LyHeaderLines: TStringList;
   SearchStr, ThisString, Key, Value, MarkupStr: String;
   LineIndex: Integer;
   FoundThis, FoundAny: Boolean;
@@ -41,7 +41,7 @@ begin
   SearchStr := LyArg(InputLines.Text, '\header');
   if not SearchStr.IsEmpty then
   begin
-    LyHeaderLines := TStringListAAC.Create(SearchStr);
+    LyHeaderLines := Lines(SearchStr);
     LineIndex := 0;
     FoundAny := False;
     for ThisString in LyHeaderLines do
@@ -181,7 +181,7 @@ begin
   result := HeaderTree;
 end;
 
-function CreateMeiHeadFromLy(LyInput: TStringListAAC): TMeiNode;
+function CreateMeiHeadFromLy(LyInput: TStringList): TMeiNode;
 var
   HeaderData: THeader;
   MeiTree: TMeiNode = nil;
@@ -192,7 +192,7 @@ begin
   result := MeiTree;
 end;
 
-function AddMeiHead(Root: TMeiNode; LyInput: TStringListAAC): TMeiNode;
+function AddMeiHead(Root: TMeiNode; LyInput: TStringList): TMeiNode;
 var
   MeiHead: TMeiNode = nil;
 begin
