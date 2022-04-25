@@ -14,14 +14,7 @@ uses SysUtils, StrUtils, Classes, Generics.Collections, StringTools, Outline;
 
 type
   { @abstract(A macro dictionary of key-value pairs.) }
-  TMacroDict = class(specialize TDictionary<String, String>)
-  public
-
-    { Return the contents of a macro dictionary as a string, for
-    testing/debugging purposes. }
-    function ToString: String; override;
-    
-  end;
+  TMacroDict = specialize TDictionary<String, String>;
 
 { Find, parse, and save macro definitions in a stringlist. Return a macro
   dictionary; if no valid macros are found, it will be empty. Values may
@@ -59,23 +52,6 @@ function ExpandMacros(SourceLines: TStringList): TStringList;
 
 implementation
 
-function TMacroDict.ToString: String;
-var 
-  Macro: TMacroKeyValue;
-  OutputStr, MacroStr: String;
-  N: Integer;
-begin
-  OutputStr := '';
-  N := 1;
-  for Macro in Self do
-  begin
-    MacroStr := IntToStr(N) + '. ' + Macro.Key + ': ' + Macro.Value + LineEnding;
-    OutputStr := OutputStr + MacroStr;
-    Inc(N);
-  end;
-  result := OutputStr;
-end;
-    
 function FindReplaceMacros(SourceLines: TStringList; Dict: TMacroDict):
   TStringList; 
 var
@@ -131,8 +107,7 @@ begin
       
       { Found key, mark start location }
       Key := Key.Trim;
-      CopyOutline.FEnd := InputStr.IndexOf(Key + ' ');
-      CopyOutline.FSpan := CopyOutline.FEnd - CopyOutline.FStart;
+      CopyOutline := SetEndSpan(CopyOutline, InputStr.IndexOf(Key + ' '));
 
       { Parse value }
       Value := Value.Trim;
@@ -176,7 +151,7 @@ begin
       begin
         Dict.Add('\' + Key, Value);
         NextStr := InputStr.Substring(CopyOutline.FStart, CopyOutline.FSpan);
-        if not AnsiString.IsNullOrWhitespace(NextStr) then
+        if not NextStr.IsEmpty then
         begin
           BufferStr := BufferStr + InputStr.Substring(CopyOutline.FStart,
             CopyOutline.FSpan);

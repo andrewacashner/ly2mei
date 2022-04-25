@@ -19,6 +19,12 @@ type
     FValid: Boolean;  {< Was a valid pair found? }
   end;
 
+{ Is the IndexPair set to valid? }
+function IsValid(Outline: TIndexPair): Boolean;
+
+{ Given the ending index, set the end index and span of an outline }
+function SetEndSpan(Outline: TIndexPair; EndIndex: Integer): TIndexPair;
+
 { Given a string, return a new instance containing the start and end
   indices of the range between the given delimiters. If not found, mark as
   invalid.  }
@@ -60,9 +66,8 @@ type
     skCommand,    {< Found just a command }
     skCommandArg, {< Found a command and an argument }
     skInvalid     {< Found neither }
-);
- 
-type
+  );
+
   { @abstract(A command and its argument.) 
     A flag indicates whether it actually holds both command and argument, just
     one or the other, or neither. }
@@ -70,7 +75,14 @@ type
     FCommand, FArg: String;
     FStatus: TStatusCommandArg;
   end;
-    
+
+{ Is the CommandArg's status valid? }
+function IsValid(CommandArg: TCommandArg): Boolean;
+
+{ Does the CommandArg include both a command and an argument, and is marked
+  valid? }
+function IsComplete(CommandArg: TCommandArg): Boolean;
+
 { In a string, find the first instance of command that starts with a given
   control character (e.g., backslash). If it is followed by an argument
   delimited by given strings (e.g., curly braces), return an object with
@@ -89,6 +101,26 @@ function ExtractQuotedStrings(Source: String): String;
 
 implementation
 
+function IsValid(Outline: TIndexPair): Boolean;
+begin
+  result := Outline.FValid;
+end;
+
+function SetEndSpan(Outline: TIndexPair; EndIndex: Integer): TIndexPair;
+var
+  Complete: TIndexPair;
+begin
+  with Complete do
+  begin
+    FStart := Outline.FStart;
+    FEnd := EndIndex;
+    FSpan := FEnd - FStart;
+    FValid := True;
+  end;
+  result := Complete;
+end;
+
+
 function FindDelimitedRange(Source, StartDelim, EndDelim: String): TIndexPair;
 var 
   Pair: TIndexPair;
@@ -103,33 +135,45 @@ begin
   result := Pair;
 end;
 
-function CopyStringRange(Source: String; Outline: TIndexPair; 
-                              ModeFlag: TRangeMode): String;
+function InclusiveRange(Source: String; Outline: TIndexPair): String;
 begin
-  with Outline do
-  begin
-    if not FValid then
-      result := Source
-    else
-      case ModeFlag of
-        rkInclusive: result := Source.Substring(FStart, FSpan);
-        rkExclusive: result := Source.Substring(FStart + 1, FSpan - 2);
-      end;
-  end;
+  result := Source.Substring(Outline.FStart, Outline.FSpan);
 end;
 
-function BalancedDelimiterSubstring(Source: String; StartDelim, EndDelim:
-  Char): TIndexPair; 
+function ExclusiveRange(Source: String; Outline: TIndexPair): String;
+begin
+  result := Source.Substring(Outline.FStart + 1, Outline.FSpan - 2);
+end;
+
+function CopyStringRange(Source: String; Outline: TIndexPair; 
+  ModeFlag: TRangeMode): String;
+var
+  OutputStr: String;
+begin
+  OutputStr := Source;
+  if IsValid(Outline) then
+  begin
+    case ModeFlag of
+      rkInclusive: OutputStr := InclusiveRange(Source, Outline);
+      rkExclusive: OutputStr := ExclusiveRange(Source, Outline);
+    end;
+  end;
+  result := OutputStr;
+end;
+
+function BalancedDelimiterSubstring(Source: String; StartDelim, 
+  EndDelim: Char): TIndexPair; 
 var
   BraceLevel, SIndex: Integer;
   ThisChar: Char;
   Outline: TIndexPair;
 begin
-  assert(StartDelim <> EndDelim);
+  Assert(StartDelim <> EndDelim);
   BraceLevel := 0;
-  SIndex := 0;
-  for ThisChar in Source do
+  for SIndex := 0 to Length(Source) - 1 do
   begin
+    ThisChar := Source.Chars[SIndex];
+    
     if ThisChar = StartDelim then
     begin
       if BraceLevel = 0 then
@@ -138,25 +182,19 @@ begin
       end;
       Inc(BraceLevel);
     end
-    else
-    begin 
-      if ThisChar = EndDelim then
+    else if ThisChar = EndDelim then
+    begin
+      if BraceLevel > 0 then
       begin
-        if BraceLevel > 0 then
+        Dec(BraceLevel);
+        if BraceLevel = 0 then
         begin
-          Dec(BraceLevel);
-          if BraceLevel = 0 then
-            with Outline do
-            begin
-              FEnd := SIndex + 1; { include closing brace }
-              FSpan := FEnd - FStart;
-              FValid := True;
-              break;
-            end;
+          { include closing brace }
+          Outline := SetEndSpan(Outline, SIndex + 1); 
+          break;
         end;
       end;
     end;
-    Inc(SIndex);
   end; { for }
   result := Outline;
 end;
@@ -169,16 +207,27 @@ end;
 function CopyBraceExpr(Source: String): String;
 var
   Outline: TIndexPair;
-  TempStr: String;
+  TempStr: String = '';
 begin
   Outline := FindMatchedBraces(Source);
-  if Outline.FValid then
-    TempStr := CopyStringRange(Source, Outline, rkInclusive)
-  else 
-    TempStr := '';
+  if IsValid(Outline) then
+  begin
+    TempStr := CopyStringRange(Source, Outline, rkInclusive);
+  end;
   result := TempStr;
 end;
 
+function IsValid(CommandArg: TCommandArg): Boolean;
+begin
+  result := CommandArg.FStatus <> skInvalid;
+end;
+
+function IsComplete(CommandArg: TCommandArg): Boolean;
+begin
+  result := (not CommandArg.FCommand.IsEmpty)
+            and (not CommandArg.FArg.IsEmpty)
+            and IsValid(CommandArg);
+end;
 
 function FindCommandArg(Source: String; ControlChar, ArgStartDelim,
   ArgEndDelim: Char): TCommandArg;
@@ -201,7 +250,7 @@ begin
     begin
       Outline := BalancedDelimiterSubstring(TestStr, ArgStartDelim,
                   ArgEndDelim); 
-      if Outline.FValid then
+      if IsValid(Outline) then
       begin
         CommandArg.FArg := CopyStringRange(TestStr, Outline, rkInclusive);
         CommandArg.FStatus := skCommandArg;
@@ -214,14 +263,13 @@ end;
 function LyArg(Source, Command: String): String;
 var
   CommandArg: TCommandArg;
-  Arg: String;
+  Arg: String = '';
 begin
   if Source.Contains(Command) then
   begin
     Source := Source.Substring(Source.IndexOf(Command));
     CommandArg := FindCommandArg(Source, '\', '{', '}');
-    if (CommandArg.FStatus = skCommandArg) 
-      and (CommandArg.FCommand = Command) then 
+    if IsComplete(CommandArg) and (CommandArg.FCommand = Command) then 
       Arg := CommandArg.FArg;
   end;
   result := Arg;
@@ -230,7 +278,7 @@ end;
 function ExtractQuotedStrings(Source: String): String;
 var
   MarkupStrings: TStringList;
-  Markup: String;
+  Markup, OutputStr: String;
   Outline: TIndexPair;
 begin
   MarkupStrings := TStringList.Create;
@@ -238,22 +286,22 @@ begin
     while Source.CountChar('"') > 1 do
     begin
       Outline := FindDelimitedRange(Source, '"', '"');
-      if Outline.FValid then
+      if IsValid(Outline) then
       begin
         Markup := CopyStringRange(Source, Outline, rkExclusive);
         MarkupStrings.Add(Markup);
-        Source := Source.Substring(Outline.FEnd + 2);
+        OutputStr := Source.Substring(Outline.FEnd + 2);
       end
       else
         break;
     end;
     MarkupStrings.StrictDelimiter := True;
     MarkupStrings.Delimiter := ' ';
-    Source := DelChars(MarkupStrings.DelimitedText, '"');
+    OutputStr := DelChars(MarkupStrings.DelimitedText, '"');
 
   finally
     FreeAndNil(MarkupStrings);
-    result := Source;
+    result := OutputStr;
   end;
 end;
 
