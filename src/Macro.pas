@@ -92,7 +92,102 @@ begin
   result := Key;
 end;
 
-{ TODO simplify }
+function ProcessMacros(InputStr: String): String;
+var
+  FindOutline, CopyOutline: TIndexPair;
+  CommandArg: TCommandArg;
+  OutputStr, ThisString, ThisLine, NextStr, Key, Value: String;
+  BufferStr: String = '';
+  CharIndex, ValueStart: Integer;
+  Found: Boolean;
+  Dict: TMacroDict;
+begin
+  Dict := TMacroDict.Create;
+  CopyOutline.FStart := 0;
+  CopyOutline.FValid := True;
+
+  CharIndex := 0;
+  while CharIndex < Length(InputStr) do
+  begin
+    { Look for a @code(key = value) pair at the start of each line }
+    ThisString := InputStr.Substring(CharIndex);
+    ThisLine := ThisString.Substring(0, ThisString.IndexOf(LineEnding));
+    WriteLn(stderr, 'Test this line: ' + ThisLine);
+    Found := False;
+
+    Key := GetMacroDefKey(ThisLine);
+    if Key.IsEmpty then
+    begin
+      Inc(CharIndex); { TODO ThisLine has been erased! I would like to add its length to charindex }
+      continue;
+    end
+    else
+    begin
+      { Found key, mark start location }
+      WriteLn(stderr, 'Found key: "' + Key + '"');
+      CopyOutline := SetEndSpan(CopyOutline, CharIndex);
+      ValueStart := CharIndex + Length(Key);
+      Key := Key.Trim;
+      
+      { Parse value }
+      Value := StringDropBefore(ThisString, '=').Trim;
+      WriteLn(stderr, 'Found value: "' + Value + '"');
+      case Value.Chars[0] of
+      '{':
+        { Value is a brace-delimited argument }
+        begin
+          FindOutline := FindMatchedBraces(Value);
+          if IsValid(FindOutline) then
+          begin
+            Value := CopyStringRange(Value, FindOutline, rkInclusive);
+            Found := True;
+          end;
+        end;
+
+      '\':
+        { Value is a command, possibly followed by argument }
+        begin
+          CommandArg := FindCommandArg(Value, '\', '{', '}');
+          case CommandArg.FStatus of
+          { Found only a command }
+          skCommand:
+            begin
+              Value := CommandArg.FCommand;
+              Found := True;
+            end;
+          { Found a command and a brace-delimited argument }
+          skCommandArg:
+            begin
+              Value := Format('%s %s', [CommandArg.FCommand, CommandArg.FArg]);
+              Found := True;
+            end;
+          end;
+        end;
+      end;
+      { Add found key/value pair to dictionary; copy text from last ending
+      position to next start position to output; mark new start position }
+      if Found then
+      begin
+        Dict.Add('\' + Key, Value);
+        NextStr := InputStr.Substring(CopyOutline.FStart, CopyOutline.FSpan);
+        BufferStr := BufferStr + NextStr;
+        CopyOutline.FStart := ValueStart + Length(Value);
+        CharIndex := CopyOutline.FStart;
+      end
+      else
+        Inc(CharIndex);
+    end;
+  end;
+  { Add remaining text after last macro definition to output }
+  BufferStr := BufferStr + InputStr.Substring(CopyOutline.FStart);
+  OutputStr := FindReplaceMacros(BufferStr, Dict);
+
+  FreeAndNil(Dict);
+  result := OutputStr;
+end;
+
+
+(* TODO simplify 
 function ProcessMacros(InputStr: String): String;
 var
   FindOutline, CopyOutline: TIndexPair;
@@ -185,6 +280,7 @@ begin
 
   result := OutputStr;
 end;
+*)
 
 function IsBarRest(InputStr: String): Boolean;
 begin
