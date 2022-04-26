@@ -16,6 +16,9 @@ type
   { @abstract(A macro dictionary of key-value pairs.) }
   TMacroDict = specialize TDictionary<String, String>;
 
+  { A single key-value pair used in the dictionary. }
+  TMacroKeyValue = TMacroDict.TDictionaryPair;
+
 { Find, parse, and save macro definitions in a stringlist. Return a macro
   dictionary; if no valid macros are found, it will be empty. Values may
   contain unexpanded macros.
@@ -26,11 +29,7 @@ type
   @code(label = \command < arg >) where @code(<>) are curly braces. We
   don't accept @code(label = "string") or other formats. The label must be
   at the beginning of a line. }
-function ExtractMacros(InputStr: String; Dict: TMacroDict): String;
-
-type
-  { A single key-value pair used in the dictionary. }
-  TMacroKeyValue = TMacroDict.TDictionaryPair;
+function ProcessMacros(InputStr: String): String;
 
 { In a given stringlist, replace all macro commands (@code(\command))
   with the corresponding definition in a macro dictionary. Repeat as necessary
@@ -51,15 +50,25 @@ function ExpandMacros(InputStr: String): String;
 
 implementation
 
+function ContainsMacros(TestStr: String; Dict: TMacroDict): Boolean;
+var
+  MacroTest: Boolean = False;
+  Macro: TMacroKeyValue;
+begin
+  for Macro in Dict do
+  begin
+    MacroTest := TestStr.Contains(Macro.Key);
+  end;
+  result := MacroTest;
+end;
+
 function FindReplaceMacros(InputStr: String; Dict: TMacroDict): String; 
 var
   OutputStr: String;
   Macro: TMacroKeyValue;
-  HasMacros: Boolean;
 begin
   OutputStr := InputStr;
-  HasMacros := True;
-  while HasMacros do
+  while ContainsMacros(OutputStr, Dict) do
   begin
     for Macro in Dict do
     begin
@@ -68,15 +77,12 @@ begin
       OutputStr := OutputStr.Replace(Macro.Key + LineEnding, 
         Macro.Value + LineEnding, [rfReplaceAll]);
     end;
-    HasMacros := False;
-    for Macro in Dict do
-      if OutputStr.Contains(Macro.Key) then
-        HasMacros := True;
   end;
   result := OutputStr;
 end;
 
-function ExtractMacros(InputStr: String; Dict: TMacroDict): String;
+{ TODO simplify }
+function ProcessMacros(InputStr: String): String;
 var
   FindOutline, CopyOutline: TIndexPair;
   CommandArg: TCommandArg;
@@ -85,8 +91,10 @@ var
   LineIndex: Integer = 0;
   Found: Boolean;
   InputLines: TStringList;
+  Dict: TMacroDict;
 begin
-  Assert(Assigned(Dict));
+  Dict := TMacroDict.Create;
+  
   CopyOutline.FStart := 0;
   CopyOutline.FValid := True;
 
@@ -159,18 +167,47 @@ begin
   end;
   { Add remaining text after last macro definition to output }
   BufferStr := BufferStr + InputStr.Substring(CopyOutline.FStart);
-  OutputStr := BufferStr;
+
+  OutputStr := FindReplaceMacros(BufferStr, Dict);
 
   FreeAndNil(InputLines);
+  FreeAndNil(Dict);
 
   result := OutputStr;
+end;
+
+function IsBarRest(InputStr: String): Boolean;
+begin
+  result := InputStr.TrimLeft.StartsWith('|') and InputStr.Contains(' R');
+end;
+
+function CopyMultiRest(InputStr: String): String;
+var
+  RestStr: String;
+begin
+  RestStr := StringDropBefore(InputStr, ' R');
+  RestStr := ExtractWord(1, RestStr, [' ']);
+  result := RestStr;
+end;
+
+function RestCount(InputStr: String): Integer;
+var
+  RestData: Array of String;
+  Count: Integer = 0;
+begin
+  RestData := InputStr.Split('*', 2);
+  if (Length(RestData) = 2) and not RestData[1].IsEmpty then
+  begin
+    Count := RestData[1].ToInteger;
+  end;
+  result := Count;
 end;
 
 function ExpandMultiRests(InputStr: String): String;
 var
   OutputStr, ThisLine, RestStr, DurStr: String;
   RestData: Array of String;
-  Repeats, RestCount: Integer;
+  Repeats, ThisRest: Integer;
   InputLines, OutputLines: TStringList;
 begin
   OutputLines := TStringList.Create;
@@ -178,22 +215,14 @@ begin
 
   for ThisLine in InputLines do
   begin
-    if ThisLine.TrimLeft.StartsWith('|') and ThisLine.Contains(' R') then
+    if IsBarRest(ThisLine) then
     begin
-      RestStr := StringDropBefore(ThisLine, ' R');
-      RestStr := ExtractWord(1, RestStr, [' ']);
-      RestData := RestStr.Split('*', 2);
-      DurStr := RestData[0];
-      
-      if (Length(RestData) = 2) and not RestData[1].IsEmpty then
-      begin
-          Repeats := RestData[1].ToInteger;
-      
-          for RestCount := Repeats - 1 downto 0 do
-          begin
-            OutputLines.Add('| R' + DurStr);
-          end;
-      end;
+      RestStr := CopyMultiRest(ThisLine);
+      Repeats := RestCount(RestStr);
+      DurStr := CopyStringBetween(RestStr, 'R', '*');
+
+      for ThisRest := 0 to Repeats - 1 do
+        OutputLines.Add('| R' + DurStr);
     end
     else
       OutputLines.Add(ThisLine);
@@ -208,19 +237,10 @@ end;
 
 function ExpandMacros(InputStr: String): String;
 var
-  Macros: TMacroDict;
   OutputStr: String;
 begin
-  Macros := TMacroDict.Create;
-  OutputStr := RemoveComments(InputStr);
-
-  { TODO procedure modifies both arguments }
-  OutputStr := ExtractMacros(OutputStr, Macros);
-  
-  OutputStr := FindReplaceMacros(OutputStr, Macros);
+  OutputStr := ProcessMacros(RemoveComments(InputStr));
   OutputStr := ExpandMultiRests(RemoveBlankLines(OutputStr));
-
-  FreeAndNil(Macros);
   result := OutputStr;
 end;
 
