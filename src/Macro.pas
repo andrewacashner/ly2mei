@@ -81,6 +81,17 @@ begin
   result := OutputStr;
 end;
 
+function GetMacroDefKey(InputStr: String): String;
+var
+  Key: String = '';
+begin
+  if (not InputStr.StartsWith(' ')) and InputStr.Contains('=') then
+  begin
+    Key := StringDropAfter(InputStr, '=');
+  end;
+  result := Key;
+end;
+
 { TODO simplify }
 function ProcessMacros(InputStr: String): String;
 var
@@ -98,30 +109,29 @@ begin
   CopyOutline.FStart := 0;
   CopyOutline.FValid := True;
 
+  { TODO just loop through one index at a time, instead of looping through a
+  stringlist AND a string }
   InputLines := Lines(InputStr);
   { Look for a @code(key = value) pair at the start of each line }
   for ThisString in InputLines do
   begin
     Found := False;
-    if ThisString.Contains('=') and not ThisString.StartsWith(' ') then
+    Key := GetMacroDefKey(ThisString);
+    if not Key.IsEmpty then
     begin
-      InputLines.GetNameValue(LineIndex, Key, Value);
-      if Key.IsEmpty or Value.IsEmpty then
-        continue;
-      
       { Found key, mark start location }
       Key := Key.Trim;
       CopyOutline := SetEndSpan(CopyOutline, InputStr.IndexOf(Key + ' '));
 
       { Parse value }
-      Value := Value.Trim;
-      case Value.Substring(0, 1) of
+      Value := StringDropBefore(ThisString, '=').Trim;
+      case Value.Chars[0] of
       '{':
         { Value is a brace-delimited argument }
         begin
           TestStr := ToStringFromIndex(InputLines, LineIndex);
           FindOutline := FindMatchedBraces(TestStr);
-          if FindOutline.FValid then
+          if IsValid(FindOutline) then
           begin
             Value := CopyStringRange(TestStr, FindOutline, rkInclusive);
             Found := True;
@@ -206,7 +216,6 @@ end;
 function ExpandMultiRests(InputStr: String): String;
 var
   OutputStr, ThisLine, RestStr, DurStr: String;
-  RestData: Array of String;
   Repeats, ThisRest: Integer;
   InputLines, OutputLines: TStringList;
 begin
