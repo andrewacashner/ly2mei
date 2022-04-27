@@ -201,6 +201,7 @@ var
   SearchStr, ThisType, ThisID, ThisContents: String;
   Outline: TIndexPair;
 begin
+  Outline := TIndexPair.Create;
   SearchStr := Source;
   SearchIndex := SearchStr.IndexOf('\new ');
 
@@ -227,7 +228,7 @@ begin
     begin
       { Search within group for nested @code(\new) expressions and save them
         as children; then move on after this group. Omit content string. }
-      Outline := BalancedDelimiterSubstring(SearchStr, '<', '>');
+      Outline.MarkBalancedDelimiterSubstring(SearchStr, '<', '>');
       ThisContents := CopyStringRange(SearchStr, Outline, rkInclusive);
       if Tree = nil then
         Tree := TLyObject.Create(ThisType, ThisID)
@@ -254,6 +255,7 @@ begin
     { Look for the next sibling where you left off from the last search }
     Tree.LastSibling.FSibling := BuildLyObjectTree(Source, nil);
   end;
+  FreeAndNil(Outline);
   result := Tree;
 end;
 

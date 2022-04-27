@@ -12,23 +12,40 @@ uses SysUtils, Classes, StrUtils;
 
 type 
   { @abstract(Stores the start and end positions in a string or other sequence.) }
-  TIndexPair = record
-    FStart: Integer;  {< Start index }
-    FEnd: Integer;    {< End index }
-    FSpan: Integer;   {< Distance from start to end }
-    FValid: Boolean;  {< Was a valid pair found? }
+  TIndexPair = class 
+  private
+    var
+      FStart: Integer;  {< Start index }
+      FEnd: Integer;    {< End index }
+      FSpan: Integer;   {< Distance from start to end }
+      FValid: Boolean;  {< Was a valid pair found? }
+  public
+    constructor Create();
+    constructor Create(StartIndex, EndIndex: Integer);
+
+    { Given a string, return a new instance containing the start and end
+      indices of the range between the given delimiters. If not found, mark as
+      invalid.  }
+    constructor Create(Source, StartDelim, EndDelim: String);
+
+    { Set the end index, and if the start index has also been set, calculate
+      the span and mark as valid }
+    procedure SetEndSpan(Index: Integer);
+ 
+    { In a string, mark the start and end indices of a single expression
+      between given delimiter characters, ignoring any nested groups with the
+      same delimiters in between. The delimiters must not be identical,
+      otherwise it is impossible to determine nesting. }
+    procedure MarkBalancedDelimiterSubstring(Source: String; StartDelim, 
+      EndDelim: Char);
+
+   { Mark the outline of a substring delimited by matched curly braces. }
+    procedure MarkMatchedBraces(Source: String);
+
+    property StartIndex: Integer read FStart  write FStart;
+    property EndIndex:   Integer read FEnd    write SetEndSpan;
+    property IsValid:    Boolean read FValid; 
   end;
-
-{ Is the IndexPair set to valid? }
-function IsValid(Outline: TIndexPair): Boolean;
-
-{ Given the ending index, set the end index and span of an outline }
-function SetEndSpan(Outline: TIndexPair; EndIndex: Integer): TIndexPair;
-
-{ Given a string, return a new instance containing the start and end
-  indices of the range between the given delimiters. If not found, mark as
-  invalid.  }
-function FindDelimitedRange(Source, StartDelim, EndDelim: String): TIndexPair; 
 
 type
   { Mode flags for marking delimited substrings }
@@ -43,17 +60,6 @@ type
   invalid. }
 function CopyStringRange(Source: String; Outline: TIndexPair; ModeFlag:
   TRangeMode): String;
-
-{ In a string, mark the start and end indices of a single expression between
-  given delimiter characters, ignoring any nested groups with the same
-  delimiters in between. The delimiters must not be identical, otherwise it is
-  impossible to determine nesting. }
-function BalancedDelimiterSubstring(Source: String; StartDelim, EndDelim:
-  Char): TIndexPair; 
-
-{ Mark the outline (@link(TIndexPair)) of a substring delimited by matched
-curly braces. }
-function FindMatchedBraces(Source: String): TIndexPair;
 
 { Return a substring that is a complete matched-brace expression,
 including the braces. }
@@ -102,57 +108,60 @@ function ExtractQuotedStrings(Source: String): String;
 
 implementation
 
-function IsValid(Outline: TIndexPair): Boolean;
+constructor TIndexPair.Create();
 begin
-  result := Outline.FValid;
+  inherited Create;
+  FStart := -1;
+  FEnd   := -1;
+  FValid := False;
 end;
 
-function SetEndSpan(Outline: TIndexPair; EndIndex: Integer): TIndexPair;
-var
-  Complete: TIndexPair;
+constructor TIndexPair.Create(StartIndex, EndIndex: Integer);
 begin
-  with Complete do
+  inherited Create;
+  FStart := StartIndex;
+  FEnd   := EndIndex;
+  FSpan  := EndIndex - StartIndex;
+  FValid := True;
+end;
+
+procedure TIndexPair.SetEndSpan(Index: Integer);
+begin
+  FEnd := Index;
+  if FStart <> -1 then
   begin
-    FStart := Outline.FStart;
-    FEnd := EndIndex;
     FSpan := FEnd - FStart;
     FValid := True;
-  end;
-  result := Complete;
+  end; 
 end;
 
-
-function FindDelimitedRange(Source, StartDelim, EndDelim: String): TIndexPair;
-var 
-  Pair: TIndexPair;
+constructor TIndexPair.Create(Source, StartDelim, EndDelim: String);
 begin
-  with Pair do
-  begin
-    FStart := Source.IndexOf(StartDelim);
-    FSpan  := Source.Substring(FStart + 1).IndexOf(EndDelim);
-    FEnd   := FStart + FSpan;
-    FValid := not ((FStart = -1) or (FSpan = -1));
-  end;
-  result := Pair;
-end;
-
-function InclusiveRange(Source: String; Outline: TIndexPair): String;
-begin
-  result := Source.Substring(Outline.FStart, Outline.FSpan);
-end;
-
-function ExclusiveRange(Source: String; Outline: TIndexPair): String;
-begin
-  result := Source.Substring(Outline.FStart + 1, Outline.FSpan - 2);
+  inherited Create;
+  FStart := Source.IndexOf(StartDelim);
+  FSpan  := Source.Substring(FStart + 1).IndexOf(EndDelim);
+  FEnd   := FStart + FSpan;
+  FValid := not ((FStart = -1) or (FSpan = -1));
 end;
 
 function CopyStringRange(Source: String; Outline: TIndexPair; 
   ModeFlag: TRangeMode): String;
+
+  function InclusiveRange(Source: String; Outline: TIndexPair): String;
+  begin
+    result := Source.Substring(Outline.FStart, Outline.FSpan);
+  end;
+
+  function ExclusiveRange(Source: String; Outline: TIndexPair): String;
+  begin
+    result := Source.Substring(Outline.FStart + 1, Outline.FSpan - 2);
+  end;
+
 var
   OutputStr: String;
 begin
   OutputStr := Source;
-  if IsValid(Outline) then
+  if Outline.IsValid then
   begin
     case ModeFlag of
       rkInclusive: OutputStr := InclusiveRange(Source, Outline);
@@ -162,12 +171,11 @@ begin
   result := OutputStr;
 end;
 
-function BalancedDelimiterSubstring(Source: String; StartDelim, 
-  EndDelim: Char): TIndexPair; 
+procedure TIndexPair.MarkBalancedDelimiterSubstring(Source: String;
+  StartDelim, EndDelim: Char);
 var
   BraceLevel, SIndex: Integer;
   ThisChar: Char;
-  Outline: TIndexPair;
 begin
   Assert(StartDelim <> EndDelim);
   BraceLevel := 0;
@@ -179,7 +187,7 @@ begin
     begin
       if BraceLevel = 0 then
       begin
-        Outline.FStart := SIndex;
+        Self.StartIndex := SIndex;
       end;
       Inc(BraceLevel);
     end
@@ -191,18 +199,17 @@ begin
         if BraceLevel = 0 then
         begin
           { include closing brace }
-          Outline := SetEndSpan(Outline, SIndex + 1); 
+          Self.EndIndex := SIndex + 1; 
           break;
         end;
       end;
     end;
-  end; { for }
-  result := Outline;
+  end; 
 end;
 
-function FindMatchedBraces(Source: String): TIndexPair;
+procedure TIndexPair.MarkMatchedBraces(Source: String);
 begin
-  result := BalancedDelimiterSubstring(Source, '{', '}');
+  Self.MarkBalancedDelimiterSubstring(Source, '{', '}');
 end;
 
 function CopyBraceExpr(Source: String): String;
@@ -210,11 +217,13 @@ var
   Outline: TIndexPair;
   TempStr: String = '';
 begin
-  Outline := FindMatchedBraces(Source);
-  if IsValid(Outline) then
+  Outline := TIndexPair.Create;
+  Outline.MarkMatchedBraces(Source);
+  if Outline.IsValid then
   begin
     TempStr := CopyStringRange(Source, Outline, rkInclusive);
   end;
+  FreeAndNil(Outline);
   result := TempStr;
 end;
 
@@ -237,6 +246,7 @@ var
   Outline: TIndexPair;
   CommandArg: TCommandArg;
 begin
+  Outline := TIndexPair.Create;
   { Find command }
   TestStr := Source.Substring(Source.IndexOf(ControlChar));
   Command := ExtractWord(1, TestStr, [' ', LineEnding, ArgStartDelim]);
@@ -249,15 +259,16 @@ begin
     TestStr := TestStr.Substring(Length(Command));
     if TestStr.TrimLeft.StartsWith(ArgStartDelim) then
     begin
-      Outline := BalancedDelimiterSubstring(TestStr, ArgStartDelim,
-                  ArgEndDelim); 
-      if IsValid(Outline) then
+      Outline.MarkBalancedDelimiterSubstring(TestStr, ArgStartDelim,
+        ArgEndDelim); 
+      if Outline.IsValid then
       begin
         CommandArg.FArg := CopyStringRange(TestStr, Outline, rkInclusive);
         CommandArg.FStatus := skCommandArg;
       end;
     end;
   end;
+  FreeAndNil(Outline);
   result := CommandArg;
 end;
 
@@ -283,27 +294,25 @@ var
   Outline: TIndexPair;
 begin
   MarkupStrings := TStringList.Create;
-  try
-    while Source.CountChar('"') > 1 do
+  while Source.CountChar('"') > 1 do
+  begin
+    Outline := TIndexPair.Create(Source, '"', '"');
+    if Outline.IsValid then
     begin
-      Outline := FindDelimitedRange(Source, '"', '"');
-      if IsValid(Outline) then
-      begin
-        Markup := CopyStringRange(Source, Outline, rkExclusive);
-        MarkupStrings.Add(Markup);
-        OutputStr := Source.Substring(Outline.FEnd + 2);
-      end
-      else
-        break;
-    end;
-    MarkupStrings.StrictDelimiter := True;
-    MarkupStrings.Delimiter := ' ';
-    OutputStr := DelChars(MarkupStrings.DelimitedText, '"');
-
-  finally
-    FreeAndNil(MarkupStrings);
-    result := OutputStr;
+      Markup := CopyStringRange(Source, Outline, rkExclusive);
+      MarkupStrings.Add(Markup);
+      OutputStr := Source.Substring(Outline.EndIndex + 2);
+    end
+    else
+      break;
   end;
+  MarkupStrings.StrictDelimiter := True;
+  MarkupStrings.Delimiter := ' ';
+  OutputStr := DelChars(MarkupStrings.DelimitedText, '"');
+
+  FreeAndNil(Outline);
+  FreeAndNil(MarkupStrings);
+  result := OutputStr;
 end;
 
 end.
