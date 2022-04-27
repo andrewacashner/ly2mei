@@ -28,25 +28,32 @@ function CopyFirstQuotedString(Source: String): String;
 { Is this a single quoted string without any other quotes within it? }
 function IsASingleQuotedString(Source: String): Boolean;
 
-{ Return a new stringlist containing the text of an input string, separated at
-  newlines. }
-function Lines(InputStr: String): TStringList;
+type
+  TStringListPlus = class(TStringList)
+  public
+    constructor Create();
 
-{ Return a new string list that is a copy of another string list, starting at
-  a given index }
-function CopyFromIndex(SourceList: TStringList; StartIndex: Integer): TStringList;
+    { Create a new stringlist containing the text of an input string, separated at
+      newlines. }
+    constructor Create(InputStr: String);
+   
+    { Copy the lines after a given index from a string list. }
+    procedure AssignAfterIndex(InputLines: TStringList; StartIndex: Integer);
+
+    { On each line, strip out everything between a comment char (@code('%'))
+      and the next newline. }
+    procedure RemoveComments;
+
+    { Remove empty lines or lines with only whitespace. }
+    procedure RemoveBlankLines;
+  end;
+
 
 { Return a string consisting of the text of a stringlist starting at a
   given index. }
-function ToStringFromIndex(SourceLines: TStringList; Index: Integer): String; 
+function ToStringFromIndex(InputLines: TStringList; Index: Integer): String; 
 
-{ Return a copy of the given stringlist with comments removed. Strip out
-  everything between a comment char (@code('%')) and the next newline. }
-function RemoveComments(InputLines: TStringList): TStringList;
 
-{ Return a copy of the given stringlist with blank lines removed. Blank lines
-  are those that are empty or contain only whitespace. }
-function RemoveBlankLines(InputLines: TStringList): TStringList;
 
 implementation
 
@@ -110,77 +117,72 @@ begin
             and Source.EndsWith('"');
 end;
 
-function Lines(InputStr: String): TStringList;
-var
-  OutputLines: TStringList;
+constructor TStringListPlus.Create;
 begin
-  OutputLines := TStringList.Create;
-  with OutputLines do
-  begin
-    Delimiter := LineEnding;
-    StrictDelimiter := True;
-    DelimitedText := InputStr;
-  end;
-  result := OutputLines;
+  inherited Create;
 end;
 
-function CopyFromIndex(SourceList: TStringList; StartIndex: Integer): TStringList;
+constructor TStringListPlus.Create(InputStr: String);
+begin
+  inherited Create;
+  Delimiter := LineEnding;
+  StrictDelimiter := True;
+  DelimitedText := InputStr;
+end;
+
+procedure TStringListPlus.AssignAfterIndex(InputLines: TStringList;
+  StartIndex: Integer); 
 var
   ThisIndex: Integer;
-  OutputLines: TStringList;
 begin
-  OutputLines := TStringList.Create;
-  for ThisIndex := StartIndex to SourceList.Count - 1 do
-  begin
-    OutputLines.Add(SourceList[ThisIndex]);
-  end;
-  result := OutputLines;
+  for ThisIndex := StartIndex to InputLines.Count - 1 do
+    Self.Add(InputLines[ThisIndex]);
 end;
 
-function ToStringFromIndex(SourceLines: TStringList; Index: Integer): String; 
+function ToStringFromIndex(InputLines: TStringList; Index: Integer): String; 
 var
-  NewLines: TStringList;
+  TempLines: TStringListPlus;
   OutputStr: String;
 begin
-  NewLines := CopyFromIndex(SourceLines, Index);
-  OutputStr := NewLines.Text;
-  FreeAndNil(NewLines);
+  TempLines := TStringListPlus.Create;
+  TempLines.AssignAfterIndex(InputLines, Index);
+  OutputStr := TempLines.Text;
+  FreeAndNil(TempLines);
   result := OutputStr;
 end;
 
-function RemoveComments(InputLines: TStringList): TStringList;
+procedure TStringListPlus.RemoveComments;
 var
   ThisString, CleanString: String;
-  OutputLines: TStringList;
+  TempLines: TStringList;
+  CommentDelim: String = '%';
 begin
-  OutputLines := TStringList.Create;
-  for ThisString in InputLines do
+  TempLines := TStringList.Create;
+  for ThisString in Self do
   begin
-    if not ThisString.StartsWith('%') then
+    if not ThisString.StartsWith(CommentDelim) then
     begin
-      CleanString := StringDropAfter(ThisString, '%');
-      OutputLines.Add(CleanString);
+      CleanString := StringDropAfter(ThisString, CommentDelim);
+      TempLines.Add(CleanString);
     end;
   end;
-  InputLines.Assign(OutputLines);
-  FreeAndNil(OutputLines);
-  result := InputLines;
+  Assign(TempLines);
+  FreeAndNil(TempLines);
 end;
 
-function RemoveBlankLines(InputLines: TStringList): TStringList;
+procedure TStringListPlus.RemoveBlankLines;
 var
   ThisString: String;
-  OutputLines: TStringList;
+  TempLines: TStringList;
 begin
-  OutputLines := TStringList.Create;
-  for ThisString in InputLines do
+  TempLines := TStringList.Create;
+  for ThisString in Self do
   begin
     if not ThisString.Trim.IsEmpty then
-      OutputLines.Add(ThisString);
+      TempLines.Add(ThisString);
   end;
-  InputLines.Assign(OutputLines);
-  FreeAndNil(OutputLines);
-  result := InputLines;
+  Assign(TempLines);
+  FreeAndNil(TempLines);
 end;
 
 

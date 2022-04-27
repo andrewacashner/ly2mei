@@ -59,7 +59,6 @@ function FindMatchedBraces(Source: String): TIndexPair;
 including the braces. }
 function CopyBraceExpr(Source: String): String;
 
-{TODO can we do without TCommandArg? }
 type
   { Parsing commands and arguments: These flags indicate the type of
     @link(TCommandArg) found. }

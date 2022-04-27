@@ -31,7 +31,7 @@ implementation
 
 constructor THeader.CreateFromLy(InputLines: TStringList);
 var
-  LyHeaderLines: TStringList;
+  LyHeaderLines: TStringListPlus;
   SearchStr, ThisString, Key, Value, MarkupStr: String;
   LineIndex: Integer;
   FoundThis, FoundAny: Boolean;
@@ -41,7 +41,7 @@ begin
   SearchStr := LyArg(InputLines.Text, '\header');
   if not SearchStr.IsEmpty then
   begin
-    LyHeaderLines := Lines(SearchStr);
+    LyHeaderLines := TStringListPlus.Create(SearchStr);
     LineIndex := 0;
     FoundAny := False;
     for ThisString in LyHeaderLines do
