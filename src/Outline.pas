@@ -8,7 +8,7 @@ unit Outline;
 
 interface
 
-uses SysUtils, Classes, StrUtils;
+uses SysUtils, Classes, StrUtils, StringTools;
 
 type 
   { @abstract(Stores the start and end positions in a string or other sequence.) }
@@ -47,7 +47,6 @@ type
     property IsValid:    Boolean read FValid; 
   end;
 
-type
   { Mode flags for marking delimited substrings }
   TRangeMode = (
     rkInclusive,  {< Include delimiters in the range. }
@@ -64,39 +63,6 @@ function CopyStringRange(Source: String; Outline: TIndexPair; ModeFlag:
 { Return a substring that is a complete matched-brace expression,
 including the braces. }
 function CopyBraceExpr(Source: String): String;
-
-{TODO can we do without TCommandArg? }
-type
-  { Parsing commands and arguments: These flags indicate the type of
-    @link(TCommandArg) found. }
-  TStatusCommandArg = (
-    skCommand,    {< Found just a command }
-    skCommandArg, {< Found a command and an argument }
-    skInvalid     {< Found neither }
-  );
-
-  { @abstract(A command and its argument.) 
-    A flag indicates whether it actually holds both command and argument, just
-    one or the other, or neither. }
-  TCommandArg = record
-    FCommand, FArg: String;
-    FStatus: TStatusCommandArg;
-  end;
-
-{ Is the CommandArg's status valid? }
-function IsValid(CommandArg: TCommandArg): Boolean;
-
-{ Does the CommandArg include both a command and an argument, and is marked
-  valid? }
-function IsComplete(CommandArg: TCommandArg): Boolean;
-
-{ In a string, find the first instance of command that starts with a given
-  control character (e.g., backslash). If it is followed by an argument
-  delimited by given strings (e.g., curly braces), return an object with
-  both the command and the argument. If not return the object marked
-  invalid. The delimiters are included in the string. }
-function FindCommandArg(Source: String; ControlChar, ArgStartDelim,
-  ArgEndDelim: Char): TCommandArg;
 
 { Find the first occurence of a given Lilypond command in a string and return
   its brace-delimited argument. Return an empty string if not found. }
@@ -227,67 +193,32 @@ begin
   result := TempStr;
 end;
 
-function IsValid(CommandArg: TCommandArg): Boolean;
-begin
-  result := CommandArg.FStatus <> skInvalid;
-end;
-
-function IsComplete(CommandArg: TCommandArg): Boolean;
-begin
-  result := (not CommandArg.FCommand.IsEmpty)
-            and (not CommandArg.FArg.IsEmpty)
-            and IsValid(CommandArg);
-end;
-
-function FindCommandArg(Source: String; ControlChar, ArgStartDelim,
-  ArgEndDelim: Char): TCommandArg;
-var
-  TestStr, Command: String;
-  Outline: TIndexPair;
-  CommandArg: TCommandArg;
-begin
-  Outline := TIndexPair.Create;
-  { Find command }
-  TestStr := Source.Substring(Source.IndexOf(ControlChar));
-  Command := ExtractWord(1, TestStr, [' ', LineEnding, ArgStartDelim]);
-  if not Command.IsEmpty then
-  begin
-    CommandArg.FCommand := Command;
-    CommandArg.FStatus := skCommand;
-
-    { Find arg within delimiters }
-    TestStr := TestStr.Substring(Length(Command));
-    if TestStr.TrimLeft.StartsWith(ArgStartDelim) then
-    begin
-      Outline.MarkBalancedDelimiterSubstring(TestStr, ArgStartDelim,
-        ArgEndDelim); 
-      if Outline.IsValid then
-      begin
-        CommandArg.FArg := CopyStringRange(TestStr, Outline, rkInclusive);
-        CommandArg.FStatus := skCommandArg;
-      end;
-    end;
-  end;
-  FreeAndNil(Outline);
-  result := CommandArg;
-end;
-
 function LyArg(Source, Command: String): String;
 var
-  CommandArg: TCommandArg;
+  SearchStr: String = '';
   Arg: String = '';
 begin
   if Source.Contains(Command) then
   begin
-    Source := Source.Substring(Source.IndexOf(Command));
-    CommandArg := FindCommandArg(Source, '\', '{', '}');
-    if IsComplete(CommandArg) and (CommandArg.FCommand = Command) then 
-      Arg := CommandArg.FArg;
+    SearchStr := StringDropBefore(Source, Command);
+    Arg := CopyBraceExpr(SearchStr);
   end;
   result := Arg;
 end;
 
 function ExtractQuotedStrings(Source: String): String;
+
+  function ConcatDequotedStrings(InputLines: TStringList): String; 
+  var 
+    OutputStr: String;
+  begin
+    InputLines.StrictDelimiter := True;
+    InputLines.Delimiter := ' ';
+    OutputStr := InputLines.DelimitedText;
+    OutputStr := DelChars(OutputStr, '"');
+    result := OutputStr;
+  end;
+
 var
   MarkupStrings: TStringList;
   Markup, OutputStr: String;
@@ -306,9 +237,7 @@ begin
     else
       break;
   end;
-  MarkupStrings.StrictDelimiter := True;
-  MarkupStrings.Delimiter := ' ';
-  OutputStr := DelChars(MarkupStrings.DelimitedText, '"');
+  OutputStr := ConcatDequotedStrings(MarkupStrings);
 
   FreeAndNil(Outline);
   FreeAndNil(MarkupStrings);
