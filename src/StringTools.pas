@@ -42,11 +42,11 @@ function ToStringFromIndex(SourceLines: TStringList; Index: Integer): String;
 
 { Return a copy of the given stringlist with comments removed. Strip out
   everything between a comment char (@code('%')) and the next newline. }
-function RemoveComments(InputStr: String): String;
+function RemoveComments(InputLines: TStringList): TStringList;
 
 { Return a copy of the given stringlist with blank lines removed. Blank lines
   are those that are empty or contain only whitespace. }
-function RemoveBlankLines(InputStr: String): String;
+function RemoveBlankLines(InputLines: TStringList): TStringList;
 
 implementation
 
@@ -148,13 +148,12 @@ begin
   result := OutputStr;
 end;
 
-function RemoveComments(InputStr: String): String;
+function RemoveComments(InputLines: TStringList): TStringList;
 var
-  OutputStr, ThisString, CleanString: String;
-  InputLines, OutputLines: TStringList;
+  ThisString, CleanString: String;
+  OutputLines: TStringList;
 begin
   OutputLines := TStringList.Create;
-  InputLines := Lines(InputStr);
   for ThisString in InputLines do
   begin
     if not ThisString.StartsWith('%') then
@@ -163,28 +162,25 @@ begin
       OutputLines.Add(CleanString);
     end;
   end;
-  OutputStr := OutputLines.Text;
-  FreeAndNil(InputLines);
+  InputLines.Assign(OutputLines);
   FreeAndNil(OutputLines);
-  result := OutputStr;
+  result := InputLines;
 end;
 
-function RemoveBlankLines(InputStr: String): String;
+function RemoveBlankLines(InputLines: TStringList): TStringList;
 var
-  ThisString, OutputStr: String;
-  InputLines, OutputLines: TStringList;
+  ThisString: String;
+  OutputLines: TStringList;
 begin
   OutputLines := TStringList.Create;
-  InputLines := Lines(InputStr);
   for ThisString in InputLines do
   begin
     if not ThisString.Trim.IsEmpty then
       OutputLines.Add(ThisString);
   end;
-  OutputStr := OutputLines.Text;
-  FreeAndNil(InputLines);
+  InputLines.Assign(OutputLines);
   FreeAndNil(OutputLines);
-  result := OutputStr;
+  result := InputLines;
 end;
 
 

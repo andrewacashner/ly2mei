@@ -13,6 +13,8 @@ interface
 uses SysUtils, StrUtils, Classes, Generics.Collections, StringTools, Outline;
 
 type
+  TIndexList = specialize TList<Integer>;
+
   { @abstract(A macro dictionary of key-value pairs.) }
   TMacroDict = specialize TDictionary<String, String>;
 
@@ -29,7 +31,7 @@ type
   @code(label = \command < arg >) where @code(<>) are curly braces. We
   don't accept @code(label = "string") or other formats. The label must be
   at the beginning of a line. }
-function ProcessMacros(InputStr: String): String;
+function ProcessMacros(InputLines: TStringList): TStringList;
 
 { In a given stringlist, replace all macro commands (@code(\command))
   with the corresponding definition in a macro dictionary. Repeat as necessary
@@ -41,12 +43,11 @@ function FindReplaceMacros(InputStr: String; Dict: TMacroDict): String;
 
 { Write out Lilypond multimeasure rests as individual rests: @code(| R1*2)
 becomes @code(| R1\n| R1). }
-function ExpandMultiRests(InputStr: String): String;
+function ExpandMultiRests(InputLines: TStringList): TStringList;
 
 { Process macros in the source text: modify the stringlist by expanding all
   macros, including nested ones. Also expand multimeasure rests. }
-function ExpandMacros(InputStr: String): String;
-
+function ExpandMacros(InputLines: TStringList): TStringList;
 
 implementation
 
@@ -92,195 +93,99 @@ begin
   result := Key;
 end;
 
-function ProcessMacros(InputStr: String): String;
+
+function ListMacroDefinitionLines(LineList: TStringList): TIndexList;
 var
-  FindOutline, CopyOutline: TIndexPair;
-  CommandArg: TCommandArg;
-  OutputStr, ThisString, ThisLine, NextStr, Key, Value: String;
-  BufferStr: String = '';
-  CharIndex, ValueStart: Integer;
-  Found: Boolean;
-  Dict: TMacroDict;
+  IndexList: TIndexList;
+  ThisLine: String;
+  LineIndex: Integer;
 begin
-  Dict := TMacroDict.Create;
-  CopyOutline.FStart := 0;
-  CopyOutline.FValid := True;
-
-  CharIndex := 0;
-  while CharIndex < Length(InputStr) do
+  IndexList := TIndexList.Create;
+  LineIndex := 0;
+  for ThisLine in LineList do
   begin
-    { Look for a @code(key = value) pair at the start of each line }
-    ThisString := InputStr.Substring(CharIndex);
-    ThisLine := ThisString.Substring(0, ThisString.IndexOf(LineEnding));
-    WriteLn(stderr, 'Test this line: ' + ThisLine);
-    Found := False;
-
-    Key := GetMacroDefKey(ThisLine);
-    if Key.IsEmpty then
+    if not ThisLine.StartsWith(' ') and ThisLine.Contains(' = ') then
     begin
-      Inc(CharIndex); { TODO ThisLine has been erased! I would like to add its length to charindex }
-      continue;
-    end
-    else
-    begin
-      { Found key, mark start location }
-      WriteLn(stderr, 'Found key: "' + Key + '"');
-      CopyOutline := SetEndSpan(CopyOutline, CharIndex);
-      ValueStart := CharIndex + Length(Key);
-      Key := Key.Trim;
-      
-      { Parse value }
-      Value := StringDropBefore(ThisString, '=').Trim;
-      WriteLn(stderr, 'Found value: "' + Value + '"');
-      case Value.Chars[0] of
-      '{':
-        { Value is a brace-delimited argument }
-        begin
-          FindOutline := FindMatchedBraces(Value);
-          if IsValid(FindOutline) then
-          begin
-            Value := CopyStringRange(Value, FindOutline, rkInclusive);
-            Found := True;
-          end;
-        end;
-
-      '\':
-        { Value is a command, possibly followed by argument }
-        begin
-          CommandArg := FindCommandArg(Value, '\', '{', '}');
-          case CommandArg.FStatus of
-          { Found only a command }
-          skCommand:
-            begin
-              Value := CommandArg.FCommand;
-              Found := True;
-            end;
-          { Found a command and a brace-delimited argument }
-          skCommandArg:
-            begin
-              Value := Format('%s %s', [CommandArg.FCommand, CommandArg.FArg]);
-              Found := True;
-            end;
-          end;
-        end;
-      end;
-      { Add found key/value pair to dictionary; copy text from last ending
-      position to next start position to output; mark new start position }
-      if Found then
-      begin
-        Dict.Add('\' + Key, Value);
-        NextStr := InputStr.Substring(CopyOutline.FStart, CopyOutline.FSpan);
-        BufferStr := BufferStr + NextStr;
-        CopyOutline.FStart := ValueStart + Length(Value);
-        CharIndex := CopyOutline.FStart;
-      end
-      else
-        Inc(CharIndex);
-    end;
-  end;
-  { Add remaining text after last macro definition to output }
-  BufferStr := BufferStr + InputStr.Substring(CopyOutline.FStart);
-  OutputStr := FindReplaceMacros(BufferStr, Dict);
-
-  FreeAndNil(Dict);
-  result := OutputStr;
-end;
-
-
-(* TODO simplify 
-function ProcessMacros(InputStr: String): String;
-var
-  FindOutline, CopyOutline: TIndexPair;
-  CommandArg: TCommandArg;
-  OutputStr, ThisString, NextStr, Key, Value, TestStr: String;
-  BufferStr: String = '';
-  LineIndex: Integer = 0;
-  Found: Boolean;
-  InputLines: TStringList;
-  Dict: TMacroDict;
-begin
-  Dict := TMacroDict.Create;
-  
-  CopyOutline.FStart := 0;
-  CopyOutline.FValid := True;
-
-  { TODO just loop through one index at a time, instead of looping through a
-  stringlist AND a string }
-  InputLines := Lines(InputStr);
-  { Look for a @code(key = value) pair at the start of each line }
-  for ThisString in InputLines do
-  begin
-    Found := False;
-    Key := GetMacroDefKey(ThisString);
-    if not Key.IsEmpty then
-    begin
-      { Found key, mark start location }
-      Key := Key.Trim;
-      CopyOutline := SetEndSpan(CopyOutline, InputStr.IndexOf(Key + ' '));
-
-      { Parse value }
-      Value := StringDropBefore(ThisString, '=').Trim;
-      case Value.Chars[0] of
-      '{':
-        { Value is a brace-delimited argument }
-        begin
-          TestStr := ToStringFromIndex(InputLines, LineIndex);
-          FindOutline := FindMatchedBraces(TestStr);
-          if IsValid(FindOutline) then
-          begin
-            Value := CopyStringRange(TestStr, FindOutline, rkInclusive);
-            Found := True;
-          end;
-        end;
-
-      '\':
-        { Value is a command, possibly followed by argument }
-        begin
-          TestStr := ToStringFromIndex(InputLines, LineIndex);
-          CommandArg := FindCommandArg(TestStr, '\', '{', '}');
-          case CommandArg.FStatus of
-          { Found only a command }
-          skCommand:
-            begin
-              Value := CommandArg.FCommand;
-              Found := True;
-            end;
-          { Found a command and a brace-delimited argument }
-          skCommandArg:
-            begin
-              Value := Format('%s %s', [CommandArg.FCommand, CommandArg.FArg]);
-              Found := True;
-            end;
-          end;
-        end;
-      end;
-      { Add found key/value pair to dictionary; copy text from last ending
-      position to next start position to output; mark new start position }
-      if Found then
-      begin
-        Dict.Add('\' + Key, Value);
-        NextStr := InputStr.Substring(CopyOutline.FStart, CopyOutline.FSpan);
-        if not NextStr.IsEmpty then
-        begin
-          BufferStr := BufferStr + InputStr.Substring(CopyOutline.FStart,
-            CopyOutline.FSpan);
-        end;
-        CopyOutline.FStart := InputStr.IndexOf(Value) + Length(Value);
-      end;
+      IndexList.Add(LineIndex);
     end;
     Inc(LineIndex);
   end;
-  { Add remaining text after last macro definition to output }
-  BufferStr := BufferStr + InputStr.Substring(CopyOutline.FStart);
+  result := IndexList;
+end;
 
-  OutputStr := FindReplaceMacros(BufferStr, Dict);
-
-  FreeAndNil(InputLines);
-  FreeAndNil(Dict);
-
+function CopyBraceExpression(InputStr: String): String;
+var
+  IndexPair: TIndexPair;
+  OutputStr: String = '';
+begin
+  IndexPair := FindMatchedBraces(InputStr);
+  if IsValid(IndexPair) then
+  begin
+    OutputStr := InputStr.Substring(IndexPair.FStart, IndexPair.FSpan);
+  end;
   result := OutputStr;
 end;
-*)
+
+function DeleteMacroDefinitions(InputStr: String; Dict: TMacroDict): String;
+var
+  OutputStr, Definition: String;
+  ThisKeyValue: TMacroKeyValue;
+begin
+  OutputStr := InputStr;
+  for ThisKeyValue in Dict do
+  begin
+    Definition := ThisKeyValue.Key + ' = ' + ThisKeyValue.Value;
+    OutputStr := OutputStr.Replace(Definition, '');
+  end;
+  result := OutputStr;
+end;
+
+function ProcessMacros(InputLines: TStringList): TStringList;
+var
+  OutputLines: TStringList;
+  IndexList: TIndexList;
+  ThisIndex: Integer;
+  InputStr, OutputStr, TestStr, Key, Value, Command, Arg: String;
+  Dict: TMacroDict;
+begin
+  Dict := TMacroDict.Create;
+  IndexList := ListMacroDefinitionLines(InputLines);
+  for ThisIndex in IndexList do
+  begin
+    Key := StringDropAfter(InputLines[ThisIndex], ' = ');
+    Value := '';
+
+    TestStr := ToStringFromIndex(InputLines, ThisIndex);
+    TestStr := TestStr.Substring(Length(Key + ' = '));
+    
+    if TestStr.StartsWith('{') then
+    begin
+      Value := CopyBraceExpression(TestStr);
+    end
+    else if TestStr.StartsWith('\') then
+    begin
+      Command := StringDropAfter(TestStr, '{');
+      Arg := StringDropBefore(TestStr, Command);
+      Value := Command + CopyBraceExpression(Arg);
+    end;
+
+    if not Key.IsEmpty and not Value.IsEmpty then
+      Dict.Add(Key, Value);
+  end;
+
+  InputStr := InputLines.Text;
+  { TODO make these handle stringlists too? }
+  OutputStr := DeleteMacroDefinitions(InputStr, Dict);
+  OutputStr := FindReplaceMacros(OutputStr, Dict);
+  OutputLines := Lines(OutputStr);
+  
+  InputLines.Assign(OutputLines);
+
+  FreeAndNil(IndexList);
+  FreeAndNil(OutputLines);
+  FreeAndNil(Dict);
+  result := InputLines;
+end;
 
 function IsBarRest(InputStr: String): Boolean;
 begin
@@ -309,15 +214,13 @@ begin
   result := Count;
 end;
 
-function ExpandMultiRests(InputStr: String): String;
+function ExpandMultiRests(InputLines: TStringList): TStringList;
 var
-  OutputStr, ThisLine, RestStr, DurStr: String;
+  ThisLine, RestStr, DurStr: String;
   Repeats, ThisRest: Integer;
-  InputLines, OutputLines: TStringList;
+  OutputLines: TStringList;
 begin
   OutputLines := TStringList.Create;
-  InputLines := Lines(InputStr);
-
   for ThisLine in InputLines do
   begin
     if IsBarRest(ThisLine) then
@@ -332,21 +235,18 @@ begin
     else
       OutputLines.Add(ThisLine);
   end;
-  OutputStr := OutputLines.Text;
-
-  FreeAndNil(InputLines);
+  InputLines.Assign(OutputLines);
   FreeAndNil(OutputLines);
-
-  result := OutputStr;
+  result := InputLines;
 end;
 
-function ExpandMacros(InputStr: String): String;
-var
-  OutputStr: String;
+function ExpandMacros(InputLines: TStringList): TStringList;
 begin
-  OutputStr := ProcessMacros(RemoveComments(InputStr));
-  OutputStr := ExpandMultiRests(RemoveBlankLines(OutputStr));
-  result := OutputStr;
+  InputLines := RemoveComments(InputLines);
+  InputLines := ProcessMacros(InputLines);
+  InputLines := RemoveBlankLines(InputLines);
+  InputLines := ExpandMultiRests(InputLines);
+  result := InputLines;
 end;
 
    

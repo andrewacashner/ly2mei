@@ -5,12 +5,11 @@
 }
 program ly2mei(input, output, stderr);
 
-uses SysUtils, Classes, StringTools, Macro, MEI, Header, ScoreTree;
+uses SysUtils, Classes, Macro, MEI, Header, ScoreTree;
 
 { MAIN }
 var
   InputLines, ExpandedMacros: TStringList;
-  InputStr: String;
   Root: TMeiNode;
 begin
   InputLines  := TStringList.Create;
@@ -24,9 +23,7 @@ begin
     end;
     
     InputLines.LoadFromFile(ParamStr(1));
-    InputStr := InputLines.Text;
-    InputStr := ExpandMacros(InputStr);
-    ExpandedMacros := Lines(InputStr); { TODO for now }
+    ExpandedMacros := ExpandMacros(InputLines);
     Root := AddMeiHead(Root, ExpandedMacros);
     Root := AddMeiScore(Root, ExpandedMacros); 
     
