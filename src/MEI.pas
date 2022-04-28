@@ -107,26 +107,26 @@ type
     { Look up the value for a given key in the attribute list. }
     function GetAttributeValue(Key: String): String;
 
-    property Name:        String   read FName write FName;
-    property TextNode:    String   read FText write FText;
-    property ChildTree:   TMeiNode read FChild;
-    property NextSibling: TMeiNode read FSibling;
+    property Name:        String   read FName write FName; {< Element/tag name }
+    property TextNode:    String   read FText write FText; {< Text node }
+    property ChildTree:   TMeiNode read FChild;            {< Child node/tree }
+    property NextSibling: TMeiNode read FSibling;          {< Sibling node/tree }
   end;
 
 { Create a randomly-generated GUID for each XML element. Each is prefaced with
   @code(mei-) so that it will be a valid @code(xml:id) value. }
 function GenerateXmlID: String;
 
-const
-  _XMLDeclaration = '<?xml version="1.0" encoding="utf-8"?>';
-  _MeiNamespace = 'https://music-encoding.org/ns/mei';
-  _MeiVersion = '3.0.0';
-
 { Given the root of an MEI tree, return the whole MEI document as a string. }
 function MeiDocString(Root: TMeiNode): String;
 
 
 implementation
+
+const
+  _XMLDeclaration = '<?xml version="1.0" encoding="utf-8"?>';
+  _MeiNamespace = 'https://music-encoding.org/ns/mei';
+  _MeiVersion = '3.0.0';
 
 function TMeiAttributeList.XMLString: String;
 var 
