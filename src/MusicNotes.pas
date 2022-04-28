@@ -305,7 +305,7 @@ type
   end;
 
 
-    { First we copy a @link(TLyObject) tree to a @link(TMEIElement) tree,
+    { First we copy a @link(TLyObject) tree to a @link(TMeiNode) tree,
       preserving its structure (score/staff/voice/measures). With this
       function we create a new tree that is organized in the MEI hierarchy
       (section/measure/staff/layer/notes).
@@ -760,12 +760,12 @@ end;
 
 function TMeiNoteRest.IsNote: Boolean;
 begin
-  result := GetName = 'note';
+  result := Name = 'note';
 end;
 
 function TMeiNoteRest.IsRest: Boolean;
 begin
-  result := (GetName = 'rest') or (GetName = 'mRest');
+  result := (Name = 'rest') or (Name = 'mRest');
 end;
 
 
@@ -881,11 +881,11 @@ begin
   inherited Create();
 
   case Pitch.Name of
-    pkRest        : SetName('rest');
-    pkMeasureRest : SetName('mRest');
+    pkRest        : Name := 'rest';
+    pkMeasureRest : Name := 'mRest';
     else
     begin
-      SetName('note');
+      Name := 'note';
       AddAttribute('xml:id', Pitch.ID);
       AddMeiPnameAttribute(Pitch);
       AddMeiAccidAttribute(Pitch);
@@ -1074,8 +1074,8 @@ var
 begin
   Assert(Assigned(PitchList));
   Assert(Assigned(MeiMeasure));
-  Assert((MeiMeasure.GetName = 'lirio:measure') 
-    or (MeiMeasure.GetName = 'measure'));
+  Assert((MeiMeasure.Name = 'lirio:measure') 
+    or (MeiMeasure.Name = 'measure'));
 
   case PitchList.BarlineRight of
     bkNormal    : Attr := '';
@@ -1362,8 +1362,8 @@ var
   SectionHead: TMeiNode = nil;
 begin
   Assert(Assigned(MeiMeasure));
-  Assert((MeiMeasure.GetName = 'lirio:voice') 
-    or (MeiMeasure.GetName = 'measure'));
+  Assert((MeiMeasure.Name = 'lirio:voice') 
+    or (MeiMeasure.Name = 'measure'));
 
   if not FHeaderText.IsEmpty then
   begin
@@ -1371,7 +1371,7 @@ begin
     SectionHead.AddAttribute('place', 'above');
     SectionHead.AddAttribute('staff', '1');
     SectionHead.AddAttribute('tstamp', '1');
-    SectionHead.SetTextNode(FHeaderText);
+    SectionHead.TextNode := FHeaderText;
     MeiMeasure.AppendChild(SectionHead);
   end;
   result := MeiMeasure;

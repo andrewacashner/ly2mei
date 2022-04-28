@@ -5,7 +5,8 @@
 
   Treat Lilypond variable definitions as simple text macros. Find them, make a
   dictionary of them, and then expand them in the text, including nested
-  macros. }
+  macros. 
+}
 unit Macro;
 
 interface
@@ -32,8 +33,8 @@ type
   { A single key-value pair used in the dictionary. }
   TMacroKeyValue = TMacroDict.TDictionaryPair;
 
-{ Find, parse, and save macro definitions in a stringlist. Delete the
-  definition expressions and expand the macro calls. 
+{ Find, parse, and save macro definitions in a stringlist. Delete
+  the definition expressions and expand the macro calls.
 
   A macro must have the form @code(label = < arg >) or 
   @code(label = \command < arg >) where @code(<>) are curly braces. We

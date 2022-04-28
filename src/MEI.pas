@@ -1,9 +1,10 @@
 {$mode objfpc}{$H+}{$J-} {$ASSERTIONS+}
 
-{ @abstract(Write MEI-XML.)
+{ @abstract(Create an internal representation of an MEI-XML tree and write it
+  to XML.)
   @author(Andrew Cashner)
 
-  Test of basic (MEI-)XML writing.
+  We represent an XML tree as a left-child/right-sibling tree of @link(TMeiNode) objects. The unit defines a basic library of functions for creating, accessing, and manipulating the tree. All these functions are recursive and most return the root of the tree given as input. 
 }
 unit MEI;
 
@@ -11,64 +12,109 @@ interface
 
 uses SysUtils, Classes, Generics.Collections;
 
-
 type
+  { @abstract(A list of string key-value pairs representing the attributes of
+  an XML element.) }
   TMeiAttributeList = class(specialize TDictionary<String, String>)
   public
+    { Render the list to an XML string (@code(key1="value1" key2="value2")) }
     function XMLString: String; 
     procedure Assign(SourceList: TMeiAttributeList);
   end;
 
-  TMEIAttributeKeyValue = TMeiAttributeList.TDictionaryPair;
+  { A single key-value pair in the attribute list. }
+  TMeiAttributeKeyValue = TMeiAttributeList.TDictionaryPair;
 
+  { @abstract(Internal representation of an MEI-XML element.)
+  Includes its name, list of attributes, text node, and (pointers to) child
+  and sibling trees. }
   TMeiNode = class
   private
     var
-      FName: String;
-      FAttributes: TMeiAttributeList;
-      FText: String;
-      FChild: TMeiNode;
-      FSibling: TMeiNode;
+      FName: String;                  {< Element/tag name }
+      FAttributes: TMeiAttributeList; {< List of key-value attribute pairs }
+      FText: String;                  {< Text node, if any }
+      FChild: TMeiNode;               {< Child tree }
+      FSibling: TMeiNode;             {< Sibling tree }
   public
     constructor Create(Name: String = 'xml'; TextContents: String = '');
+
+    { Create the MEI root element with namespace and version attributes }
     constructor CreateMeiRoot();
+    
     destructor Destroy(); override;
 
+    { Render the entire tree (recursively) to formatted XML starting at this
+    node }
     function XMLString(IndentLevel: Integer = 0): String;
 
+    { Add a single attribute key-value pair to an element, or update an
+      existing attribute if the key is already in the list. }
     procedure AddAttribute(Key, Value: String);
+
+    { Delete a single attribute with the given key from an element's list. }
     procedure RemoveAttribute(Key: String);
 
-    procedure SetTextNode(NewText: String);
+    { Is the text node not empty? }
     function IsTextSet: Boolean;
-    function GetText: String;
 
-    function GetName: String;
-    procedure SetName(NewName: String);
-
-    function ChildTree: TMeiNode;
-    function NextSibling: TMeiNode;
-
+    { Return the last child, following every child node to the end of the
+    tree. }
     function LastChild: TMeiNode;
+
+    { Return the last sibling, following every sibling node to the end of the
+    tree. }
     function LastSibling: TMeiNode;
 
+    { Set the child of this node }
     function AddFirstChild(Child: TMeiNode): TMeiNode;
+
+    { Set the sibling of this node }
     function AddFirstSibling(Sibling: TMeiNode): TMeiNode;
 
+    { Add another sibling at the end of this node's siblings. That is, add
+    another node at the current level of the tree hierarchy. }
     function AppendSibling(Sibling: TMeiNode): TMeiNode;
+
+    { Add another element as the last sibling to this node's child. That is,
+    add another node at one level down on the tree hierarchy relative to the
+    parent. } 
     function AppendChild(Child: TMeiNode): TMeiNode;
+
+    { Add a child after the last child in the whole chain of children starting
+    from this node. That is, add another node at the lowest level of the tree accessible through this parent's children. }
     function AppendLastChild(Child: TMeiNode): TMeiNode;
 
+    { Copy the information for a single node without its children or sibling
+    trees. }
     procedure AssignNodeOnly(SourceNode: TMeiNode);
+
+    { Copy the information for a single node including its children but not
+    its siblings. }
     procedure AssignWithoutSiblings(SourceNode: TMeiNode);
+
+    { Copy the whole tree starting from the given node to this tree. }
     procedure Assign(SourceNode: TMeiNode);
 
+    { Return the first node that matches the name.
+      Does not copy the tree, just returns the pointer to its root. }
     function FindElementByName(Name: String): TMeiNode;
+
+    { Return the first node that matches the name and attribute pair.
+      Does not copy the tree, just returns the pointer to its root. }
     function FindElementByAttribute(Name, Key, Value: String): TMeiNode;
-   
+  
+    { Look up the value for a given key in the attribute list. }
     function GetAttributeValue(Key: String): String;
+
+    property Name:        String   read FName write FName;
+    property TextNode:    String   read FText write FText;
+    property ChildTree:   TMeiNode read FChild;
+    property NextSibling: TMeiNode read FSibling;
   end;
 
+{ Create a randomly-generated GUID for each XML element. Each is prefaced with
+  @code(mei-) so that it will be a valid @code(xml:id) value. }
 function GenerateXmlID: String;
 
 const
@@ -76,7 +122,8 @@ const
   _MeiNamespace = 'https://music-encoding.org/ns/mei';
   _MeiVersion = '3.0.0';
 
-procedure WriteMeiDocument(Root: TMeiNode);
+{ Given the root of an MEI tree, return the whole MEI document as a string. }
+function MeiDocString(Root: TMeiNode): String;
 
 
 implementation
@@ -84,15 +131,14 @@ implementation
 function TMeiAttributeList.XMLString: String;
 var 
   ThisPair: TMeiAttributeKeyValue;
-  OutputStr: String;
   KeyCount: Integer;
+  OutputStr: String = '';
 begin
-  OutputStr := '';
   KeyCount := Self.Count;
   for ThisPair in Self do
   begin
     OutputStr := OutputStr + Format('%s="%s"', [ThisPair.Key, ThisPair.Value]);
-    
+    { Only add space between items }
     Dec(KeyCount);
     if KeyCount > 0 then
       OutputStr := OutputStr + ' ';
@@ -162,10 +208,10 @@ end;
 
 function TMeiNode.XMLString(IndentLevel: Integer = 0): String; 
 
-function Indent(Level: Integer): String;
-begin
-  result := StringOfChar(' ', 2 * Level);
-end;
+  function Indent(Level: Integer): String;
+  begin
+    result := StringOfChar(' ', 2 * Level);
+  end;
 
 var
   OutputStr: String;
@@ -214,45 +260,15 @@ begin
   FAttributes.AddOrSetValue(Key, Value);
 end;
 
-procedure TMEINode.SetTextNode(NewText: String);
-begin
-  FText := NewText;
-end;
-
 function TMEINode.IsTextSet: Boolean;
 begin
   result := not FText.IsEmpty;
-end;
-
-function TMEINode.GetText: String;
-begin
-  result := FText;
 end;
 
 procedure TMeiNode.RemoveAttribute(Key: String);
 begin
   Assert(Assigned(FAttributes));
   FAttributes.Remove(Key);
-end;
-
-function TMeiNode.GetName: String;
-begin
-  result := FName;
-end;
-
-procedure TMeiNode.SetName(NewName: String);
-begin
-  FName := NewName;
-end;
-
-function TMeiNode.ChildTree: TMeiNode;
-begin
-  result := FChild;
-end;
-
-function TMeiNode.NextSibling: TMeiNode;
-begin
-  result := FSibling;
 end;
 
 function TMeiNode.LastChild: TMeiNode;
@@ -343,8 +359,6 @@ begin
   end;
 end;
 
-{ Return the first node that matches the name.
-  Does not copy the tree, just returns the pointer to its root. }
 function TMeiNode.FindElementByName(Name: String): TMeiNode;
 var
   FoundNode: TMeiNode = nil;
@@ -367,9 +381,6 @@ begin
   result := FoundNode;
 end;
 
-
-{ Return the first node that matches the name and attribute pair.
-  Does not copy the tree, just returns the pointer to its root. }
 function TMeiNode.FindElementByAttribute(Name, Key, Value: String): TMeiNode;
 var
   ValueTest: String;
@@ -403,13 +414,13 @@ begin
   result := ValueTest;
 end;
 
-procedure WriteMEIDocument(Root: TMeiNode);
+function MeiDocString(Root: TMeiNode): String;
 var
   OutputStr: String;
 begin
   OutputStr := _XMLDeclaration + LineEnding;
   OutputStr := OutputStr + Root.XMLString;
-  WriteLn(OutputStr);
+  result := OutputStr;
 end;
 
 end.

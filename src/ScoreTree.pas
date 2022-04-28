@@ -334,7 +334,7 @@ var
   ClefLetter: String;
 begin
   Assert(Assigned(StaffDefNode));
-  Assert(StaffDefNode.GetName = 'staffDef');
+  Assert(StaffDefNode.Name = 'staffDef');
 
   case Clef of
     ckNone, ckSoprano           : ClefLine := 1;
@@ -368,7 +368,7 @@ var
   KeySig: String;
 begin
   Assert(Assigned(StaffDefNode));
-  Assert(StaffDefNode.GetName = 'staffDef');
+  Assert(StaffDefNode.Name = 'staffDef');
 
   case Key of 
     kkNone, kkCantusDurus : KeySig := '0';
@@ -433,7 +433,7 @@ end;
 function AddMEIMeterAttribute(StaffDefNode: TMeiNode; Meter: TMeter): TMeiNode;
 begin
   Assert(Assigned(StaffDefNode));
-  Assert(StaffDefNode.GetName = 'staffDef');
+  Assert(StaffDefNode.Name = 'staffDef');
 
   with Meter do
   begin
@@ -465,7 +465,7 @@ function AddStaffDefAttributes(StaffDefNode: TMeiNode; Clef: TClefKind; Key:
   TKeyKind; Meter: TMeter): TMeiNode;
 begin
   Assert(Assigned(StaffDefNode));
-  Assert(StaffDefNode.GetName = 'staffDef');
+  Assert(StaffDefNode.Name = 'staffDef');
 
   StaffDefNode.AddAttribute('lines', '5');
   StaffDefNode := AddMEIClefAttribute(StaffDefNode, Clef);
@@ -478,7 +478,7 @@ end;
 function AddStaffGrpAttributes(StaffGrpNode: TMeiNode): TMeiNode;
 begin
   Assert(Assigned(StaffGrpNode));
-  Assert(StaffGrpNode.GetName = 'staffGrp');
+  Assert(StaffGrpNode.Name = 'staffGrp');
 
   StaffGrpNode.AddAttribute('bar.thru', 'false');
   StaffGrpNode.AddAttribute('symbol', 'bracket');
@@ -491,7 +491,7 @@ function AddStaffNumIDAttributes(StaffNode: TMeiNode; Node: TLyObject):
   TMeiNode; 
 begin
   Assert(Assigned(StaffNode));
-  Assert(StaffNode.GetName = 'staff');
+  Assert(StaffNode.Name = 'staff');
 
   StaffNode.AddAttribute('n', IntToStr(Node.FNum));
   StaffNode.AddAttribute('def', '#' + Node.FID);
@@ -520,13 +520,13 @@ begin
   case LyNode.FType of
     ekStaffGrp:
     begin
-      MeiNode.SetName('staffGrp');
+      MeiNode.Name := 'staffGrp';
       MeiNode := AddStaffGrpAttributes(MeiNode);
     end;
 
     ekStaff:
     begin
-      MeiNode.SetName('staffDef');
+      MeiNode.Name := 'staffDef';
       
       { Extract staffDef info from the first music expression in the first
       child Voice }
@@ -586,7 +586,7 @@ begin
   if not Assigned(XmlNode) then
     XmlNode := TMeiNode.Create();
 
-  XmlNode.SetName(NodeName);
+  XmlNode.Name := NodeName;
 
   if NodeName = 'xml' then
   begin
@@ -600,10 +600,6 @@ begin
 
   XmlNode.AddAttribute('n', IntToStr(FNum));
   
-  { for testing
-  XmlNode.SetTextNode(FContents);
-  }
-
   if FType = ekLayer then
   begin
     XMLNode.AppendChild(FMeasureList.ToMEI);

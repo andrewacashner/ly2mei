@@ -107,14 +107,14 @@ begin
 
     Title := TMeiNode.Create('title');
     Title.AddAttribute('type', 'main');
-    Title.SetTextNode(FTitle);
+    Title.TextNode := FTitle;
     TitleStmt.AppendChild(Title);
 
     if not FSubtitle.IsEmpty then 
     begin
       Subtitle := TMeiNode.Create('title');
       Subtitle.AddAttribute('type', 'subtitle');
-      Subtitle.SetTextNode(FSubtitle);
+      Subtitle.TextNode := FSubtitle;
       TitleStmt.AppendChild(Subtitle);
     end;
 
@@ -123,10 +123,10 @@ begin
 
     Composer := TMeiNode.Create('composer');
     if FDates.IsEmpty then
-      Composer.SetTextNode(FComposer)
+      Composer.TextNode := FComposer
     else
     begin
-      Composer.SetTextNode(Format('%s %s', [FComposer, FDates]));
+      Composer.TextNode := Format('%s %s', [FComposer, FDates]);
     end;
     TitleRespStmt.AppendChild(Composer);
     

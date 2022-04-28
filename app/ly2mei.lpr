@@ -9,16 +9,17 @@ uses SysUtils, Classes, StringTools, Macro, MEI, Header, ScoreTree;
 
 { MAIN }
 var
-  InputLines: TStringListPlus;
+  InputLines, OutputLines: TStringListPlus;
   Root: TMeiNode;
+  OutputStr: String;
 begin
   InputLines  := TStringListPlus.Create;
   Root := TMeiNode.CreateMeiRoot();
 
   try
-    if ParamCount <> 1 then
+    if (ParamCount < 1) or (ParamCount > 2) then
     begin
-      WriteLn(stderr, 'Usage: ly2mei INFILE.ly');
+      WriteLn(stderr, 'Usage: ly2mei INFILE.ly [OUTFILE.mei]');
       exit;
     end;
     
@@ -26,11 +27,19 @@ begin
     InputLines := ExpandMacros(InputLines);
     Root := AddMeiHead(Root, InputLines);
     Root := AddMeiScore(Root, InputLines); 
-    
-    WriteMeiDocument(Root);
+    OutputStr := MeiDocString(Root);
+   
+    if ParamCount = 2 then
+    begin
+      OutputLines := TStringListPlus.Create(OutputStr);
+      OutputLines.SaveToFile(ParamStr(2));
+    end
+    else
+      WriteLn(OutputStr);
    
   finally
     FreeAndNil(InputLines);
+    FreeAndNil(OutputLines);
     FreeAndNil(Root);
   end;
 end.
