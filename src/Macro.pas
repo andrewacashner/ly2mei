@@ -107,11 +107,12 @@ constructor TMacroDict.Create(InputLines: TStringListPlus);
     result := Value;
   end;
 
+const
+  MacroDefDelim: String = ' = ';
 var
   IndexList: TIndexList;
   ThisIndex: Integer;
   TestStr, Key, Value: String;
-  MacroDefDelim: String = ' = ';
 begin
   inherited Create;
   IndexList := TIndexList.Create(InputLines);

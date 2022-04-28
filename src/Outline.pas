@@ -23,14 +23,13 @@ type
     constructor Create();
     constructor Create(StartIndex, EndIndex: Integer);
 
-    { Given a string, return a new instance containing the start and end
-      indices of the range between the given delimiters. If not found, mark as
-      invalid.  }
-    constructor Create(Source, StartDelim, EndDelim: String);
-
     { Set the end index, and if the start index has also been set, calculate
       the span and mark as valid }
     procedure SetEndSpan(Index: Integer);
+    
+    { Given a string, mark the start and end indices of the range between the
+      given delimiters. If not found, mark as invalid. } 
+    procedure MarkRange(Source, StartDelim, EndDelim: String);
  
     { In a string, mark the start and end indices of a single expression
       between given delimiter characters, ignoring any nested groups with the
@@ -101,9 +100,8 @@ begin
   end; 
 end;
 
-constructor TIndexPair.Create(Source, StartDelim, EndDelim: String);
+procedure TIndexPair.MarkRange(Source, StartDelim, EndDelim: String);
 begin
-  inherited Create;
   FStart := Source.IndexOf(StartDelim);
   FSpan  := Source.Substring(FStart + 1).IndexOf(EndDelim);
   FEnd   := FStart + FSpan;
@@ -225,9 +223,11 @@ var
   Outline: TIndexPair;
 begin
   MarkupStrings := TStringList.Create;
+  Outline := TIndexPair.Create;
+
   while Source.CountChar('"') > 1 do
   begin
-    Outline := TIndexPair.Create(Source, '"', '"');
+    Outline.MarkRange(Source, '"', '"');
     if Outline.IsValid then
     begin
       Markup := CopyStringRange(Source, Outline, rkExclusive);
@@ -239,8 +239,8 @@ begin
   end;
   OutputStr := ConcatDequotedStrings(MarkupStrings);
 
-  FreeAndNil(Outline);
   FreeAndNil(MarkupStrings);
+  FreeAndNil(Outline);
   result := OutputStr;
 end;
 

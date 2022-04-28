@@ -7,7 +7,8 @@
   poet = "Anonymous"
   editor = "Prof. Contrappunto"
   source = "Made up"
-  copyright = "Public domain"
+  copyright = \markup { \italic "Public domain" 
+    "No rights reserved" }
 }
 
 MusicS = {
