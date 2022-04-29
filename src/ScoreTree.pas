@@ -12,6 +12,32 @@
   would store @code("Voice") as the @code(FType), @code("Soprano") as the
   @code(FID), and the rest of the expression, up to the conclusion of a
   curly-brace delimited group, as the @code(FContents).
+
+  The @link(TLyObject.ToMeiScoreDef) method extracts the needed information
+  from the tree to create a @link(TMeiNode) tree for the MEI @code(scoreDef)
+  element.
+  
+  To create the MEI music elements, we must convert the tree structure from
+  the Lilypond hierarchy to that of MEI.  Lilypond @code(\score) expressions
+  have a hierarchy of score/StaffGroup or ChoirStaff/Staff/Voice/music
+  expression, where the music is a list of measures containing pitches.  MEI
+  on the other hand, has a hierarchy of
+  score/measure/staffGrp/staff/layer/notes.  So for each MEI measure we must
+  build the path staffGrp/staff/layer/notes.
+
+  The @link(TLyObject) object provides two methods for converting the whole
+  tree to XML. @link(TLyObject.ToXMLAsIs) creates a @link(TMeiNode) tree that
+  copies the structure of the original Lilypond tree; @link(TLyObject.ToMEI)
+  creates a @link(TMeiNode) tree with the proper MEI structure.
+
+  To create the MEI structure, the @link(TLyObject) tree contains, at the
+  bottom level (equivalent to Lilypond Voice or MEI layer), a list of
+  containers corresponding to the music for each measure (each of which
+  contains a list of internal representations of a pitch). These structures
+  are defined and created in the @link(MusicNotes) unit.  That means we can
+  trace the path to each bottom node, copy a given measure's contents, and
+  then build the path to that node for each separate measure and each separate
+  voice or layer.
 }
 unit ScoreTree;
 
@@ -23,106 +49,131 @@ uses SysUtils, StrUtils, Classes, StringTools, Outline, MEI, MusicNotes;
 type 
   { Types of elements in the internal tree of @code(TLyObject) or
     @code(TMEIElement) objects }
-    { TODO get rid of deprecated ekXML }
-  TMusicTreeElement = (ekAnonymous, ekStaffGrp, ekStaff, ekLayer, ekMeasure, ekXML);
+  TMusicTreeElement = (ekAnonymous, ekStaffGrp, ekStaff, ekLayer, ekMeasure);
 
-  { @abstract(One node in a tree of Lilypond code objects.)
+  { @abstract(A node, which may be the base of a tree, of Lilypond code
+    objects.)
+
     These objects were originally created with @code(\new) commands in the
-    @code(\score) expression. }
+    @code(\score) expression. Includes fields for a type label, name (string),
+    id (string), num (integer), contents (string), measurelist
+    (@link(TMeasureList)), and child and sibling trees. 
+
+    To build this left-child/right-sibling tree, we look for two kinds of
+    objects: 
+      @orderedlist(
+          @item(@code(\new) expressions followed by an expression enclosed in
+            double angle brackets (@code(<<...>>))) 
+          @item(Expressions that conclude with an expression in matched curly
+            braces)
+        )
+    For the first kind, we store the value and ID, if there is one; then we
+    continue to look recursively for child elements within the angle-bracket
+    expression. For the second kind, we store value, ID, and contents
+    (everything from the ID up to the end of the matched-brace expression)
+    as a sibling of the previous item.
+  }
   TLyObject = class
-  public
+  private
     var
       { Label for object type, equivalent between Lilypond and MEI }
       FType: TMusicTreeElement;
       { Type of object, e.g., Voice or Lyrics }
       FName: String;
-      { ID string, as in @code(\new Voice = "Soprano"); blank if omitted in
-        Lilypond source }
+      { ID string, as in @code(\new Voice = "Soprano"). If Lilypond source did
+        not supply a label, we generate one randomly. }
       FID: String;
       { In-order position of elements of the same type: Staff elements are
-      numbered consecutively regardless of whether they are enclosed in a
-      StaffGroup. }
+        numbered consecutively regardless of whether they are enclosed in a
+        StaffGroup. }
       FNum: Integer;
       { Contents (Lilypond text): If the command is followed by section
-      delimited by double angle brackets, then the contents will be blank;
-      otherwise, everything up to the end of a curly-brace-delimited argument.
-      }
+        delimited by double angle brackets, then the contents will be blank;
+        otherwise, everything up to the end of a curly-brace-delimited
+        argument. }
       FContents: String;
       { List of measures (lists of pitch objects), parsed from contents;
-      ONLY for @code(ekLayer) type; otherwise empty (0 length)}
+        ONLY for @code(ekLayer) type; otherwise empty (0 length)}
       FMeasureList: TMeasureList;
       { Left child node (tree) }
       FChild: TLyObject;
       { Right sibling node (tree) }
       FSibling: TLyObject;
 
-    constructor Create();
+    { Get the right name string for this @code(FType). }
+    function NodeName: String;
 
-    { The @code(FType) field will be created automatically based on the
-    @code(Name) argument. }
-    constructor Create(Name, ID: String; ContentsStr: String = ''; Num:
-      Integer = 1; Child: TLyObject = nil; Sibling: TLyObject = nil); 
+    { Find the first descendant node with the given type. }
+    function FindFirstDescendant(ElementType: TMusicTreeElement): TLyObject;
 
-    { Destroy the whole tree. }
-    destructor Destroy; override;
+    { Find the first layer (@link(ekLayer) type) object in the tree in a
+    pre-order traversal. }
+    function FindFirstLayer: TLyObject;
 
+    { Find the first staff (@link(ekStaff) type) object in the tree in a
+    pre-order traversal. }
+    function FindFirstStaff: TLyObject;
+
+    { Create a @link(TMeiNode) tree with the path to the first layer in the
+      @link(TLyObject) tree. }
+    function ToMeiLayerPath(MeiNode: TMeiNode = nil): TMeiNode;
+   
     { Follow the left children all the way to the end; return the last one. }
     function LastChild: TLyObject;
 
     { Follow the right siblings all the way to the end; return the last one. }
     function LastSibling: TLyObject;
 
+    { Add given child to the end of the chain of children. }
+    function AppendLastChild(NewChild: TLyObject): TLyObject;
+
+    { Add given sibling to the end of the chain of siblings. }
+    function AppendLastSibling(NewSibling: TLyObject): TLyObject;
+
     { Number the objects with a given FType label consecutively in an in-order
-    traversal, regardless of relation to other elements of the tree hierarchy }
+      traversal, regardless of relation to other elements of the tree }
     procedure NumberElementsInOrder(ElementType: TMusicTreeElement);
 
     { Number ChoirStaff, StaffGroup, Staff, and Voice elements in order.
       We are treating ChoirStaff and StaffGroup as part of the same series.
-      (Should we?) }
+      (TODO Should we?) }
     procedure SetNumbers;
 
-    function ToMeiScoreDef: TMeiNode;
-    
+  public
+    constructor Create();
+
+    { The @code(FType) field will be created automatically based on the
+      @code(Name) argument. }
+    constructor Create(Name, ID: String; ContentsStr: String = ''; Num:
+      Integer = 1; Child: TLyObject = nil; Sibling: TLyObject = nil); 
+
+    { Destroy the whole tree. }
+    destructor Destroy; override;
+
+    { Write the tree to XML in its original, Lilypond-based structure. }
     function ToXMLAsIs(XmlNode: TMeiNode = nil): TMeiNode;
 
-
-    function NodeName: String;
-    
-    function FindFirstDescendant(ElementType: TMusicTreeElement): TLyObject;
-
-    function FindFirstLayer: TLyObject;
-    function FindFirstStaff: TLyObject;
-
-    function ToMeiLayerPath(MeiNode: TMeiNode = nil): TMeiNode;
-    
+    { Create an MEI scoreDef element. }
+    function ToMeiScoreDef: TMeiNode;
+   
+    { Create a @link(TMeiNode) tree with the proper MEI structure for the
+      music data, converting from Lilypond structure. }
     function ToMEI(MeiScore: TMeiNode = nil): TMeiNode;
 
+    property LyType:    TMusicTreeElement read FType;
+    property Name:      String            read FName;
+    property ID:        String            read FID;
+    property Num:       Integer           read FNum           write FNum;
+    property Contents:  String            read FContents;
+    property Measures:  TMeasureList      read FMeasureList;
+    property Child:     TLyObject         read FChild         write FChild;
+    property Sibling:   TLyObject         read FSibling       write FSibling;
   end;
 
-{ Build an LCRS tree of Lilypond @code(\new) objects.
-  
-  We look for two kinds of objects:
-    @orderedlist(
-      @item(@code(\new) expressions followed by an expression enclosed in
-        double angle brackets (@code(<<...>>))) 
-      @item(Expressions that conclude with an expression in matched curly
-        braces)
-    )
-  For the first kind, we store the value and ID, if there is one; then we
-  continue to look recursively for child elements within the angle-bracket
-  expression. For the second kind, we store value, ID, and contents
-  (everything from the ID up to the end of the matched-brace expression)
-  as a sibling of the previous item.
-}
-function BuildLyObjectTree(Source: String; Tree: TLyObject): TLyObject;
-
-
-function CreateLyObjectTreeFromLy(LyInput: TStringList): TLyObject;
-
-function CreateMeiScoreDefFromLy(LyInput: TStringList): TMeiNode;
-
+{ Build the MEI @code(scoreDef) element and add it to the given MEI tree. }
 function AddMeiScoreDef(Root: TMeiNode; LyInput: TStringList): TMeiNode;
 
+{ Build the MEI @code(score) element and add it to the given MEI tree. }
 function AddMeiScore(Root: TMeiNode; LyInput: TStringList): TMeiNode;
 
 implementation
@@ -195,6 +246,89 @@ begin
     result := FSibling.LastSibling;
 end;
 
+function TLyObject.AppendLastChild(NewChild: TLyObject): TLyObject;
+begin
+  Self.LastChild.FChild := NewChild;
+  result := Self;
+end;
+
+function TLyObject.AppendLastSibling(NewSibling: TLyObject): TLyObject;
+begin
+  Self.LastSibling.FSibling := NewSibling;
+  result := Self;
+end;
+
+procedure TLyObject.NumberElementsInOrder(ElementType: TMusicTreeElement);
+var
+  N: Integer = 0;
+function InnerNums(Node: TLyObject): TLyObject;
+begin
+  if Assigned(Node) then
+  begin
+    if Node.FType = ElementType then
+    begin
+      Inc(N);
+      Node.Num := N;
+    end;
+    if Assigned(Node.Child) then
+      Node.Child := InnerNums(Node.Child);
+    if Assigned(Node.Sibling) then
+      Node.Sibling := InnerNums(Node.Sibling);
+  end;
+  result := Node;
+end;
+begin
+  InnerNums(Self);
+end;
+
+procedure TLyObject.SetNumbers;
+begin
+  NumberElementsInOrder(ekStaffGrp); 
+  NumberElementsInOrder(ekStaff);
+  NumberElementsInOrder(ekLayer);
+end;
+
+function TLyObject.ToXMLAsIs(XmlNode: TMeiNode = nil): TMeiNode;
+begin
+  if not Assigned(XmlNode) then
+    XmlNode := TMeiNode.Create();
+
+  XmlNode.Name := NodeName;
+
+  if NodeName = 'xml' then
+  begin
+    XmlNode.AddAttribute('type', FName);
+  end;
+
+  if not FID.IsEmpty then
+  begin
+    XmlNode.AddAttribute('xml:id', FID);
+  end;
+
+  XmlNode.AddAttribute('n', IntToStr(FNum));
+  
+  if FType = ekLayer then
+  begin
+    XMLNode.AppendChild(FMeasureList.ToMEI);
+  end;
+
+  if Assigned(FChild) then
+  begin
+    XmlNode.AppendChild(FChild.ToXMLAsIs);
+  end;
+
+  if Assigned(FSibling) then
+  begin
+    XmlNode.AppendSibling(FSibling.ToXMLAsIs);
+  end;
+
+  result := XmlNode;
+end;
+
+
+
+{ TODO make this a constructor? }
+{ Build an LCRS tree of Lilypond @code(\new) objects. }
 function BuildLyObjectTree(Source: String; Tree: TLyObject): TLyObject;
 var
   SearchIndex: Integer = 0;
@@ -233,9 +367,9 @@ begin
       if Tree = nil then
         Tree := TLyObject.Create(ThisType, ThisID)
       else
-        Tree.LastChild.FChild := TLyObject.Create(ThisType, ThisID);
+        Tree := Tree.AppendLastChild(TLyObject.Create(ThisType, ThisID));
 
-      Tree.LastChild.FChild := BuildLyObjectTree(ThisContents, nil);
+      Tree := Tree.AppendLastChild(BuildLyObjectTree(ThisContents, nil));
       Source := StringDropBefore(Source.Substring(SearchIndex), ThisContents);
     end
     else
@@ -247,48 +381,20 @@ begin
       if Tree = nil then
         Tree := TLyObject.Create(ThisType, ThisID, ThisContents)
       else
-        Tree.LastSibling.FSibling := TLyObject.Create(ThisType, ThisID, ThisContents);
+        Tree := Tree.AppendLastSibling(TLyObject.Create(ThisType, ThisID,
+          ThisContents));
 
       Source := Source.Substring(SearchIndex + 1); 
     end;
 
     { Look for the next sibling where you left off from the last search }
-    Tree.LastSibling.FSibling := BuildLyObjectTree(Source, nil);
+    Tree := Tree.AppendLastSibling(BuildLyObjectTree(Source, nil));
   end;
   FreeAndNil(Outline);
   result := Tree;
 end;
 
-procedure TLyObject.NumberElementsInOrder(ElementType: TMusicTreeElement);
-var
-  N: Integer = 0;
-function InnerNums(Node: TLyObject): TLyObject;
-begin
-  if Assigned(Node) then
-  begin
-    if Node.FType = ElementType then
-    begin
-      Inc(N);
-      Node.FNum := N;
-    end;
-    if Assigned(Node.FChild) then
-      Node.FChild := InnerNums(Node.FChild);
-    if Assigned(Node.FSibling) then
-      Node.FSibling := InnerNums(Node.FSibling);
-  end;
-  result := Node;
-end;
-begin
-  InnerNums(Self);
-end;
-
-procedure TLyObject.SetNumbers;
-begin
-  NumberElementsInOrder(ekStaffGrp); 
-  NumberElementsInOrder(ekStaff);
-  NumberElementsInOrder(ekLayer);
-end;
-
+{ Build the tree and number the elements. }
 function CreateLyObjectTreeFromLy(LyInput: TStringList): TLyObject;
 var 
   LyTree: TLyObject = nil;
@@ -486,19 +592,6 @@ begin
   result := StaffGrpNode;
 end;
 
-{ TODO are we using this? }
-function AddStaffNumIDAttributes(StaffNode: TMeiNode; Node: TLyObject):
-  TMeiNode; 
-begin
-  Assert(Assigned(StaffNode));
-  Assert(StaffNode.Name = 'staff');
-
-  StaffNode.AddAttribute('n', IntToStr(Node.FNum));
-  StaffNode.AddAttribute('def', '#' + Node.FID);
-
-  result := StaffNode;
-end;
-
 function TLyObject.ToMeiScoreDef: TMeiNode;
 function InnerScoreDef(LyNode: TLyObject; MeiNode: TMeiNode): TMeiNode;
 var 
@@ -512,10 +605,10 @@ begin
     MeiNode := TMeiNode.Create();
   end;
 
-  MeiNode.AddAttribute('n', IntToStr(LyNode.FNum));
+  MeiNode.AddAttribute('n', IntToStr(LyNode.Num));
  
-  if not LyNode.FID.IsEmpty then
-    MeiNode.AddAttribute('xml:id', LyNode.FID); 
+  if not LyNode.ID.IsEmpty then
+    MeiNode.AddAttribute('xml:id', LyNode.ID); 
   
   case LyNode.FType of
     ekStaffGrp:
@@ -530,10 +623,10 @@ begin
       
       { Extract staffDef info from the first music expression in the first
       child Voice }
-      if Assigned(LyNode.FChild) and (LyNode.FChild.FType = ekLayer) then
+      if Assigned(LyNode.Child) and (LyNode.Child.LyType = ekLayer) then
       begin
         { Search c. first 10 lines }
-        SearchStr := LyNode.FChild.FContents.Substring(0, 800); 
+        SearchStr := LyNode.Child.Contents.Substring(0, 800); 
         Clef  := FindLyClef(SearchStr);
         Key   := FindLyKey(SearchStr);
         Meter := FindLyMeter(SearchStr);
@@ -543,15 +636,15 @@ begin
   end;
 
   { Create this element and its children }
-  if (LyNode.FType = ekStaffGrp) and Assigned(LyNode.FChild) then
+  if (LyNode.LyType = ekStaffGrp) and Assigned(LyNode.Child) then
   begin
-    MeiNode.AppendChild(InnerScoreDef(LyNode.FChild, nil));
+    MeiNode.AppendChild(InnerScoreDef(LyNode.Child, nil));
   end;
 
   { Create its siblings }
-  if Assigned(LyNode.FSibling) then
+  if Assigned(LyNode.Sibling) then
   begin
-    MeiNode.AppendSibling(InnerScoreDef(LyNode.FSibling, nil));
+    MeiNode.AppendSibling(InnerScoreDef(LyNode.Sibling, nil));
   end;
 
   result := MeiNode;
@@ -581,43 +674,8 @@ begin
   result := NameString;
 end;
 
-function TLyObject.ToXMLAsIs(XmlNode: TMeiNode = nil): TMeiNode;
-begin
-  if not Assigned(XmlNode) then
-    XmlNode := TMeiNode.Create();
-
-  XmlNode.Name := NodeName;
-
-  if NodeName = 'xml' then
-  begin
-    XmlNode.AddAttribute('type', FName);
-  end;
-
-  if not FID.IsEmpty then
-  begin
-    XmlNode.AddAttribute('xml:id', FID);
-  end;
-
-  XmlNode.AddAttribute('n', IntToStr(FNum));
-  
-  if FType = ekLayer then
-  begin
-    XMLNode.AppendChild(FMeasureList.ToMEI);
-  end;
-
-  if Assigned(FChild) then
-  begin
-    XmlNode.AppendChild(FChild.ToXMLAsIs);
-  end;
-
-  if Assigned(FSibling) then
-  begin
-    XmlNode.AppendSibling(FSibling.ToXMLAsIs);
-  end;
-
-  result := XmlNode;
-end;
-
+{ TODO how many times are we building the TLyObject tree? }
+{ Build the @link(TLyObject) tree and create the @code(scoreDef) element. }
 function CreateMeiScoreDefFromLy(LyInput: TStringList): TMeiNode;
 var 
   LyTree: TLyObject;
@@ -630,6 +688,7 @@ begin
   FreeAndNil(LyTree);
   result := MeiScoreDef;
 end;
+
 
 function AddMeiScoreDef(Root: TMeiNode; LyInput: TStringList): TMeiNode;
 var
@@ -644,6 +703,7 @@ begin
 
   result := Root;
 end;
+
 
 function TLyObject.FindFirstDescendant(ElementType: TMusicTreeElement): 
   TLyObject;
@@ -707,12 +767,12 @@ var
   MeasureNode: TMeiNode = nil;
   MeasureList: TMeasureList;
 begin
-  if (LyLayer.FType = ekLayer) then
+  if (LyLayer.LyType = ekLayer) then
   begin
-    MeasureList := LyLayer.FMeasureList;
+    MeasureList := LyLayer.Measures;
     if MeasureNum < MeasureList.Count then
     begin
-      MeasureNode := LyLayer.FMeasureList.Items[MeasureNum].ToMEI;
+      MeasureNode := LyLayer.Measures.Items[MeasureNum].ToMEI;
     end
     else
       WriteLn(stderr, 'Measure number out of range');
@@ -731,9 +791,9 @@ var
   MeiFermatas, MeiLines: TMeiNode;
 begin
   Assert(Assigned(LyNode) and Assigned(MeiMeasure));
-  Assert(LyNode.FType = ekLayer);
+  Assert(LyNode.LyType = ekLayer);
 
-  ThisMeasureList := LyNode.FMeasureList;
+  ThisMeasureList := LyNode.Measures;
 
   if MeasureNum < ThisMeasureList.Count then
   begin
@@ -770,14 +830,14 @@ begin
 
     MeiTree := AddMeiFermatasAndLines(LyLayer, MeiTree, MeasureNum);
 
-    if Assigned(LyStaff.FSibling) then
+    if Assigned(LyStaff.Sibling) then
     begin
-      MeiTree := BuildMeiMeasureTree(LyStaff.FSibling, MeiTree, MeasureNum);
+      MeiTree := BuildMeiMeasureTree(LyStaff.Sibling, MeiTree, MeasureNum);
     end;
   
-    if (LyTree.FType <> ekStaff) and Assigned(LyTree.FSibling) then
+    if (LyTree.LyType <> ekStaff) and Assigned(LyTree.Sibling) then
     begin
-      MeiTree := BuildMeiMeasureTree(LyTree.FSibling, MeiTree, MeasureNum);
+      MeiTree := BuildMeiMeasureTree(LyTree.Sibling, MeiTree, MeasureNum);
     end;
   end;
   
@@ -803,7 +863,7 @@ begin
 
   if Assigned(LayerNode) then
   begin
-    MeasureList := LayerNode.FMeasureList;
+    MeasureList := LayerNode.Measures;
     MeasureCount := MeasureList.Count;
     for MeasureNum := 0 to (MeasureCount - 1) do
     begin

@@ -4,7 +4,10 @@
   to XML.)
   @author(Andrew Cashner)
 
-  We represent an XML tree as a left-child/right-sibling tree of @link(TMeiNode) objects. The unit defines a basic library of functions for creating, accessing, and manipulating the tree. All these functions are recursive and most return the root of the tree given as input. 
+  We represent an XML tree as a left-child/right-sibling tree of
+  @link(TMeiNode) objects. The unit defines a basic library of functions for
+  creating, accessing, and manipulating the tree. All these functions are
+  recursive and most return the root of the tree given as input. 
 }
 unit MEI;
 
@@ -96,6 +99,7 @@ type
     { Copy the whole tree starting from the given node to this tree. }
     procedure Assign(SourceNode: TMeiNode);
 
+    { TODO are this and the following function needed? }
     { Return the first node that matches the name.
       Does not copy the tree, just returns the pointer to its root. }
     function FindElementByName(Name: String): TMeiNode;
