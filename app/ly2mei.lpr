@@ -5,16 +5,15 @@
 }
 program ly2mei(input, output, stderr);
 
-uses SysUtils, Classes, StringTools, Macro, MEI, Header, ScoreTree;
+uses SysUtils, Classes, StringTools, Macro, MEI, ScoreTree;
 
 { MAIN }
 var
   InputLines, OutputLines: TStringListPlus;
-  Root: TMeiNode;
+  MeiTree: TMeiNode;
   OutputStr: String;
 begin
   InputLines  := TStringListPlus.Create;
-  Root := TMeiNode.CreateMeiRoot();
 
   try
     if (ParamCount < 1) or (ParamCount > 2) then
@@ -25,9 +24,8 @@ begin
     
     InputLines.LoadFromFile(ParamStr(1));
     InputLines := ExpandMacros(InputLines);
-    Root := AddMeiHead(Root, InputLines);
-    Root := AddMeiScore(Root, InputLines); 
-    OutputStr := MeiDocString(Root);
+    MeiTree := CreateMeiDocument(InputLines);
+    OutputStr := MeiDocString(MeiTree);
    
     if ParamCount = 2 then
     begin
@@ -40,7 +38,7 @@ begin
   finally
     FreeAndNil(InputLines);
     FreeAndNil(OutputLines);
-    FreeAndNil(Root);
+    FreeAndNil(MeiTree);
   end;
 end.
 

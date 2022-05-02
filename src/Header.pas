@@ -49,9 +49,9 @@ type
     function ToMEI(): TMeiNode;
   end;
 
-{ Process and convert a Lilypond @code(\header) to a @code(meiHead) element
-  and add it to the given MEI tree. }
-function AddMeiHead(Root: TMeiNode; LyInput: TStringList): TMeiNode;
+{ Create an MEI tree for a @code(meiHead) element from a Lilypond
+  @code(\header) expression. }
+function CreateMeiHead(LyInput: TStringList): TMeiNode;
 
 implementation
 
@@ -289,22 +289,15 @@ begin
   result := HeaderTree;
 end;
 
-function AddMeiHead(Root: TMeiNode; LyInput: TStringList): TMeiNode;
+function CreateMeiHead(LyInput: TStringList): TMeiNode;
 var
   HeaderData: THeader;
-  MeiHead: TMeiNode = nil;
+  MeiHead: TMeiNode;
 begin
-  assert(Assigned(Root));
   HeaderData := THeader.Create(LyInput);
   MeiHead := HeaderData.ToMei;
-  
-  if Assigned(MeiHead) then
-    Root.AppendChild(MeiHead)
-  else
-    WriteLn(stderr, 'Could not create meiHead element');
-
   FreeAndNil(HeaderData);
-  result := Root;
+  result := MeiHead;
 end;
 
 end.

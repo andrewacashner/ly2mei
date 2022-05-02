@@ -43,7 +43,7 @@ unit ScoreTree;
 
 interface
 
-uses SysUtils, StrUtils, Classes, StringTools, Outline, MEI, MusicNotes;
+uses SysUtils, StrUtils, Classes, StringTools, Outline, MEI, Header, MusicNotes;
 
 type 
   { Types of elements in the internal tree of @code(TLyObject) or
@@ -153,7 +153,7 @@ type
    
     { Create a @link(TMeiNode) tree with the proper MEI structure for the
       music data, converting from Lilypond structure. }
-    function ToMEI(MeiScore: TMeiNode = nil): TMeiNode;
+    function ToMeiSection: TMeiNode;
 
     property LyType:    TLyObjectType read FType;
     property Name:      String        read FName;
@@ -165,11 +165,13 @@ type
     property Sibling:   TLyObject     read FSibling       write FSibling;
   end;
 
-{ Build the MEI @code(scoreDef) element and add it to the given MEI tree. }
-function AddMeiScoreDef(Root: TMeiNode; LyInput: TStringList): TMeiNode;
+{ Create a new MEI tree consisting of the MEI @code(score) element, including
+  @code(scoreDef) and @code(section) with music contents, and add it to the
+  given MEI tree. }
+function CreateMeiScore(LyInput: TStringList): TMeiNode;
 
-{ Build the MEI @code(score) element and add it to the given MEI tree. }
-function AddMeiScore(Root: TMeiNode; LyInput: TStringList): TMeiNode;
+{ Create a whole MEI document tree. }
+function CreateMeiDocument(LyInput: TStringList): TMeiNode;
 
 implementation
 
@@ -407,7 +409,7 @@ begin
   result := Tree;
 end;
 
-{ Build the tree and number the elements. }
+{ TODO make a constructor ? }
 function CreateLyObjectTreeFromLy(LyInput: TStringList): TLyObject;
 var
   LyTree: TLyObject;
@@ -690,36 +692,6 @@ begin
   result := NameString;
 end;
 
-{ Replace with ToMEiScoreDef? }
-{ TODO how many times are we building the TLyObject tree? }
-{ Build the @link(TLyObject) tree and create the @code(scoreDef) element. }
-function CreateMeiScoreDefFromLy(LyInput: TStringList): TMeiNode;
-var 
-  LyTree: TLyObject;
-  MeiScoreDef: TMeiNode = nil;
-begin
-  LyTree := CreateLyObjectTreeFromLy(LyInput);
-  MeiScoreDef := LyTree.ToMeiScoreDef;
-  FreeAndNil(LyTree);
-  result := MeiScoreDef;
-end;
-
-
-function AddMeiScoreDef(Root: TMeiNode; LyInput: TStringList): TMeiNode;
-var
-  ScoreDef: TMeiNode = nil;
-begin
-  Assert(Assigned(Root));
-  ScoreDef := CreateMeiScoreDefFromLy(LyInput);
-  if Assigned(ScoreDef) then
-    Root.AppendChild(ScoreDef)
-  else
-    WriteLn(stderr, 'Could not create scoreDef element');
-
-  result := Root;
-end;
-
-
 function TLyObject.FindFirstDescendant(ElementType: TLyObjectType): 
   TLyObject;
 var
@@ -863,24 +835,21 @@ end;
 { Flip an @code(LyObjectTree) with a staff/voice/measure hierarchy
   to make a @code(MeiNode) tree with a measure/staff/voice hierarchy. }
   { TODO we do not support multiple \score expressions }
-function TLyObject.ToMEI(MeiScore: TMeiNode = nil): TMeiNode;
+function TLyObject.ToMeiSection: TMeiNode;
 var
   LayerNode: TLyObject;
   MeasureList: TMeasureList;
-  MeiMeasureTree: TMeiNode;
+  MeiSection, MeiMeasureTree: TMeiNode;
   MeasureCount, MeasureNum: Integer;
 begin
+  MeiSection := TMeiNode.Create('section');
+  
   LayerNode := Self.FindFirstLayer;
-  if not Assigned(MeiScore) then
-  begin
-    MeiScore := TMeiNode.Create('section');
-  end;
-
   if Assigned(LayerNode) then
   begin
     MeasureList := LayerNode.Measures;
     MeasureCount := MeasureList.Count;
-    for MeasureNum := 0 to (MeasureCount - 1) do
+    for MeasureNum := 0 to MeasureCount - 1 do
     begin
       MeiMeasureTree := TMeiNode.Create('measure');
       MeiMeasureTree.AddAttribute('n', IntToStr(MeasureNum + 1));
@@ -897,64 +866,55 @@ begin
 
       { For this measure, staff/layer/notes }
       MeiMeasureTree := BuildMeiMeasureTree(Self, MeiMeasureTree, MeasureNum);
-      MeiScore.AppendChild(MeiMeasureTree);
-
+      MeiSection.AppendChild(MeiMeasureTree);
     end;
   end;
+  result := MeiSection;
+end;
+
+function CreateMeiScore(LyInput: TStringList): TMeiNode;
+  
+  function CreateEmptyMeiScore: TMeiNode;
+  var
+    MeiMusic, MeiBody, MeiMdiv, MeiScore: TMeiNode;
+  begin
+      MeiMusic  := TMeiNode.Create('music');
+      MeiBody   := TMeiNode.Create('body');
+      MeiMdiv   := TMeiNode.Create('mdiv');
+      MeiScore  := TMeiNode.Create('score');
+      MeiMusic.AppendChild(MeiBody);
+      MeiBody.AppendChild(MeiMdiv);
+      MeiMdiv.AppendChild(MeiScore);
+      result := MeiMusic;
+  end;
+
+var
+  LyTree: TLyObject;
+  MeiScore, MeiScoreDef, MeiSection: TMeiNode;
+begin
+  LyTree := CreateLyObjectTreeFromLy(LyInput);
+ 
+  MeiScore    := CreateEmptyMeiScore;
+  MeiScoreDef := LyTree.ToMeiScoreDef;
+  MeiSection  := LyTree.ToMeiSection;
+
+  MeiScore.AppendLastChild(MeiScoreDef);
+  MeiScoreDef.AppendSibling(MeiSection);
+  
+  FreeAndNil(LyTree);
   result := MeiScore;
 end;
 
-function CreateEmptyMeiScore: TMeiNode;
+function CreateMeiDocument(LyInput: TStringList): TMeiNode;
 var
-  MeiMusic, MeiBody, MeiMdiv, MeiScore: TMeiNode;
+  Root, MeiHeader, MeiScore: TMeiNode;
 begin
-    MeiMusic := TMeiNode.Create('music');
-    MeiBody := TMeiNode.Create('body');
-    MeiMdiv := TMeiNode.Create('mdiv');
-    MeiScore := TMeiNode.Create('score');
-    MeiMusic.AppendChild(MeiBody);
-    MeiBody.AppendChild(MeiMdiv);
-    MeiMdiv.AppendChild(MeiScore);
-    result := MeiMusic;
-end;
+  Root      := TMeiNode.CreateMeiRoot;
+  MeiHeader := CreateMeiHead(LyInput);
+  MeiScore  := CreateMeiScore(LyInput);
 
-function AddMeiScore(Root: TMeiNode; LyInput: TStringList): TMeiNode;
-var
-  LyTree: TLyObject = nil;
-  Score, ScoreDef, Measures: TMeiNode;
-begin
-  Assert(Assigned(Root));
- 
-  Score := CreateEmptyMeiScore;
-  Root.AppendChild(Score);
-
-  Measures := nil;
-  LyTree := CreateLyObjectTreeFromLy(LyInput);
-  
-  if Assigned(LyTree) then
-  begin
-    Measures := LyTree.ToMEI;
-    FreeAndNil(LyTree);
-  end;
-
-  if Assigned(Measures) then
-  begin
-    ScoreDef := CreateMeiScoreDefFromLy(LyInput);
-    if Assigned(ScoreDef) then
-    begin
-      Score.AppendLastChild(ScoreDef);
-      ScoreDef.AppendSibling(Measures);
-    end
-    else
-    begin
-      WriteLn(stderr, 'Could not create scoreDef element');
-    end;
-  end
-  else
-  begin
-    WriteLn(stderr, 'Could not create score element');
-  end;
-
+  Root.AppendChild(MeiHeader);
+  Root.AppendChild(MeiScore);
   result := Root;
 end;
 
