@@ -253,12 +253,11 @@ end;
 
 function ExpandMacros(InputLines: TStringListPlus): TStringListPlus;
 begin
-  InputLines.RemoveComments;
+  InputLines := InputLines.RemoveComments;
   InputLines := ProcessMacros(InputLines);
-  InputLines.RemoveBlankLines;
+  InputLines := InputLines.RemoveBlankLines;
   InputLines := ExpandMultiRests(InputLines);
   result := InputLines;
 end;
-
    
 end.

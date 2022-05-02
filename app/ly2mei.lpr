@@ -13,7 +13,7 @@ var
   MeiTree: TMeiNode;
   OutputStr: String;
 begin
-  InputLines  := TStringListPlus.Create;
+  InputLines := TStringListPlus.Create;
 
   try
     if (ParamCount < 1) or (ParamCount > 2) then

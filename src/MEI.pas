@@ -319,21 +319,35 @@ begin
 end;
 
 function TMeiNode.AppendSibling(Sibling: TMeiNode): TMeiNode;
+var
+  EndSibling: TMeiNode;
 begin
-  result := Self.LastSibling.AddFirstSibling(Sibling);
+  EndSibling := Self.LastSibling;
+  EndSibling := EndSibling.AddFirstSibling(Sibling);
+  result := Self;
 end;
 
 function TMeiNode.AppendChild(Child: TMeiNode): TMeiNode;
+var
+  ThisChild: TMeiNode;
 begin
   if not Assigned(FChild) then
-    result := Self.AddFirstChild(Child)
-  else 
-    result := Self.FChild.AppendSibling(Child);
+    Self := Self.AddFirstChild(Child)
+  else
+  begin
+    ThisChild:= Self.FChild;
+    ThisChild := ThisChild.AppendSibling(Child);
+  end;
+  result := Self;
 end;
 
 function TMeiNode.AppendLastChild(Child: TMeiNode): TMeiNode;
+var
+  EndChild: TMeiNode;
 begin
-  result := Self.LastChild.AddFirstChild(Child);
+  EndChild := Self.LastChild;
+  EndChild := EndChild.AddFirstChild(Child);
+  result := Self;
 end;
 
 procedure TMeiNode.AssignNodeOnly(SourceNode: TMeiNode);

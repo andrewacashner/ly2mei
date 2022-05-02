@@ -27,8 +27,9 @@
 
   The @link(TLyObject) object provides two methods for converting the whole
   tree to XML. @link(TLyObject.ToXMLAsIs) creates a @link(TMeiNode) tree that
-  copies the structure of the original Lilypond tree; @link(TLyObject.ToMEI)
-  creates a @link(TMeiNode) tree with the proper MEI structure.
+  copies the structure of the original Lilypond tree;
+  @link(TLyObject.ToMeiSection) creates a @link(TMeiNode) tree with the proper
+  MEI structure.
 
   To create the MEI structure, the @link(TLyObject) tree contains, at the
   bottom level (equivalent to Lilypond Voice or MEI layer), a list of
@@ -102,6 +103,10 @@ type
     { Get the right name string for this @code(FType). }
     function NodeName: String;
 
+    { Create a single MEI node for @code(scoreDef) from a @link(TLyObject)
+      node, not including its children or siblings. }
+    function ToMeiScoreDefNode: TMeiNode;
+
     { Find the first descendant node with the given type. }
     function FindFirstDescendant(ElementType: TLyObjectType): TLyObject;
 
@@ -141,6 +146,13 @@ type
       @code(Name) argument. }
     constructor Create(Name, ID: String; ContentsStr: String = ''; Num:
       Integer = 1; Child: TLyObject = nil; Sibling: TLyObject = nil); 
+
+    { Create a whole tree from Lilypond input as stringlist. }
+    constructor Create(Source: String);
+
+    { Create a whole tree from Lilypond input as stringlist, and number the
+      elements consecutively. }
+    constructor Create(LyInput: TStringList);
 
     { Destroy the whole tree. }
     destructor Destroy; override;
@@ -327,17 +339,17 @@ begin
 
   if FType = ekLayer then
   begin
-    XMLNode.AppendChild(FMeasureList.ToMEI);
+    XmlNode := XmlNode.AppendChild(FMeasureList.ToMEI);
   end;
 
   if Assigned(FChild) then
   begin
-    XmlNode.AppendChild(FChild.ToXMLAsIs);
+    XmlNode := XmlNode.AppendChild(FChild.ToXMLAsIs);
   end;
 
   if Assigned(FSibling) then
   begin
-    XmlNode.AppendSibling(FSibling.ToXMLAsIs);
+    XmlNode := XmlNode.AppendSibling(FSibling.ToXMLAsIs);
   end;
 
   result := XmlNode;
@@ -345,7 +357,7 @@ end;
 
 { TODO START make this a constructor? }
 { Build an LCRS tree of Lilypond @code(\new) objects. }
-function BuildLyObjectTree(Source: String; Tree: TLyObject = nil): TLyObject;
+constructor TLyObject.Create(Source: String);
 var
   SearchIndex: Integer = 0;
   SearchStr, ThisType, ThisID, ThisContents: String;
@@ -353,6 +365,8 @@ var
 begin
   Outline := TIndexPair.Create;
   SearchStr := Source;
+  ThisType := '';
+  ThisID := '';
 
   if SearchStr.Contains('\new ') then
   begin
@@ -363,7 +377,6 @@ begin
     SearchStr := StringDropBefore(SearchStr, ThisType);
 
     { Find ID }
-    ThisID := '';
     if SearchStr.StartsWith(' = "') then
     begin 
       ThisID := CopyStringBetween(SearchStr, ' = "', '"');
@@ -380,43 +393,29 @@ begin
       Outline.MarkBalancedDelimiterSubstring(SearchStr, '<', '>');
       ThisContents := CopyStringRange(SearchStr, Outline, rkInclusive);
 
-      if Tree = nil then
-        Tree := TLyObject.Create(ThisType, ThisID)
-      else
-        Tree := Tree.AppendLastChild(TLyObject.Create(ThisType, ThisID));
-
-      Tree := Tree.AppendLastChild(BuildLyObjectTree(ThisContents));
-      Source := StringDropBefore(Source.Substring(SearchIndex), ThisContents);
+      Create(ThisType, ThisID);
+      if ThisContents.Contains('\new ') then
+        FChild := TLyObject.Create(ThisContents);
     end
     else
     begin
       { Add this expression as a sibling, then move on to next }
       ThisContents := CopyBraceExpr(SearchStr);
-
-      if Tree = nil then
-        Tree := TLyObject.Create(ThisType, ThisID, ThisContents)
-      else
-        Tree := Tree.AppendLastSibling(TLyObject.Create(ThisType, ThisID,
-          ThisContents));
-
-      Source := StringDropBefore(Source.Substring(SearchIndex), ThisContents);
+      Create(ThisType, ThisID, ThisContents);
     end;
 
     { Look for the next sibling where you left off from the last search }
-    Tree := Tree.AppendLastSibling(BuildLyObjectTree(Source));
+    Source := StringDropBefore(Source.Substring(SearchIndex), ThisContents);
+    if Source.Contains('\new ') then
+      FSibling := TLyObject.Create(Source);
   end;
   FreeAndNil(Outline);
-  result := Tree;
 end;
 
-{ TODO make a constructor ? }
-function CreateLyObjectTreeFromLy(LyInput: TStringList): TLyObject;
-var
-  LyTree: TLyObject;
+constructor TLyObject.Create(LyInput: TStringList);
 begin
-  LyTree := BuildLyObjectTree(LyInput.Text); 
-  LyTree := LyTree.NumberElementsInOrder;
-  result := LyTree;
+  Create(LyInput.Text);
+  Self := NumberElementsInOrder;
 end;
 
 type
@@ -608,73 +607,77 @@ begin
   result := StaffGrpNode;
 end;
 
-{ TODO START cleanup here }
-function TLyObject.ToMeiScoreDef: TMeiNode;
-function InnerScoreDef(LyNode: TLyObject; MeiNode: TMeiNode): TMeiNode;
+function TLyObject.ToMeiScoreDefNode: TMeiNode;
 var 
   SearchStr: String;
   Clef: TClefKind;
   Key: TKeyKind;
   Meter: TMeter;
+  NewNode: TMeiNode;
 begin
-  if not Assigned(MeiNode) then
-  begin
-    MeiNode := TMeiNode.Create();
-  end;
-
-  MeiNode.AddAttribute('n', IntToStr(LyNode.Num));
+  NewNode := TMeiNode.Create();
+  NewNode.AddAttribute('n', IntToStr(FNum));
  
-  if not LyNode.ID.IsEmpty then
-    MeiNode.AddAttribute('xml:id', LyNode.ID); 
+  if not FID.IsEmpty then
+  begin
+    NewNode.AddAttribute('xml:id', FID); 
+  end;
   
-  case LyNode.FType of
+  case FType of
     ekStaffGrp:
     begin
-      MeiNode.Name := 'staffGrp';
-      MeiNode := AddStaffGrpAttributes(MeiNode);
+      NewNode.Name := 'staffGrp';
+      NewNode := AddStaffGrpAttributes(NewNode);
     end;
 
     ekStaff:
     begin
-      MeiNode.Name := 'staffDef';
+      NewNode.Name := 'staffDef';
       
       { Extract staffDef info from the first music expression in the first
       child Voice }
-      if Assigned(LyNode.Child) and (LyNode.Child.LyType = ekLayer) then
+      if Assigned(FChild) and (FChild.LyType = ekLayer) then
       begin
         { Search c. first 10 lines }
-        SearchStr := LyNode.Child.Contents.Substring(0, 800); 
+        SearchStr := FChild.Contents.Substring(0, 800); 
         Clef  := FindLyClef(SearchStr);
         Key   := FindLyKey(SearchStr);
         Meter := TMeter.Create(SearchStr);
-        MeiNode := AddStaffDefAttributes(MeiNode, Clef, Key, Meter); 
+        NewNode := AddStaffDefAttributes(NewNode, Clef, Key, Meter); 
         FreeAndNil(Meter);
       end;
     end;
   end;
-
-  { Create this element and its children }
-  if (LyNode.LyType = ekStaffGrp) and Assigned(LyNode.Child) then
-  begin
-    MeiNode.AppendChild(InnerScoreDef(LyNode.Child, nil));
-  end;
-
-  { Create its siblings }
-  if Assigned(LyNode.Sibling) then
-  begin
-    MeiNode.AppendSibling(InnerScoreDef(LyNode.Sibling, nil));
-  end;
-
-  result := MeiNode;
+  result := NewNode;
 end;
+
+function TLyObject.ToMeiScoreDef: TMeiNode;
+
+  function InnerScoreDef(LyNode: TLyObject): TMeiNode;
+  var
+    MeiTree: TMeiNode;
+  begin
+    MeiTree := LyNode.ToMeiScoreDefNode;
+
+    if (LyNode.LyType = ekStaffGrp) and Assigned(LyNode.Child) then
+    begin
+      MeiTree := MeiTree.AppendChild(InnerScoreDef(LyNode.Child));
+    end;
+    
+    if Assigned(LyNode.Sibling) then
+    begin
+      MeiTree := MeiTree.AppendSibling(InnerScoreDef(LyNode.Sibling));
+    end;
+    result := MeiTree;
+  end;
 
 var
   ScoreDef, MainStaffGrp: TMeiNode;
 begin
   ScoreDef := TMeiNode.Create('scoreDef');
   MainStaffGrp := TMeiNode.Create('staffGrp');
-  ScoreDef.AppendChild(MainStaffGrp);
-  MainStaffGrp.AppendChild(InnerScoreDef(Self, nil));
+  MainStaffGrp := MainStaffGrp.AppendChild(InnerScoreDef(Self));
+  ScoreDef := ScoreDef.AppendChild(MainStaffGrp);
   result := ScoreDef;
 end;
 
@@ -687,7 +690,8 @@ begin
     ekStaff     : NameString := 'staff';
     ekLayer     : NameString := 'layer';
     ekMeasure   : NameString := 'measure';
-    else NameString := 'xml';
+    else 
+      NameString := 'xml';
   end;
   result := NameString;
 end;
@@ -787,11 +791,11 @@ begin
     ThisMeasure := ThisMeasureList.Items[MeasureNum];
     LyFermatas := ThisMeasure.FermataList;
     MeiFermatas := LyFermatas.ToMEI;
-    MeiMeasure.AppendChild(MeiFermatas);
+    MeiMeasure := MeiMeasure.AppendChild(MeiFermatas);
 
     LyLines := ThisMeasure.LineList;
     MeiLines := LyLines.ToMEI;
-    MeiMeasure.AppendChild(MeiLines);
+    MeiMeasure := MeiMeasure.AppendChild(MeiLines);
   end;
 
   result := MeiMeasure;
@@ -812,9 +816,9 @@ begin
     
     MeiLayerPath := LyStaff.ToMeiLayerPath;
     MeiMusicNode := CreateMeiMeasure(LyLayer, MeasureNum);
-    MeiLayerPath.AppendLastChild(MeiMusicNode);
-    MeiTree.AppendChild(MeiLayerPath);
-
+    MeiLayerPath := MeiLayerPath.AppendLastChild(MeiMusicNode);
+    
+    MeiTree := MeiTree.AppendChild(MeiLayerPath);
     MeiTree := AddMeiFermatasAndLines(LyLayer, MeiTree, MeasureNum);
 
     if Assigned(LyStaff.Sibling) then
@@ -827,7 +831,6 @@ begin
       MeiTree := BuildMeiMeasureTree(LyTree.Sibling, MeiTree, MeasureNum);
     end;
   end;
-  
   result := MeiTree;
 end;
 
@@ -866,7 +869,7 @@ begin
 
       { For this measure, staff/layer/notes }
       MeiMeasureTree := BuildMeiMeasureTree(Self, MeiMeasureTree, MeasureNum);
-      MeiSection.AppendChild(MeiMeasureTree);
+      MeiSection := MeiSection.AppendChild(MeiMeasureTree);
     end;
   end;
   result := MeiSection;
@@ -882,9 +885,9 @@ function CreateMeiScore(LyInput: TStringList): TMeiNode;
       MeiBody   := TMeiNode.Create('body');
       MeiMdiv   := TMeiNode.Create('mdiv');
       MeiScore  := TMeiNode.Create('score');
-      MeiMusic.AppendChild(MeiBody);
-      MeiBody.AppendChild(MeiMdiv);
-      MeiMdiv.AppendChild(MeiScore);
+      MeiMusic  := MeiMusic.AppendChild(MeiBody);
+      MeiBody   := MeiBody.AppendChild(MeiMdiv);
+      MeiMdiv   := MeiMdiv.AppendChild(MeiScore);
       result := MeiMusic;
   end;
 
@@ -892,14 +895,14 @@ var
   LyTree: TLyObject;
   MeiScore, MeiScoreDef, MeiSection: TMeiNode;
 begin
-  LyTree := CreateLyObjectTreeFromLy(LyInput);
+  LyTree := TLyObject.Create(LyInput);
  
   MeiScore    := CreateEmptyMeiScore;
   MeiScoreDef := LyTree.ToMeiScoreDef;
   MeiSection  := LyTree.ToMeiSection;
 
-  MeiScore.AppendLastChild(MeiScoreDef);
-  MeiScoreDef.AppendSibling(MeiSection);
+  MeiScore := MeiScore.AppendLastChild(MeiScoreDef);
+  MeiScoreDef := MeiScoreDef.AppendSibling(MeiSection);
   
   FreeAndNil(LyTree);
   result := MeiScore;
@@ -913,10 +916,9 @@ begin
   MeiHeader := CreateMeiHead(LyInput);
   MeiScore  := CreateMeiScore(LyInput);
 
-  Root.AppendChild(MeiHeader);
-  Root.AppendChild(MeiScore);
+  Root := Root.AppendChild(MeiHeader);
+  Root := Root.AppendChild(MeiScore);
   result := Root;
 end;
 
 end.
-

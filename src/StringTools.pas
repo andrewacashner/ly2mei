@@ -38,14 +38,15 @@ type
     constructor Create(InputStr: String);
    
     { Copy the lines after a given index from a string list. }
-    procedure AssignAfterIndex(InputLines: TStringList; StartIndex: Integer);
+    function AssignAfterIndex(InputLines: TStringList; 
+      StartIndex: Integer):TStringListPlus;
 
     { On each line, strip out everything between a comment char (@code('%'))
       and the next newline. }
-    procedure RemoveComments;
+    function RemoveComments: TStringListPlus;
 
     { Remove empty lines or lines with only whitespace. }
-    procedure RemoveBlankLines;
+    function RemoveBlankLines: TStringListPlus;
   end;
 
 
@@ -130,13 +131,16 @@ begin
   DelimitedText := InputStr;
 end;
 
-procedure TStringListPlus.AssignAfterIndex(InputLines: TStringList;
-  StartIndex: Integer); 
+function TStringListPlus.AssignAfterIndex(InputLines: TStringList;
+  StartIndex: Integer): TStringListPlus;
 var
   ThisIndex: Integer;
 begin
   for ThisIndex := StartIndex to InputLines.Count - 1 do
+  begin
     Self.Add(InputLines[ThisIndex]);
+  end;
+  result := Self;
 end;
 
 function ToStringFromIndex(InputLines: TStringList; Index: Integer): String; 
@@ -151,7 +155,7 @@ begin
   result := OutputStr;
 end;
 
-procedure TStringListPlus.RemoveComments;
+function TStringListPlus.RemoveComments: TStringListPlus;
 var
   ThisString, CleanString: String;
   TempLines: TStringList;
@@ -168,9 +172,10 @@ begin
   end;
   Assign(TempLines);
   FreeAndNil(TempLines);
+  result := Self;
 end;
 
-procedure TStringListPlus.RemoveBlankLines;
+function TStringListPlus.RemoveBlankLines: TStringListPlus;
 var
   ThisString: String;
   TempLines: TStringList;
@@ -183,6 +188,7 @@ begin
   end;
   Assign(TempLines);
   FreeAndNil(TempLines);
+  result := Self;
 end;
 
 
