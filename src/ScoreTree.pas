@@ -129,13 +129,10 @@ type
     { Add given sibling to the end of the chain of siblings. }
     function AppendLastSibling(NewSibling: TLyObject): TLyObject;
 
-    { Number the objects with a given FType label consecutively in an in-order
-      traversal, regardless of relation to other elements of the tree }
-    procedure NumberElementsInOrder(ElementType: TLyObjectType);
-
-    { Number ChoirStaff, StaffGroup, Staff, and Voice elements in order.
-      We are treating ChoirStaff and StaffGroup as part of the same series. }
-    procedure SetNumbers;
+    { Number ChoirStaff, StaffGroup, Staff, and Voice elements consecutively
+      in a pre-order traversal, regardless of relation to other elements of the
+      tree. }
+    function NumberElementsInOrder: TLyObject;
 
   public
     constructor Create();
@@ -257,21 +254,38 @@ begin
   result := Self;
 end;
 
-procedure TLyObject.NumberElementsInOrder(ElementType: TLyObjectType);
+function TLyObject.NumberElementsInOrder: TLyObject;
+{ The counters need to be outside the scope of this function so that we can
+  number consecutively regardless of the recursive traversal. }
 var
-  N: Integer = 0;
+  StaffGroupCount: Integer = 0;
+  StaffCount:      Integer = 0;
+  LayerCount:      Integer = 0;
  
-  { N needs to be external to this function so that we can number
-  consecutively across different parts of the tree }
   function InnerNums(Node: TLyObject): TLyObject;
   begin
     if Assigned(Node) then
     begin
-      if Node.FType = ElementType then
-      begin
-        Inc(N);
-        Node.Num := N;
+      case Node.LyType of
+        ekStaffGrp :
+        begin
+          Inc(StaffGroupCount);
+          Node.Num := StaffGroupCount;
+        end;
+
+        ekStaff :
+        begin
+          Inc(StaffCount);
+          Node.Num := StaffCount;
+        end;
+
+        ekLayer :
+        begin
+          Inc(LayerCount);
+          Node.Num := LayerCount;
+        end;
       end;
+
       if Assigned(Node.Child) then
       begin
         Node.Child := InnerNums(Node.Child);
@@ -285,16 +299,7 @@ var
   end;
 
 begin
-  Self := InnerNums(Self);
-end;
-
-{ TODO (optimization) maybe it would be better not to traverse the whole tree
-three times for this! }
-procedure TLyObject.SetNumbers;
-begin
-  NumberElementsInOrder(ekStaffGrp); 
-  NumberElementsInOrder(ekStaff);
-  NumberElementsInOrder(ekLayer);
+  result := InnerNums(Self);
 end;
 
 function TLyObject.ToXMLAsIs(XmlNode: TMeiNode = nil): TMeiNode;
@@ -305,16 +310,19 @@ begin
   end;
 
   XmlNode.Name := NodeName;
-  XmlNode.AddAttribute('n', IntToStr(FNum));
-
+  { Use @code(@type) to label nodes with unrecognized names }
   if NodeName = 'xml' then
   begin
     XmlNode.AddAttribute('type', FName);
   end;
+
   if not FID.IsEmpty then
   begin
     XmlNode.AddAttribute('xml:id', FID);
   end;
+
+  XmlNode.AddAttribute('n', IntToStr(FNum));
+
   if FType = ekLayer then
   begin
     XMLNode.AppendChild(FMeasureList.ToMEI);
@@ -324,6 +332,7 @@ begin
   begin
     XmlNode.AppendChild(FChild.ToXMLAsIs);
   end;
+
   if Assigned(FSibling) then
   begin
     XmlNode.AppendSibling(FSibling.ToXMLAsIs);
@@ -334,7 +343,7 @@ end;
 
 { TODO START make this a constructor? }
 { Build an LCRS tree of Lilypond @code(\new) objects. }
-function BuildLyObjectTree(Source: String; Tree: TLyObject): TLyObject;
+function BuildLyObjectTree(Source: String; Tree: TLyObject = nil): TLyObject;
 var
   SearchIndex: Integer = 0;
   SearchStr, ThisType, ThisID, ThisContents: String;
@@ -342,21 +351,20 @@ var
 begin
   Outline := TIndexPair.Create;
   SearchStr := Source;
-  SearchIndex := SearchStr.IndexOf('\new ');
 
-  if (not SearchStr.IsEmpty) and (SearchIndex <> -1) then
+  if SearchStr.Contains('\new ') then
   begin
+    SearchIndex := SearchStr.IndexOf('\new ');
+    
     { Find Type }
-    SearchStr := SearchStr.Substring(SearchIndex);
-    ThisType := ExtractWord(2, SearchStr, StdWordDelims);
+    ThisType := CopyStringBetween(SearchStr, '\new ', ' ');
     SearchStr := StringDropBefore(SearchStr, ThisType);
 
     { Find ID }
     ThisID := '';
     if SearchStr.StartsWith(' = "') then
     begin 
-      SearchStr := StringDropBefore(SearchStr, ' = "');
-      ThisID := StringDropAfter(SearchStr, '"');
+      ThisID := CopyStringBetween(SearchStr, ' = "', '"');
       SearchStr := StringDropBefore(SearchStr, ThisID + '"');
     end;
 
@@ -369,31 +377,31 @@ begin
         as children; then move on after this group. Omit content string. }
       Outline.MarkBalancedDelimiterSubstring(SearchStr, '<', '>');
       ThisContents := CopyStringRange(SearchStr, Outline, rkInclusive);
+
       if Tree = nil then
         Tree := TLyObject.Create(ThisType, ThisID)
       else
         Tree := Tree.AppendLastChild(TLyObject.Create(ThisType, ThisID));
 
-      Tree := Tree.AppendLastChild(BuildLyObjectTree(ThisContents, nil));
+      Tree := Tree.AppendLastChild(BuildLyObjectTree(ThisContents));
       Source := StringDropBefore(Source.Substring(SearchIndex), ThisContents);
     end
     else
     begin
       { Add this expression as a sibling, then move on to next }
-      ThisContents := SearchStr.Substring(0, SearchStr.IndexOf('{'));
-      ThisContents := ThisContents + CopyBraceExpr(SearchStr);
-      ThisContents := ThisContents.Trim;
+      ThisContents := CopyBraceExpr(SearchStr);
+
       if Tree = nil then
         Tree := TLyObject.Create(ThisType, ThisID, ThisContents)
       else
         Tree := Tree.AppendLastSibling(TLyObject.Create(ThisType, ThisID,
           ThisContents));
 
-      Source := Source.Substring(SearchIndex + 1); 
+      Source := StringDropBefore(Source.Substring(SearchIndex), ThisContents);
     end;
 
     { Look for the next sibling where you left off from the last search }
-    Tree := Tree.AppendLastSibling(BuildLyObjectTree(Source, nil));
+    Tree := Tree.AppendLastSibling(BuildLyObjectTree(Source));
   end;
   FreeAndNil(Outline);
   result := Tree;
@@ -401,11 +409,11 @@ end;
 
 { Build the tree and number the elements. }
 function CreateLyObjectTreeFromLy(LyInput: TStringList): TLyObject;
-var 
-  LyTree: TLyObject = nil;
+var
+  LyTree: TLyObject;
 begin
-  LyTree := BuildLyObjectTree(LyInput.Text, LyTree); 
-  LyTree.SetNumbers;
+  LyTree := BuildLyObjectTree(LyInput.Text); 
+  LyTree := LyTree.NumberElementsInOrder;
   result := LyTree;
 end;
 
@@ -431,11 +439,8 @@ begin
       'baritone'     : Clef := ckBaritone;
       'bass'         : Clef := ckBass;
       'treble_8'     : Clef := ckTreble8va;
-      else
-        Clef := ckNone;
     end;
   end;
-  
   result := Clef;
 end;
 
@@ -482,8 +487,9 @@ begin
   Assert(StaffDefNode.Name = 'staffDef');
 
   case Key of 
-    kkNone, kkCantusDurus : KeySig := '0';
-    kkCantusMollis        : KeySig := '1f';
+    kkNone, 
+      kkCantusDurus   : KeySig := '0';
+    kkCantusMollis    : KeySig := '1f';
     kkCMaj,  kkAMin   : KeySig := '0';
     kkGMaj,  kkEMin   : KeySig := '1s';
     kkDMaj,  kkBMin   : KeySig := '2s';
@@ -500,6 +506,7 @@ begin
     kkGbMaj, kkEbMin  : KeySig := '6f';
     kkCbMaj, kkAbMin  : KeySig := '7f';
   end;
+
   StaffDefNode.AddAttribute('key.sig', KeySig);
   result := StaffDefNode;
 end;
@@ -508,37 +515,39 @@ type
   TMeterKind = (mkNone, mkMensuralTempusImperfectum,
     mkMensuralProportioMinor, mkModern);
   
-    TMeter = record
-    FKind: TMeterKind;
-    FCount, FUnit: Integer;
+  TMeter = class 
+  private
+    var
+      FKind: TMeterKind;
+      FCount, FUnit: Integer;
+  public
+    constructor Create(LyMeterStr: String);
+    property Kind:      TMeterKind read FKind;
+    property BeatCount: Integer    read FCount;
+    property BeatUnit:  Integer    read FUnit;
   end;
 
-function FindLyMeter(MeterStr: String): TMeter;
+constructor TMeter.Create(LyMeterStr: String);
 var
-  Meter: TMeter;
   SearchStr, NumStr: String;
   MeterNums: TStringArray;
 begin
-  Meter.FKind := mkNone;
-  Meter.FCount := 0;
-  Meter.FUnit := 0;
+  inherited Create;
 
-  if MeterStr.Contains('\MeterDuple') then
-    Meter.FKind := mkMensuralTempusImperfectum
-  else if MeterStr.Contains('\MeterTriple') then
-    Meter.FKind := mkMensuralProportioMinor
-  else if MeterStr.Contains('\time ') then
+  if LyMeterStr.Contains('\MeterDuple') then
+    FKind := mkMensuralTempusImperfectum
+  else if LyMeterStr.Contains('\MeterTriple') then
+    FKind := mkMensuralProportioMinor
+  else if LyMeterStr.Contains('\time ') then
   begin
-    Meter.FKind := mkModern;
-    SearchStr := StringDropBefore(MeterStr, '\time ');
+    FKind := mkModern;
+    SearchStr := StringDropBefore(LyMeterStr, '\time ');
     NumStr := ExtractWord(1, SearchStr, [' ', LineEnding]);
 
     MeterNums := NumStr.Split(['/'], 2);
-    Meter.FCount := StrToInt(MeterNums[0]);
-    Meter.FUnit := StrToInt(MeterNums[1]);
+    FCount := StrToInt(MeterNums[0]);
+    FUnit := StrToInt(MeterNums[1]);
   end;
-
-  result := Meter;
 end;
 
 function AddMEIMeterAttribute(StaffDefNode: TMeiNode; Meter: TMeter): TMeiNode;
@@ -548,7 +557,7 @@ begin
 
   with Meter do
   begin
-    case FKind of
+    case Kind of
       mkMensuralTempusImperfectum : 
       begin
         StaffDefNode.AddAttribute('mensur.sign', 'C');
@@ -564,8 +573,8 @@ begin
 
       mkModern : 
       begin
-        StaffDefNode.AddAttribute('meter.count', IntToStr(FCount));
-        StaffDefNode.AddAttribute('meter.unit', IntToStr(FUnit));
+        StaffDefNode.AddAttribute('meter.count', IntToStr(BeatCount));
+        StaffDefNode.AddAttribute('meter.unit', IntToStr(BeatUnit));
       end;
     end;
   end;
@@ -597,6 +606,7 @@ begin
   result := StaffGrpNode;
 end;
 
+{ TODO START cleanup here }
 function TLyObject.ToMeiScoreDef: TMeiNode;
 function InnerScoreDef(LyNode: TLyObject; MeiNode: TMeiNode): TMeiNode;
 var 
@@ -634,8 +644,9 @@ begin
         SearchStr := LyNode.Child.Contents.Substring(0, 800); 
         Clef  := FindLyClef(SearchStr);
         Key   := FindLyKey(SearchStr);
-        Meter := FindLyMeter(SearchStr);
+        Meter := TMeter.Create(SearchStr);
         MeiNode := AddStaffDefAttributes(MeiNode, Clef, Key, Meter); 
+        FreeAndNil(Meter);
       end;
     end;
   end;
@@ -679,6 +690,7 @@ begin
   result := NameString;
 end;
 
+{ Replace with ToMEiScoreDef? }
 { TODO how many times are we building the TLyObject tree? }
 { Build the @link(TLyObject) tree and create the @code(scoreDef) element. }
 function CreateMeiScoreDefFromLy(LyInput: TStringList): TMeiNode;
@@ -686,9 +698,7 @@ var
   LyTree: TLyObject;
   MeiScoreDef: TMeiNode = nil;
 begin
-  LyTree := BuildLyObjectTree(LyInput.Text, nil);
-  LyTree.SetNumbers;
-
+  LyTree := CreateLyObjectTreeFromLy(LyInput);
   MeiScoreDef := LyTree.ToMeiScoreDef;
   FreeAndNil(LyTree);
   result := MeiScoreDef;

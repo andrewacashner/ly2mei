@@ -128,7 +128,14 @@ function MeiDocString(Root: TMeiNode): String;
 implementation
 
 const
-  _XMLDeclaration = '<?xml version="1.0" encoding="utf-8"?>';
+  _XMLDeclaration = '<?xml version="1.0" encoding="utf-8"?>' + LineEnding
+    + '<?xml-model href="https://music-encoding.org/schema/dev/mei-all.rng" ' 
+    + 'type="application/xml" '
+    + 'schematypens="http://relaxng.org/ns/structure/1.0"?>' + LineEnding 
+    + '<?xml-model href="https://music-encoding.org/schema/dev/mei-all.rng" '  
+    + 'type="application/xml" '
+    + 'schematypens="http://purl.oclc.org/dsdl/schematron"?>';
+
   _MeiNamespace = 'https://music-encoding.org/ns/mei';
   _MeiVersion = '3.0.0';
 
