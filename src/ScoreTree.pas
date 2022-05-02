@@ -45,11 +45,10 @@ interface
 
 uses SysUtils, StrUtils, Classes, StringTools, Outline, MEI, MusicNotes;
 
-
 type 
   { Types of elements in the internal tree of @code(TLyObject) or
     @code(TMEIElement) objects }
-  TMusicTreeElement = (ekAnonymous, ekStaffGrp, ekStaff, ekLayer, ekMeasure);
+  TLyObjectType = (ekAnonymous, ekStaffGrp, ekStaff, ekLayer, ekMeasure);
 
   { @abstract(A node, which may be the base of a tree, of Lilypond code
     objects.)
@@ -77,7 +76,7 @@ type
   private
     var
       { Label for object type, equivalent between Lilypond and MEI }
-      FType: TMusicTreeElement;
+      FType: TLyObjectType;
       { Type of object, e.g., Voice or Lyrics }
       FName: String;
       { ID string, as in @code(\new Voice = "Soprano"). If Lilypond source did
@@ -104,7 +103,7 @@ type
     function NodeName: String;
 
     { Find the first descendant node with the given type. }
-    function FindFirstDescendant(ElementType: TMusicTreeElement): TLyObject;
+    function FindFirstDescendant(ElementType: TLyObjectType): TLyObject;
 
     { Find the first layer (@link(ekLayer) type) object in the tree in a
     pre-order traversal. }
@@ -132,11 +131,10 @@ type
 
     { Number the objects with a given FType label consecutively in an in-order
       traversal, regardless of relation to other elements of the tree }
-    procedure NumberElementsInOrder(ElementType: TMusicTreeElement);
+    procedure NumberElementsInOrder(ElementType: TLyObjectType);
 
     { Number ChoirStaff, StaffGroup, Staff, and Voice elements in order.
-      We are treating ChoirStaff and StaffGroup as part of the same series.
-      (TODO Should we?) }
+      We are treating ChoirStaff and StaffGroup as part of the same series. }
     procedure SetNumbers;
 
   public
@@ -160,14 +158,14 @@ type
       music data, converting from Lilypond structure. }
     function ToMEI(MeiScore: TMeiNode = nil): TMeiNode;
 
-    property LyType:    TMusicTreeElement read FType;
-    property Name:      String            read FName;
-    property ID:        String            read FID;
-    property Num:       Integer           read FNum           write FNum;
-    property Contents:  String            read FContents;
-    property Measures:  TMeasureList      read FMeasureList;
-    property Child:     TLyObject         read FChild         write FChild;
-    property Sibling:   TLyObject         read FSibling       write FSibling;
+    property LyType:    TLyObjectType read FType;
+    property Name:      String        read FName;
+    property ID:        String        read FID;
+    property Num:       Integer       read FNum           write FNum;
+    property Contents:  String        read FContents;
+    property Measures:  TMeasureList  read FMeasureList;
+    property Child:     TLyObject     read FChild         write FChild;
+    property Sibling:   TLyObject     read FSibling       write FSibling;
   end;
 
 { Build the MEI @code(scoreDef) element and add it to the given MEI tree. }
@@ -185,18 +183,20 @@ end;
 
 constructor TLyObject.Create(Name, ID: String; ContentsStr: String = ''; 
   Num: Integer = 1; Child: TLyObject = nil; Sibling: TLyObject = nil); 
-function NameToType(Name: String): TMusicTreeElement;
-var
-  Element: TMusicTreeElement;
-begin
-  case Name of
-    'StaffGroup', 'ChoirStaff': Element := ekStaffGrp;
-    'Staff': Element := ekStaff;
-    'Voice': Element := ekLayer;
-  else Element := ekAnonymous;
+  
+  function NameToType(Name: String): TLyObjectType;
+  var
+    Element: TLyObjectType = ekAnonymous;
+  begin
+    case Name of
+      'StaffGroup', 
+        'ChoirStaff' : Element := ekStaffGrp;
+      'Staff' :        Element := ekStaff;
+      'Voice' :        Element := ekLayer;
+    end;
+    result := Element;
   end;
-  result := Element;
-end;
+
 begin
   inherited Create;
   FType     := NameToType(Name);
@@ -207,11 +207,10 @@ begin
   FChild    := Child;
   FSibling  := Sibling;
   
-  FMeasureList := TMeasureList.Create();
   if FType = ekLayer then
-  begin
-    FMeasureList.SetFromLy(FContents);
-  end;
+    FMeasureList := TMeasureList.Create(FContents)
+  else
+    FMeasureList := TMeasureList.Create();
 end;
 
 destructor TLyObject.Destroy;
@@ -258,29 +257,39 @@ begin
   result := Self;
 end;
 
-procedure TLyObject.NumberElementsInOrder(ElementType: TMusicTreeElement);
+procedure TLyObject.NumberElementsInOrder(ElementType: TLyObjectType);
 var
   N: Integer = 0;
-function InnerNums(Node: TLyObject): TLyObject;
-begin
-  if Assigned(Node) then
+ 
+  { N needs to be external to this function so that we can number
+  consecutively across different parts of the tree }
+  function InnerNums(Node: TLyObject): TLyObject;
   begin
-    if Node.FType = ElementType then
+    if Assigned(Node) then
     begin
-      Inc(N);
-      Node.Num := N;
+      if Node.FType = ElementType then
+      begin
+        Inc(N);
+        Node.Num := N;
+      end;
+      if Assigned(Node.Child) then
+      begin
+        Node.Child := InnerNums(Node.Child);
+      end;
+      if Assigned(Node.Sibling) then
+      begin
+        Node.Sibling := InnerNums(Node.Sibling);
+      end;
     end;
-    if Assigned(Node.Child) then
-      Node.Child := InnerNums(Node.Child);
-    if Assigned(Node.Sibling) then
-      Node.Sibling := InnerNums(Node.Sibling);
+    result := Node;
   end;
-  result := Node;
-end;
+
 begin
-  InnerNums(Self);
+  Self := InnerNums(Self);
 end;
 
+{ TODO (optimization) maybe it would be better not to traverse the whole tree
+three times for this! }
 procedure TLyObject.SetNumbers;
 begin
   NumberElementsInOrder(ekStaffGrp); 
@@ -291,22 +300,21 @@ end;
 function TLyObject.ToXMLAsIs(XmlNode: TMeiNode = nil): TMeiNode;
 begin
   if not Assigned(XmlNode) then
+  begin
     XmlNode := TMeiNode.Create();
+  end;
 
   XmlNode.Name := NodeName;
+  XmlNode.AddAttribute('n', IntToStr(FNum));
 
   if NodeName = 'xml' then
   begin
     XmlNode.AddAttribute('type', FName);
   end;
-
   if not FID.IsEmpty then
   begin
     XmlNode.AddAttribute('xml:id', FID);
   end;
-
-  XmlNode.AddAttribute('n', IntToStr(FNum));
-  
   if FType = ekLayer then
   begin
     XMLNode.AppendChild(FMeasureList.ToMEI);
@@ -316,7 +324,6 @@ begin
   begin
     XmlNode.AppendChild(FChild.ToXMLAsIs);
   end;
-
   if Assigned(FSibling) then
   begin
     XmlNode.AppendSibling(FSibling.ToXMLAsIs);
@@ -325,9 +332,7 @@ begin
   result := XmlNode;
 end;
 
-
-
-{ TODO make this a constructor? }
+{ TODO START make this a constructor? }
 { Build an LCRS tree of Lilypond @code(\new) objects. }
 function BuildLyObjectTree(Source: String; Tree: TLyObject): TLyObject;
 var
@@ -705,7 +710,7 @@ begin
 end;
 
 
-function TLyObject.FindFirstDescendant(ElementType: TMusicTreeElement): 
+function TLyObject.FindFirstDescendant(ElementType: TLyObjectType): 
   TLyObject;
 var
   FoundNode: TLyObject = nil;

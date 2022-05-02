@@ -263,10 +263,12 @@ type
     var
       FHeaderText: String; { section heading text }
   public
-    { Set the contents of a list from the Lilypond input string for a
+    constructor Create();
+
+    { Create a list from the Lilypond input string for a
       single voice. Find the key for this music and then recursively create
       all the measures, and in turn all the pitches, it contains. }
-    procedure SetFromLy(Source: String);
+    constructor Create(LyInput: String);
 
     { Go through measure list in which only tie starts have been set (from
       Lilypond input), and set attributes for notes in the middle and ending
@@ -1109,18 +1111,43 @@ begin
   result := MeiTree;
 end;
 
-procedure TMeasureList.SetFromLy(Source: String);
+procedure TMeasureList.AddFermatas;
+var
+  ThisMeasure: TPitchList;
+  ThisPitch: TPitch;
+  NewFermata: TFermata;
+begin
+  for ThisMeasure in Self do
+  begin
+    for ThisPitch in ThisMeasure do 
+    begin
+      if ThisPitch.HasFermata then
+      begin
+        NewFermata := TFermata.Create(ThisPitch.ID);
+        ThisMeasure.FermataList.Add(NewFermata);
+      end;
+    end;
+  end;
+end;
+
+constructor TMeasureList.Create();
+begin
+  inherited Create;
+end;
+
+constructor TMeasureList.Create(LyInput: String);
 var
   Key: TKeyKind;
   LyLines: TStringListPlus;
   SearchStr, ThisLine, TestLine, MeasureStr: String;
 begin
+  inherited Create;
   { Find the key signature for this voice }
-  SearchStr := Source.Substring(0, 800); 
+  SearchStr := LyInput.Substring(0, 800); 
   Key := FindLyKey(SearchStr);
 
   { Find measures and parse the notes in them }
-  LyLines := TStringListPlus.Create(Source);
+  LyLines := TStringListPlus.Create(LyInput);
   for ThisLine in LyLines do
   begin
     TestLine := ThisLine.TrimLeft;
@@ -1147,25 +1174,6 @@ begin
   Self.AddAllLines;
 
   FreeAndNil(LyLines);
-end;
-
-procedure TMeasureList.AddFermatas;
-var
-  ThisMeasure: TPitchList;
-  ThisPitch: TPitch;
-  NewFermata: TFermata;
-begin
-  for ThisMeasure in Self do
-  begin
-    for ThisPitch in ThisMeasure do 
-    begin
-      if ThisPitch.HasFermata then
-      begin
-        NewFermata := TFermata.Create(ThisPitch.ID);
-        ThisMeasure.FermataList.Add(NewFermata);
-      end;
-    end;
-  end;
 end;
 
 procedure TMeasureList.AddTies;
