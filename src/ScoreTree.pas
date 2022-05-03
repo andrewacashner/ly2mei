@@ -236,7 +236,11 @@ begin
     FSibling.Destroy;
   end;
 
-  FMeasureList.Destroy;
+  if Assigned(FMeasureList) then
+  begin
+    FMeasureList.Destroy;
+  end;
+
   inherited Destroy;
 end;
 

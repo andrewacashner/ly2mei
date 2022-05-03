@@ -3,8 +3,8 @@
 { @abstract(Convert a Lilypond music expression to MEI.)
   @author(Andrew Cashner)
 
-  We parse a tree of Lilypond objects (@code(TLyObject), from the ScoreTree unit)
-  into an internal representation of the music data. We then convert that
+  We parse a tree of Lilypond objects (@code(TLyObject), from the ScoreTree
+  unit) into an internal representation of the music data. We then convert that
   representation from Lilypond's hierarchy of data into that needed for MEI.
 
   Lilypond (in our specification) is organized score/staff/voice/measures/notes.
@@ -66,12 +66,6 @@ type
     kkGbMaj, kkEbMin,
     kkCbMaj, kkAbMin);
 
-
-{ In Lilypond input, find a @code(\key) declaration, or in Lirio format,
-  @code(\CantusDurus) (no accidentals) or @code(\CantusMollis) (one flat). }
-function FindLyKey(KeyStr: String): TKeyKind;
-
-type
   { Label for position of a note in a markup such a tie or slur }
   TMarkupPosition = (
     mkNone,
@@ -84,15 +78,16 @@ type
   { Label for types of lines extending from one note to another }
   TLineKind = (lkNone, lkTie, lkSlur, lkColoration, lkLigature);
 
+  { Types of bar lines }
+  TBarline = (bkNormal, bkMiddle, bkFinal, bkRepeatEnd, bkRepeatStart);
+
+  { TODO reimplement? }
   { Records which articulations a pitch has (correspond to MEI
     @code(data.ARTICULATION) }
   TArticulationSpec = record
     FFermata, FAccent, FStaccato, FTenuto, FStaccatissimo, FMarcato: Boolean;
   end; 
 
-  { Types of bar lines }
-  TBarline = (bkNormal, bkMiddle, bkFinal, bkRepeatEnd, bkRepeatStart);
-  
   { @abstract(Internal data structure for a single pitch or rest.)
 
     Our internal structure for storing data for a pitch, using the labels
@@ -137,6 +132,7 @@ type
       { Label indicates position of note in a ligature bracket, if any }
       FLigature: TMarkupPosition;
 
+      { TODO reimplement? }
       { Record with boolean flags for possible articulation labels }
       FArticulations: TArticulationSpec;
 
@@ -148,7 +144,7 @@ type
 
     { Create from a Lilypond input string; set the accidental relative to the
       given key. }
-    constructor CreateFromLy(Source: String; Key: TKeyKind);
+    constructor Create(LyInput: String; Key: TKeyKind);
 
     { When we find invalid input, we construct invalid pitches, with the
       fields set to "none" or negative values. Did we find a valid pitch? }
@@ -162,53 +158,65 @@ type
       duration and other fields) }
     function PitchEq(P2: TPitch): Boolean;
 
-    property ID:         String      read FID;
-    property Name:       TPitchName  read FPitchName;
-    property Accid:      TAccidental read FAccid;
-    property AccidType:  TAccidType  read FAccidType;
-    property Oct:        Integer     read FOct;
-    property Dur:        TDuration   read FDur;
+    property ID:         String           read FID;
+    property Name:       TPitchName       read FPitchName;
+    property Accid:      TAccidental      read FAccid;
+    property AccidType:  TAccidType       read FAccidType;
+    property Oct:        Integer          read FOct;
+    property Dur:        TDuration        read FDur;
 
-    property Tie:        TMarkupPosition read FTie write FTie;
-    property Slur:       TMarkupPosition read FSlur;
-    property Coloration: TMarkupPosition read FColoration;
-    property Ligature:   TMarkupPosition read FLigature;
+    property Tie:        TMarkupPosition  read FTie         write FTie;
+    property Slur:       TMarkupPosition  read FSlur;
+    property Coloration: TMarkupPosition  read FColoration;
+    property Ligature:   TMarkupPosition  read FLigature;
 
-    property HasFermata:       Boolean read FArticulations.FFermata;
-    property HasAccent:        Boolean read FArticulations.FAccent;
-    property HasStaccato:      Boolean read FArticulations.FStaccato;
-    property HasTenuto:        Boolean read FArticulations.FTenuto;
-    property HasStaccatissimo: Boolean read FArticulations.FStaccatissimo;
-    property HasMarcato:       Boolean read FArticulations.FMarcato;
+    property HasFermata:       Boolean    read FArticulations.FFermata;
+    property HasAccent:        Boolean    read FArticulations.FAccent;
+    property HasStaccato:      Boolean    read FArticulations.FStaccato;
+    property HasTenuto:        Boolean    read FArticulations.FTenuto;
+    property HasStaccatissimo: Boolean    read FArticulations.FStaccatissimo;
+    property HasMarcato:       Boolean    read FArticulations.FMarcato;
   end;
 
+  { @abstract(Internal representation of MEI @code(fermata) element.)
+    Records ID of note the fermata is attached to.) }
   TFermata = class
   private
     var
       FStartID: String;
   public
     constructor Create(ID: String);
+
+    { Create an MEI @code(fermata) element. }
     function ToMEI: TMeiNode;
   end;
 
+  { @abstract(List of fermatas (used to gather all the fermatas needed in a
+    measure.) }
   TFermataList = class(specialize TObjectList<TFermata>)
   public
+
+    { Create a tree of MEI @code(fermata) elements as siblings. }
     function ToMEI: TMeiNode;
   end;
 
 
+  { @abstract(Internal representation of an MEI line, for ties, slurs,
+    coloration brackets, and ligatures.) }
   TLine = class
   private
     var
       FName, FStartID, FEndID, FLineFunction, FLineForm: String;
   public
     constructor Create(); 
-    constructor Create(Name: String;
-      StartID: String = ''; 
-      EndID: String = '';
-      LineFunction: String = '';
-      LineForm: String = '');
+
+    constructor Create(Name: String; StartID: String = ''; EndID: String = '';
+      LineFunction: String = ''; LineForm: String = ''); 
+
     procedure Assign(OrigLine: TLine);
+
+    { Create an MEI line element: a @code(tie), @code(slur), or
+    @code(bracketSpan). }
     function ToMEI: TMeiNode;
 
     property Name:          String read FName;
@@ -218,8 +226,12 @@ type
     property LineForm:      String read FLineForm;
   end;
 
+  { @abstract(A list of lines; used to gather all the lines (slurs, ties,
+  etc.) needed in a measure.) }
   TLineList = class(specialize TObjectList<TLine>)
   public
+    { Create a tree of MEI line elements (of different kinds, potentially),
+      as siblings. }
     function ToMEI: TMeiNode;
   end;
 
@@ -232,27 +244,33 @@ type
       FBarlineRight: TBarline;
       FFermataList: TFermataList;
       FLineList: TLineList;
+   
+    { Set the data needed for the right barline attribute. }
+    procedure SetBarlineRight(Source: String);
+
   public
     constructor Create(); 
 
     { Create a new list of pitches from the Lilypond input string for a single
       measure of music, and the key relevant to this music. Recursively create
       all the pitches contained in the list. }
-    constructor CreateFromLy(Source: String; Key: TKeyKind);
+    constructor Create(LyInput: String; Key: TKeyKind);
 
     destructor Destroy(); override;
 
-    procedure SetBarlineRight(Source: String);
-
-    { Generate an MEI @code(measure) element, recursively generating the
+    { Create an MEI @code(measure) element, recursively generating the
       @code(note) elements it contains. }
     function ToMEI: TMeiNode;
 
+    { What kind of barline follows this measure? }
     property BarlineRight:  TBarline      read FBarlineRight;
+
+    { List of all the fermatas in this measure }
     property FermataList:   TFermataList  read FFermataList;
+
+    { List of all the lines in this  measure }
     property LineList:      TLineList     read FLineList;
   end;
-
 
   { @abstract(A list of @link(TPitchList) objects for a single voice/layer.)
 
@@ -262,6 +280,27 @@ type
   private
     var
       FHeaderText: String; { section heading text }
+
+    { Go through measure list in which only tie starts have been set (from
+      Lilypond input), and set attributes for notes in the middle and ending
+      of the tie. }
+    procedure AddTies;
+
+    { Go through measure list in which line starts and ends have been
+      marked in the @link(TPitch) elements, and create MEI line elements
+      connecting those notes. Used for ties, slurs, coloration brackets, and
+      ligature brackets (MEI @code(slur) and @code(bracketSpan) elements). }
+    procedure AddLines(LineKind: TLineKind);
+
+    { Add all the kinds of lines (ties, slurs, coloration brackets, and
+      ligatures). }
+    procedure AddAllLines;
+
+    { Go through measure list and add fermata elements within the MEI
+      @code(measure) linked to their notes by the @code(startid). }
+    procedure AddFermatas;
+
+
   public
     constructor Create();
 
@@ -270,28 +309,17 @@ type
       all the measures, and in turn all the pitches, it contains. }
     constructor Create(LyInput: String);
 
-    { Go through measure list in which only tie starts have been set (from
-      Lilypond input), and set attributes for notes in the middle and ending
-      of the tie. }
-    procedure AddTies;
-    
-    { Go through measure list in which line starts and ends have been
-      marked in the @link(TPitch) elements, and create MEI line elements
-      connecting those notes. Used for slurs, coloration brackets, and
-      ligature brackets (MEI @code(slur) and @code(bracketSpan) elements). }
-    procedure AddLines(LineKind: TLineKind);
-
-    procedure AddAllLines;
-
-    { Go through measure list and add fermata elements within the MEI
-      @code(measure) linked to their notes by the @code(startid). }
-    procedure AddFermatas;
-    
+    { Create an MEI @code(tempo) element, used for a section heading, and add
+      it to the MEI @code(measure) element. }
     function AddMeiSectionHead(MeiMeasure: TMeiNode): TMeiNode;
-    
+
+    { Create a @code(lirio:voice) element representing all the music for one
+      voice/layer. Used for testing. } { TODO needed? }
     function ToMEI: TMeiNode;
   end;
 
+  { @abstract(Records the position of a line element (start and end IDs of the
+    notes the line is attached to).) }
   TLinePosition = class
   public
     var
@@ -301,60 +329,55 @@ type
     property EndID:   String read FEndID   write FEndID;
   end;
 
+  { @abstract(List of all the positions for lines in a measure.) }
   TLinePositionList = class(specialize TObjectList<TLinePosition>)
   public
     constructor Create(MeasureList: TMeasureList; LineKind: TLineKind);
   end;
-
-
-    { First we copy a @link(TLyObject) tree to a @link(TMeiNode) tree,
-      preserving its structure (score/staff/voice/measures). With this
-      function we create a new tree that is organized in the MEI hierarchy
-      (section/measure/staff/layer/notes).
-
-      We first count the measures and make sure all voices have the same
-      number of measures. Then for each measure, we create a new tree for that
-      measure, where the child element is the entire original tree
-      (staff/layer), but we include only a single measure in the list at the
-      bottom, corresponding to the music for this measure. }
-
-  
+     
+  { @abstract(Internal representation of an MEI @code(note), @code(rest), or
+    @code(mRest) (multimeasure rest) element. }
   TMeiNoteRest = class(TMeiNode)
   private
     function IsNote: Boolean;
     function IsRest: Boolean;
 
-    { Generate the MEI @code(pname) attribute for the pitch name. }
+    { Add the MEI @code(pname) attribute for the pitch name. }
     procedure AddMeiPnameAttribute(Pitch: TPitch);
 
-    { Generate the MEI @code(accid) and/or @code(accid.ges) attributes for the
+    { Add the MEI @code(accid) and/or @code(accid.ges) attributes for the
       accidental, depending on whether the accidental is to be written
       explicitly in this key. }
     procedure AddMeiAccidAttribute(Pitch: TPitch);
 
-    { Generate the MEI @code(oct) attribute for the octave. }
+    { Add the MEI @code(oct) attribute for the octave. }
     procedure AddMeiOctAttribute(Pitch: TPitch);
 
-    { Generate the MEI @code(dur) and @code(dots) attributes for the rhythmic
+    { Add the MEI @code(dur) and @code(dots) attributes for the rhythmic
       duration. }
     procedure AddMeiDurDotsAttributes(Pitch: TPitch);
 
-    { Generate one or more MEI @code(artic) elements within a @code(note). }
+    { Create one or more MEI @code(artic) elements within a @code(note). }
     procedure AddMeiArticulation(Pitch: TPitch);
 
   public
-    constructor CreateFromPitch(Pitch: TPitch);
+    { Create from internal @link(TPitch) structure. }
+    constructor Create(Pitch: TPitch);
   end;
 
-{ TODO make this a class function of TMeiNode or descendant }
-function AddMeiBarlineAttr(MeiMeasure: TMeiNode; PitchList: TPitchList):
-  TMeiNode;
+{ In Lilypond input, find a @code(\key) declaration, or in Lirio format,
+  @code(\CantusDurus) (no accidentals) or @code(\CantusMollis) (one flat). }
+function FindLyKey(KeyStr: String): TKeyKind;
 
+{ Set information for right barline type in this measure. } 
+function AddMeiBarlineAttr(MeiMeasure: TMeiNode; PitchList: TPitchList):
+  TMeiNode; 
 
 implementation
 
 function GetPitchName(LyName: String): TPitchName;
-var PitchName: TPitchName;
+var 
+  PitchName: TPitchName;
 begin
   case LyName.Substring(0, 1) of 
     'c': PitchName := pkC;
@@ -369,7 +392,7 @@ begin
     '' : PitchName  := pkNone;
     else 
     begin
-      WriteLn(StdErr, 'Unrecognized pitch name: ' + LyName);
+      WriteLn(stderr, 'Unrecognized pitch name: ' + LyName);
       PitchName := pkNone;
     end;
   end;
@@ -413,7 +436,7 @@ begin
     ''        : Dur := dkNone;
     else
     begin
-      WriteLn(StdErr, 'Unrecognized duration: ' + DurLy);
+      WriteLn(stderr, 'Unrecognized duration: ' + DurLy);
       Dur := dkNone;
     end;
   end;
@@ -433,6 +456,8 @@ begin
   result := Accid;
 end;
 
+function AccidInKey(PitchName: TPitchName; Key: TKeyKind): TAccidental;
+
 const
   Gamut: Array [1..15, 1..7] of TAccidental = (
      { pkC        pkD         pkE         pkF       pkG       pkA         pkB } 
@@ -451,9 +476,8 @@ const
 { Db } (akNatural, akFlat,    akFlat,    akNatural, akFlat,    akFlat,    akFlat),
 { Gb } (akFlat,    akFlat,    akFlat,    akNatural, akFlat,    akFlat,    akFlat),
 { Cb } (akFlat,    akFlat,    akFlat,    akFlat,    akFlat,    akFlat,    akFlat));
-{ mensa tonographica in memoriam P. Athanasii Kircheri }
+{ Mensa tonographica in memoriam P. Athanasii Kircheri }
 
-function AccidInKey(PitchName: TPitchName; Key: TKeyKind): TAccidental;
 var
   KeyIndex, PitchIndex: Integer;
 begin
@@ -477,7 +501,7 @@ begin
     kkCbMaj, kkAbMin : KeyIndex := 15;
     else
     begin
-      WriteLn(StdErr, 'Unrecognized key, substituting CMajor');
+      WriteLn(stderr, 'Unrecognized key, substituting CMajor');
       KeyIndex := 1;
     end;
   end;
@@ -492,7 +516,7 @@ begin
     pkB : PitchIndex := 7;
     else
     begin
-      WriteLn(StdErr, 'Unrecognized pitch name, substituting C');
+      WriteLn(stderr, 'Unrecognized pitch name, substituting C');
       PitchIndex := 1;
     end;
   end;
@@ -515,10 +539,56 @@ end;
 function FindLyKey(KeyStr: String): TKeyKind;
 type
   TKeyMode = (kMajor, kMinor);
+
+  function GetKeyKind(Mode: TKeyMode; KeyName: String): TKeyKind;
+  var
+    Key: TKeyKind;
+  begin
+    case Mode of
+      kMajor :
+      case KeyName of
+        'c'   : Key := kkCMaj;
+        'ces' : Key := kkCbMaj;
+        'cis' : Key := kkCsMaj;
+        'd'   : Key := kkDMaj;
+        'des' : Key := kkDbMaj;
+        'e'   : Key := kkEMaj;
+        'es', 'ees' : Key := kkEbMaj;
+        'f'   : Key := kkFMaj;
+        'fis' : Key := kkFsMaj;
+        'g'   : Key := kkGMaj;
+        'ges' : Key := kkGbMaj;
+        'a'   : Key := kkAMaj;
+        'as', 'aes' : Key := kkAbMaj;
+        'b'   : Key := kkBMaj;
+        'bes' : Key := kkBbMaj;
+      end;
+
+      kMinor :
+      case KeyName of
+        'c'   : Key := kkCMin;
+        'cis' : Key := kkCsMin;
+        'd'   : Key := kkDMin;
+        'dis' : Key := kkDsMin;
+        'e'   : Key := kkEMin;
+        'es', 'ees' : Key := kkEbMin;
+        'f'   : Key := kkFMin;
+        'fis' : Key := kkFsMin;
+        'g'   : Key := kkGMin;
+        'gis' : Key := kkGsMin;
+        'a'   : Key := kkAMin;
+        'as', 'aes' : Key := kkAbMin;
+        'ais' : Key := kkAsMin;
+        'bes' : Key := kkBbMin;
+        'b'   : Key := kkBMin;
+      end;
+    end;
+    result := Key;
+  end;
+
 var
-  Key: TKeyKind = kkNone;
   KeyName: String;
-  Mode: TKeyMode;
+  Key: TKeyKind = kkNone;
 begin
   if KeyStr.Contains('\CantusDurus') then
     Key := kkCantusDurus
@@ -530,64 +600,17 @@ begin
 
     if KeyStr.Contains('\major') then
     begin
-      KeyStr := StringDropAfter(KeyStr, '\major'); 
-      Mode := kMajor;
+      KeyStr := StringDropAfter(KeyStr, '\major').Trim; 
+      Key := GetKeyKind(kMajor, KeyStr);
     end
     else if KeyStr.Contains('\minor') then
     begin
-      KeyStr := StringDropAfter(KeyStr, '\minor'); 
-      Mode := kMinor;
+      KeyStr := StringDropAfter(KeyStr, '\minor').Trim; 
+      Key := GetKeyKind(kMinor, KeyStr);
     end
-    else 
-    begin
-      result := kkNone;
-      exit;
-    end;
-
-    KeyName := StringDropAfter(KeyStr, '\m').Trim;
-    case Mode of
-      kMajor :
-        case KeyName of
-          'c'   : Key := kkCMaj;
-          'ces' : Key := kkCbMaj;
-          'cis' : Key := kkCsMaj;
-          'd'   : Key := kkDMaj;
-          'des' : Key := kkDbMaj;
-          'e'   : Key := kkEMaj;
-          'es', 'ees' : Key := kkEbMaj;
-          'f'   : Key := kkFMaj;
-          'fis' : Key := kkFsMaj;
-          'g'   : Key := kkGMaj;
-          'ges' : Key := kkGbMaj;
-          'a'   : Key := kkAMaj;
-          'as', 'aes' : Key := kkAbMaj;
-          'b'   : Key := kkBMaj;
-          'bes' : Key := kkBbMaj;
-        end;
-
-      kMinor :
-        case KeyName of
-          'c'   : Key := kkCMin;
-          'cis' : Key := kkCsMin;
-          'd'   : Key := kkDMin;
-          'dis' : Key := kkDsMin;
-          'e'   : Key := kkEMin;
-          'es', 'ees' : Key := kkEbMin;
-          'f'   : Key := kkFMin;
-          'fis' : Key := kkFsMin;
-          'g'   : Key := kkGMin;
-          'gis' : Key := kkGsMin;
-          'a'   : Key := kkAMin;
-          'as', 'aes' : Key := kkAbMin;
-          'ais' : Key := kkAsMin;
-          'bes' : Key := kkBbMin;
-          'b'   : Key := kkBMin;
-        end;
-    end;
   end;
   result := Key;
 end;
-
 
 function GetTie(Source: String): TMarkupPosition;
 var
@@ -653,6 +676,7 @@ begin
   result := GetLinePosition(lkLigature, Source);
 end;
 
+{ TODO reimplement? }
 function GetArticulations(Source: String): TArticulationSpec;
 var
   Spec: TArticulationSpec = (
@@ -692,12 +716,12 @@ begin
   FArticulations := Spec;
 end;
 
-constructor TPitch.CreateFromLy(Source: String; Key: TKeyKind);
+constructor TPitch.Create(LyInput: String; Key: TKeyKind);
 var
   NoteStr, PitchNameLy, OctLy, DurLy, EtcLy, Test: String;
 begin
   Self.Create;
-  NoteStr := Source;
+  NoteStr := LyInput;
 
   { Move ligatures to after note (where Lilypond docs admit they should be!) }
   if NoteStr.StartsWith('\[') then
@@ -878,7 +902,7 @@ begin
   result := (Name = P2.Name) and (Accid = P2.Accid);
 end;
 
-constructor TMeiNoteRest.CreateFromPitch(Pitch: TPitch);
+constructor TMeiNoteRest.Create(Pitch: TPitch);
 begin
   inherited Create();
 
@@ -1028,7 +1052,7 @@ begin
   inherited Create;
 end;
 
-constructor TPitchList.CreateFromLy(Source: String; Key: TKeyKind);
+constructor TPitchList.Create(LyInput: String; Key: TKeyKind);
 var
   ThisNote: String;
   Notes: TStringArray;
@@ -1036,12 +1060,12 @@ var
 begin
   Create;
   { TODO replace full command strings }
-  Source := ReplaceLyCommands(Source);
+  LyInput := ReplaceLyCommands(LyInput);
 
-  Notes := Source.Split([' ']);
+  Notes := LyInput.Split([' ']);
   for ThisNote in Notes do
   begin
-    NewPitch := TPitch.CreateFromLy(ThisNote, Key);
+    NewPitch := TPitch.Create(ThisNote, Key);
     if NewPitch.IsValid then
       Self.Add(NewPitch)
     else
@@ -1100,7 +1124,7 @@ var
 begin
   for ThisPitch in Self do
   begin
-    ThisMeiNote := TMeiNoteRest.CreateFromPitch(ThisPitch);
+    ThisMeiNote := TMeiNoteRest.Create(ThisPitch);
     
     if not Assigned(MeiTree) then
       MeiTree := ThisMeiNote
@@ -1165,7 +1189,7 @@ begin
     begin
       MeasureStr := StringDropBefore(ThisLine, '| ');
 
-      Self.Add(TPitchList.CreateFromLy(MeasureStr, Key));
+      Self.Add(TPitchList.Create(MeasureStr, Key));
     end;
   end;
 

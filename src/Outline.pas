@@ -21,6 +21,8 @@ type
       FValid: Boolean;  {< Was a valid pair found? }
   public
     constructor Create();
+
+    { Given start and end indices, set span and validity automatically. }
     constructor Create(StartIndex, EndIndex: Integer);
 
     { Set the end index, and if the start index has also been set, calculate
