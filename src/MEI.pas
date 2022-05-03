@@ -17,7 +17,7 @@ uses SysUtils, Classes, Generics.Collections;
 
 type
   { @abstract(A list of string key-value pairs representing the attributes of
-  an XML element.) }
+    an XML element.) }
   TMeiAttributeList = class(specialize TDictionary<String, String>)
   public
     { Render the list to an XML string (@code(key1="value1" key2="value2")) }
@@ -29,8 +29,8 @@ type
   TMeiAttributeKeyValue = TMeiAttributeList.TDictionaryPair;
 
   { @abstract(Internal representation of an MEI-XML element.)
-  Includes its name, list of attributes, text node, and (pointers to) child
-  and sibling trees. }
+    Includes its name, list of attributes, text node, and (pointers to) child
+    and sibling trees. }
   TMeiNode = class
   private
     var
@@ -48,7 +48,7 @@ type
     destructor Destroy(); override;
 
     { Render the entire tree (recursively) to formatted XML starting at this
-    node }
+      node }
     function XMLString(IndentLevel: Integer = 0): String;
 
     { Add a single attribute key-value pair to an element, or update an
@@ -62,11 +62,11 @@ type
     function IsTextSet: Boolean;
 
     { Return the last child, following every child node to the end of the
-    tree. }
+      tree. }
     function LastChild: TMeiNode;
 
     { Return the last sibling, following every sibling node to the end of the
-    tree. }
+      tree. }
     function LastSibling: TMeiNode;
 
     { Set the child of this node }
@@ -76,24 +76,25 @@ type
     function AddFirstSibling(Sibling: TMeiNode): TMeiNode;
 
     { Add another sibling at the end of this node's siblings. That is, add
-    another node at the current level of the tree hierarchy. }
+      another node at the current level of the tree hierarchy. }
     function AppendSibling(Sibling: TMeiNode): TMeiNode;
 
     { Add another element as the last sibling to this node's child. That is,
-    add another node at one level down on the tree hierarchy relative to the
-    parent. } 
+      add another node at one level down on the tree hierarchy relative to the
+      parent. } 
     function AppendChild(Child: TMeiNode): TMeiNode;
 
     { Add a child after the last child in the whole chain of children starting
-    from this node. That is, add another node at the lowest level of the tree accessible through this parent's children. }
+      from this node. That is, add another node at the lowest level of the tree
+      accessible through this parent's children. }
     function AppendLastChild(Child: TMeiNode): TMeiNode;
 
     { Copy the information for a single node without its children or sibling
-    trees. }
+      trees. }
     procedure AssignNodeOnly(SourceNode: TMeiNode);
 
     { Copy the information for a single node including its children but not
-    its siblings. }
+      its siblings. }
     procedure AssignWithoutSiblings(SourceNode: TMeiNode);
 
     { Copy the whole tree starting from the given node to this tree. }

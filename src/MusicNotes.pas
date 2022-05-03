@@ -81,9 +81,8 @@ type
   { Types of bar lines }
   TBarline = (bkNormal, bkMiddle, bkFinal, bkRepeatEnd, bkRepeatStart);
 
-  { TODO reimplement? }
-  { Records which articulations a pitch has (correspond to MEI
-    @code(data.ARTICULATION) }
+  { @abstract(Records which articulations a pitch has (values correspond to
+    MEI @code(data.ARTICULATION)).) }
   TArticulationSpec = record
     FFermata, FAccent, FStaccato, FTenuto, FStaccatissimo, FMarcato: Boolean;
   end; 
@@ -132,7 +131,6 @@ type
       { Label indicates position of note in a ligature bracket, if any }
       FLigature: TMarkupPosition;
 
-      { TODO reimplement? }
       { Record with boolean flags for possible articulation labels }
       FArticulations: TArticulationSpec;
 
@@ -191,7 +189,7 @@ type
     function ToMEI: TMeiNode;
   end;
 
-  { @abstract(List of fermatas (used to gather all the fermatas needed in a
+  { @abstract(List of fermatas, used to gather all the fermatas needed in a
     measure.) }
   TFermataList = class(specialize TObjectList<TFermata>)
   public
@@ -284,22 +282,21 @@ type
     { Go through measure list in which only tie starts have been set (from
       Lilypond input), and set attributes for notes in the middle and ending
       of the tie. }
-    procedure AddTies;
+    function AddTies: TMeasureList;
 
     { Go through measure list in which line starts and ends have been
       marked in the @link(TPitch) elements, and create MEI line elements
       connecting those notes. Used for ties, slurs, coloration brackets, and
       ligature brackets (MEI @code(slur) and @code(bracketSpan) elements). }
-    procedure AddLines(LineKind: TLineKind);
+    function AddLines(LineKind: TLineKind): TMeasureList;
 
     { Add all the kinds of lines (ties, slurs, coloration brackets, and
       ligatures). }
-    procedure AddAllLines;
+    function AddAllLines: TMeasureList;
 
     { Go through measure list and add fermata elements within the MEI
       @code(measure) linked to their notes by the @code(startid). }
-    procedure AddFermatas;
-
+    function AddFermatas: TMeasureList;
 
   public
     constructor Create();
@@ -314,7 +311,7 @@ type
     function AddMeiSectionHead(MeiMeasure: TMeiNode): TMeiNode;
 
     { Create a @code(lirio:voice) element representing all the music for one
-      voice/layer. Used for testing. } { TODO needed? }
+      voice/layer. Used for testing. } 
     function ToMEI: TMeiNode;
   end;
 
@@ -336,7 +333,7 @@ type
   end;
      
   { @abstract(Internal representation of an MEI @code(note), @code(rest), or
-    @code(mRest) (multimeasure rest) element. }
+    @code(mRest) (multimeasure rest) element.) }
   TMeiNoteRest = class(TMeiNode)
   private
     function IsNote: Boolean;
@@ -379,7 +376,7 @@ function GetPitchName(LyName: String): TPitchName;
 var 
   PitchName: TPitchName;
 begin
-  case LyName.Substring(0, 1) of 
+  case FirstCharStr(LyName) of 
     'c': PitchName := pkC;
     'd': PitchName := pkD;
     'e': PitchName := pkE;
@@ -587,7 +584,6 @@ type
   end;
 
 var
-  KeyName: String;
   Key: TKeyKind = kkNone;
 begin
   if KeyStr.Contains('\CantusDurus') then
@@ -676,17 +672,9 @@ begin
   result := GetLinePosition(lkLigature, Source);
 end;
 
-{ TODO reimplement? }
 function GetArticulations(Source: String): TArticulationSpec;
 var
-  Spec: TArticulationSpec = (
-    FFermata:   False; 
-    FAccent:    False; 
-    FStaccato:  False; 
-    FTenuto:    False; 
-    FStaccatissimo: False; 
-    FMarcato:   False; 
-  ); 
+  Spec: TArticulationSpec;
 begin
   with Spec do
   begin
@@ -701,38 +689,30 @@ begin
 end;
 
 constructor TPitch.Create();
-var
- Spec: TArticulationSpec = (
-    FFermata:   False; 
-    FAccent:    False; 
-    FStaccato:  False; 
-    FTenuto:    False; 
-    FStaccatissimo: False; 
-    FMarcato:   False; 
-  ); 
 begin
   inherited Create;
   FID := GenerateXmlID;
-  FArticulations := Spec;
 end;
 
 constructor TPitch.Create(LyInput: String; Key: TKeyKind);
 var
   NoteStr, PitchNameLy, OctLy, DurLy, EtcLy, Test: String;
 begin
-  Self.Create;
+  Create;
   NoteStr := LyInput;
 
   { Move ligatures to after note (where Lilypond docs admit they should be!) }
   if NoteStr.StartsWith('\[') then
+  begin
     NoteStr := NoteStr.Substring(2) + '\[';
+  end;
 
   PitchNameLy := ExtractWord(1, NoteStr, 
                   [',', '''', '1', '2', '4', '8', '\']);
   NoteStr := StringDropBefore(NoteStr, PitchNameLy);
   
   OctLy := '';
-  Test := NoteStr.Substring(0, 1);
+  Test := FirstCharStr(NoteStr);
   case Test of
     '''', ',' :
     begin
@@ -742,7 +722,7 @@ begin
   end;
 
   DurLy := '';
-  Test := NoteStr.Substring(0, 1);
+  Test := FirstCharStr(NoteStr);
   case Test of
     '1', '2', '4', '8' :
     begin
@@ -759,7 +739,7 @@ begin
     
   FAccid     := akNatural;
   FAccidType := akImplicit;
-  if Self.IsValid and not Self.IsRest then
+  if IsValid and not IsRest then
   begin
     FAccid     := GetAccid(PitchNameLy);
     FAccidType := GetAccidType(FPitchName, FAccid, Key);
@@ -923,24 +903,6 @@ begin
   AddMeiDurDotsAttributes(Pitch);
 end;
 
-function ReplaceLyCommands(Source: String): String;
-var 
-  Translation: Array[0..3, 0..1] of String = ( 
-    ('\break', ''),  { ignore breaks }
-    ('\[ ', '\['),   { group start ligature with next note }
-    (' \]', '\]'),   { group end ligature with previous note }
-    ('\colorOne', '') { TODO for now; not supported by MEI? }
-  );
-  PairIndex: Integer;
-begin
-  for PairIndex := 0 to Length(Translation) - 1 do
-  begin
-    Source := Source.Replace(Translation[PairIndex][0], 
-                Translation[PairIndex][1]);
-  end;
-  result := Source;
-end;
-
 constructor TFermata.Create(ID: String);
 begin
   inherited Create;
@@ -1029,7 +991,7 @@ begin
   result := MeiLine;
 end;
 
-{ makes a chain of sibling elements (no parent element enclosing them all) }
+{ Makes a chain of sibling elements (no parent element enclosing them all) }
 function TLineList.ToMEI: TMeiNode;
 var
   Root: TMeiNode = nil;
@@ -1052,6 +1014,25 @@ begin
   inherited Create;
 end;
 
+{ TODO add all commands to be replaced (i.e., ignored) }
+function ReplaceLyCommands(Source: String): String;
+var 
+  Translation: Array[0..3, 0..1] of String = ( 
+    ('\break', ''),  { ignore breaks }
+    ('\[ ', '\['),   { group start ligature with next note }
+    (' \]', '\]'),   { group end ligature with previous note }
+    ('\colorOne', '') { TODO for now; not supported by MEI? }
+  );
+  PairIndex: Integer;
+begin
+  for PairIndex := 0 to Length(Translation) - 1 do
+  begin
+    Source := Source.Replace(Translation[PairIndex][0], 
+                Translation[PairIndex][1]);
+  end;
+  result := Source;
+end;
+
 constructor TPitchList.Create(LyInput: String; Key: TKeyKind);
 var
   ThisNote: String;
@@ -1059,7 +1040,6 @@ var
   NewPitch: TPitch;
 begin
   Create;
-  { TODO replace full command strings }
   LyInput := ReplaceLyCommands(LyInput);
 
   Notes := LyInput.Split([' ']);
@@ -1098,10 +1078,8 @@ function AddMeiBarlineAttr(MeiMeasure: TMeiNode; PitchList: TPitchList):
 var 
   Attr: String;
 begin
-  Assert(Assigned(PitchList));
-  Assert(Assigned(MeiMeasure));
-  Assert((MeiMeasure.Name = 'lirio:measure') 
-    or (MeiMeasure.Name = 'measure'));
+  Assert(Assigned(PitchList) and Assigned(MeiMeasure));
+  Assert((MeiMeasure.Name = 'lirio:measure') or (MeiMeasure.Name = 'measure'));
 
   case PitchList.BarlineRight of
     bkNormal    : Attr := '';
@@ -1111,8 +1089,9 @@ begin
   end;
 
   if not Attr.IsEmpty then 
+  begin
     MeiMeasure.AddAttribute('right', Attr);
- 
+  end;
   result := MeiMeasure;
 end;
 
@@ -1131,11 +1110,10 @@ begin
     else
       MeiTree.AppendSibling(ThisMeiNote);
   end;
-  
   result := MeiTree;
 end;
 
-procedure TMeasureList.AddFermatas;
+function TMeasureList.AddFermatas: TMeasureList;
 var
   ThisMeasure: TPitchList;
   ThisPitch: TPitch;
@@ -1152,6 +1130,7 @@ begin
       end;
     end;
   end;
+  result := Self;
 end;
 
 constructor TMeasureList.Create();
@@ -1193,14 +1172,14 @@ begin
     end;
   end;
 
-  Self.AddTies;
-  Self.AddFermatas;
-  Self.AddAllLines;
+  Self := AddTies;
+  Self := AddFermatas;
+  Self := AddAllLines;
 
   FreeAndNil(LyLines);
 end;
 
-procedure TMeasureList.AddTies;
+function TMeasureList.AddTies: TMeasureList;
 var
   ThisMeasure: TPitchList;
   ThisPitch, TiedPitch: TPitch;
@@ -1233,6 +1212,7 @@ begin
       Inc(PitchIndex);
     end;
   end;
+  result := Self;
 end;
 
 constructor TLinePositionList.Create(MeasureList: TMeasureList; 
@@ -1300,7 +1280,7 @@ begin
 end;
 
 
-procedure TMeasureList.AddLines(LineKind: TLineKind);
+function TMeasureList.AddLines(LineKind: TLineKind): TMeasureList;
 
   function GetLineName(LineKind: TLineKind): String;
   var
@@ -1379,14 +1359,15 @@ begin
     FreeAndNil(LineList);
     FreeAndNil(LinePositionList);
   end;
+  result := Self;
 end;
 
-procedure TMeasureList.AddAllLines;
+function TMeasureList.AddAllLines: TMeasureList;
 begin
-  AddLines(lkTie);
-  AddLines(lkSlur);
-  AddLines(lkColoration);
-  AddLines(lkLigature);
+  Self := AddLines(lkTie);
+  Self := AddLines(lkSlur);
+  Self := AddLines(lkColoration);
+  Self := AddLines(lkLigature);
 end;
 
 function TMeasureList.AddMeiSectionHead(MeiMeasure: TMeiNode): TMeiNode;

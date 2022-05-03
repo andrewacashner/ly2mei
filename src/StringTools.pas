@@ -11,6 +11,9 @@ uses SysUtils, Classes;
 { Write notes to standard error if compiled with @code(-dDEBUG) }
 procedure DebugLn(Msg: String);
 
+{ Return a string containing just the first character of the given string. }
+function FirstCharStr(Source: String): String;
+
 { Copy the portion of a string that follows the end of a given substring. }
 function StringDropBefore(Source, StartAfter: String): String;
 
@@ -49,12 +52,9 @@ type
     function RemoveBlankLines: TStringListPlus;
   end;
 
-
 { Return a string consisting of the text of a stringlist starting at a
   given index. }
 function ToStringFromIndex(InputLines: TStringList; Index: Integer): String; 
-
-
 
 implementation
 
@@ -63,6 +63,11 @@ begin
   {$ifdef DEBUG}
   WriteLn(stderr, '> ' + Msg);
   {$endif}
+end;
+
+function FirstCharStr(Source: String): String;
+begin
+  result := Source.Substring(0, 1);
 end;
 
 function StringDropBefore(Source, StartAfter: String): String;
@@ -190,6 +195,5 @@ begin
   FreeAndNil(TempLines);
   result := Self;
 end;
-
 
 end.

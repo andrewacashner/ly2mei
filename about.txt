@@ -1,6 +1,6 @@
-@shorttitle ly2mei
-@title A converter from Lilypond to MEI-XML
-@author Andrew Cashner, andrewacashner@gmail.com
+@title(ly2mei: A converter from Lilypond to MEI-XML)
+@shorttitle(ly2mei)
+@author(Andrew Cashner, andrewacashner@gmail.com)
 
 This is a converter from Lilypond to MEI-XML.
 It specifies a dialect of Lilypond which I have used for my editions of
@@ -28,16 +28,16 @@ seventeenth-century music.
         @cell(Restructured into units and documentation revised for PasDoc) )
 
   @row( @cell(2021/11/19) 
-         @cell(Working proof-of-concept converting sample Lilypond score to
-            MEI: just staves, voices, and notes) ) 
+         @cell(Working proof-of-concept converting sample Lilypond score to MEI) ) 
 
   @row( @cell(2021/11/30) 
-        @cell(Fixed major bugs, memory leak in building the XMl tree; add
-            support for section headings) )
+        @cell(Fixed major bugs, memory leak in building the XMl tree) )
 
   @row( @cell(2022/04/13)
-        @cell(Working (limited) prototype converting to MEI; using new MEI
-        module and rewritten ScoreTree and MusicNotes modules) )
+        @cell(Working (limited) prototype with new MEI module) )
+
+  @row( @cell(2022/05/03)
+        @cell(Cleaned up, optimized, completed documentation) )
 )
 
 
