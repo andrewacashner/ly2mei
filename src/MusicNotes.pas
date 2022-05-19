@@ -87,6 +87,13 @@ type
     FFermata, FAccent, FStaccato, FTenuto, FStaccatissimo, FMarcato: Boolean;
   end; 
 
+  TSyllablePosition = (skEmpty, skBeginning, skMiddle, skEnd);
+
+  TSyllable = record
+    FText: String;
+    FPosition: TSyllablePosition;
+  end;
+
   { @abstract(Internal data structure for a single pitch or rest.)
 
     Our internal structure for storing data for a pitch, using the labels
@@ -136,6 +143,10 @@ type
 
       { A string with additional text paired with this pitch. }
       FAnnotation: String;
+
+      { One syllable of text to be sung to this note, with indication of
+      syllable position }
+      FSyllable: TSyllable;
 
   public
     constructor Create(); 
