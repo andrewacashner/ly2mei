@@ -87,11 +87,16 @@ type
     FFermata, FAccent, FStaccato, FTenuto, FStaccatissimo, FMarcato: Boolean;
   end; 
 
-  TSyllablePosition = (skEmpty, skBeginning, skMiddle, skEnd);
+  TSyllablePosition = (skEmpty, skSingle, skBeginning, skMiddle, skEnd);
 
-  TSyllable = record
-    FText: String;
-    FPosition: TSyllablePosition;
+  TSyllable = class 
+  private
+    var
+      FText: String;
+      FPosition: TSyllablePosition;
+  public
+    property SyllableText: String         read FText      write FText;
+    property Position: TSyllablePosition  read FPosition  write FPosition;
   end;
 
   { @abstract(Internal data structure for a single pitch or rest.)
@@ -155,6 +160,8 @@ type
       given key. }
     constructor Create(LyInput: String; Key: TKeyKind);
 
+    destructor Destroy(); override;
+
     { When we find invalid input, we construct invalid pitches, with the
       fields set to "none" or negative values. Did we find a valid pitch? }
     function IsValid: Boolean;
@@ -178,6 +185,7 @@ type
     property Slur:       TMarkupPosition  read FSlur;
     property Coloration: TMarkupPosition  read FColoration;
     property Ligature:   TMarkupPosition  read FLigature;
+    property Syllable:   TSyllable        read FSyllable;
 
     property HasFermata:       Boolean    read FArticulations.FFermata;
     property HasAccent:        Boolean    read FArticulations.FAccent;
@@ -703,6 +711,7 @@ constructor TPitch.Create();
 begin
   inherited Create;
   FID := GenerateXmlID;
+  FSyllable := TSyllable.Create();
 end;
 
 constructor TPitch.Create(LyInput: String; Key: TKeyKind);
@@ -763,6 +772,19 @@ begin
   FArticulations := GetArticulations(EtcLy); 
 
   FAnnotation := EtcLy; { TODO just holding surplus text in case we need it }
+  { TODO set the syllable, but not when creating 
+  FSyllable.SyllableText := 'la';
+  FSyllable.Position := skSingle;
+  }
+end;
+
+destructor TPitch.Destroy();
+begin
+  if Assigned(FSyllable) then
+  begin
+    FSyllable.Destroy;
+  end;
+  inherited Destroy;
 end;
 
 function TPitch.IsValid: Boolean;
@@ -912,6 +934,7 @@ begin
   end;
 
   AddMeiDurDotsAttributes(Pitch);
+  { TODO add MEI syllable }
 end;
 
 constructor TFermata.Create(ID: String);
@@ -1020,9 +1043,9 @@ end;
 
 constructor TPitchList.Create();
 begin
+  inherited Create;
   FFermataList := TFermataList.Create();
   FLineList := TLineList.Create();
-  inherited Create;
 end;
 
 { TODO add all commands to be replaced (i.e., ignored) }
@@ -1068,8 +1091,14 @@ end;
 
 destructor TPitchList.Destroy();
 begin
-  FFermataList.Destroy;
-  FLineList.Destroy;
+  if Assigned(FFermataList) then
+  begin
+    FFermataList.Destroy;
+  end;
+  if Assigned(FLineList) then
+  begin
+    FLineList.Destroy;
+  end;
   inherited Destroy;
 end;
 
@@ -1379,6 +1408,7 @@ begin
   Self := AddLines(lkSlur);
   Self := AddLines(lkColoration);
   Self := AddLines(lkLigature);
+  result := Self;
 end;
 
 function TMeasureList.AddMeiSectionHead(MeiMeasure: TMeiNode): TMeiNode;
