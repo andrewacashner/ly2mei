@@ -89,14 +89,9 @@ type
 
   TSyllablePosition = (skEmpty, skSingle, skBeginning, skMiddle, skEnd);
 
-  TSyllable = class 
-  private
-    var
-      FText: String;
-      FPosition: TSyllablePosition;
-  public
-    property SyllableText: String         read FText      write FText;
-    property Position: TSyllablePosition  read FPosition  write FPosition;
+  TSyllable = record
+    FText: String;
+    FPosition: TSyllablePosition;
   end;
 
   { @abstract(Internal data structure for a single pitch or rest.)
@@ -160,8 +155,6 @@ type
       given key. }
     constructor Create(LyInput: String; Key: TKeyKind);
 
-    destructor Destroy(); override;
-
     { When we find invalid input, we construct invalid pitches, with the
       fields set to "none" or negative values. Did we find a valid pitch? }
     function IsValid: Boolean;
@@ -186,6 +179,8 @@ type
     property Coloration: TMarkupPosition  read FColoration;
     property Ligature:   TMarkupPosition  read FLigature;
     property Syllable:   TSyllable        read FSyllable;
+    property SylText:    String           read FSyllable.FText;
+    property SylPosition: TSyllablePosition read FSyllable.FPosition;
 
     property HasFermata:       Boolean    read FArticulations.FFermata;
     property HasAccent:        Boolean    read FArticulations.FAccent;
@@ -375,6 +370,8 @@ type
 
     { Create one or more MEI @code(artic) elements within a @code(note). }
     procedure AddMeiArticulation(Pitch: TPitch);
+    
+    procedure AddMeiSyllable(Pitch: TPitch);
 
   public
     { Create from internal @link(TPitch) structure. }
@@ -711,7 +708,6 @@ constructor TPitch.Create();
 begin
   inherited Create;
   FID := GenerateXmlID;
-  FSyllable := TSyllable.Create();
 end;
 
 constructor TPitch.Create(LyInput: String; Key: TKeyKind);
@@ -772,19 +768,10 @@ begin
   FArticulations := GetArticulations(EtcLy); 
 
   FAnnotation := EtcLy; { TODO just holding surplus text in case we need it }
-  { TODO set the syllable, but not when creating 
-  FSyllable.SyllableText := 'la';
-  FSyllable.Position := skSingle;
-  }
-end;
 
-destructor TPitch.Destroy();
-begin
-  if Assigned(FSyllable) then
-  begin
-    FSyllable.Destroy;
-  end;
-  inherited Destroy;
+  { TODO just for testing }
+  FSyllable.FText := 'la';
+  FSyllable.FPosition := skSingle;
 end;
 
 function TPitch.IsValid: Boolean;
@@ -910,6 +897,34 @@ begin
   end;
 end;
 
+procedure TMeiNoteRest.AddMeiSyllable(Pitch: TPitch);
+var
+  Verse, Syl: TMeiNode;
+  WordPos: String;
+begin
+  if IsNote and not Pitch.SylText.IsEmpty then
+  begin
+    Verse := TMeiNode.Create('verse');
+    Syl := TMeiNode.Create('syl');
+    Syl.TextNode := Pitch.SylText;
+
+    if Pitch.SylPosition > skSingle then
+    begin
+      case Pitch.SylPosition of
+        skBeginning : WordPos := 'i';
+        skMiddle    : WordPos := 'm';
+        skEnd       : WordPos := 'f';
+      end;
+      Syl.AddAttribute('con', 'd');
+      Syl.AddAttribute('wordpos', WordPos);
+    end;
+
+    Verse := Verse.AppendChild(Syl);
+    AppendChild(Verse);
+  end;
+end;
+
+
 function TPitch.PitchEq(P2: TPitch): Boolean;
 begin
   result := (Name = P2.Name) and (Accid = P2.Accid);
@@ -934,7 +949,7 @@ begin
   end;
 
   AddMeiDurDotsAttributes(Pitch);
-  { TODO add MEI syllable }
+  AddMeiSyllable(Pitch);
 end;
 
 constructor TFermata.Create(ID: String);
