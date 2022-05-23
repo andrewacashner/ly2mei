@@ -118,6 +118,8 @@ type
     pre-order traversal. }
     function FindFirstStaff: TLyObject;
 
+    function ToSyllableList: TSyllableList;
+
     { Create a @link(TMeiNode) tree with the path to the first layer in the
       @link(TLyObject) tree. }
     function ToMeiLayerPath(MeiNode: TMeiNode = nil): TMeiNode;
@@ -223,11 +225,6 @@ begin
     FMeasureList := TMeasureList.Create(FContents)
   else
     FMeasureList := TMeasureList.Create();
-
-  { TODO lyrics
-  if FType = ekLyrics then
-    SyllableList := TSyllableLIst.Create(FContents);
-  }
 end;
 
 destructor TLyObject.Destroy;
@@ -365,7 +362,6 @@ begin
   result := XmlNode;
 end;
 
-{ TODO START make this a constructor? }
 { Build an LCRS tree of Lilypond @code(\new) objects. }
 constructor TLyObject.Create(Source: String);
 var
@@ -760,6 +756,29 @@ begin
     result := MeiNode.AppendChild(FChild.ToMeiLayerPath)
   else 
     result := nil;
+end;
+
+{ TODO need to match up "new Lyrics" with voice object of "\lyricsto" }
+function TLyObject.ToSyllableList: TSyllableList;
+var
+  SyllableList: TSyllableList = nil;
+begin
+  if FType = ekLyrics then
+  begin
+    SyllableList := TSyllableList.Create(FContents);
+  end
+  else
+  begin
+    if Assigned(FChild) then
+    begin
+      SyllableList := FChild.ToSyllableList;
+    end;
+    if not Assigned(SyllableList) and Assigned(FSibling) then
+    begin
+      SyllableList := FSibling.ToSyllableList;
+    end;
+  end;
+  result := SyllableList;
 end;
 
 { TODO need to make sure all voices have same number of measures }

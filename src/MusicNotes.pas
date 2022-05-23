@@ -99,6 +99,8 @@ type
     constructor Create(SylText: String; SylPosition: TSyllablePosition =
       skSingle);
 
+    function ToMEI: TMeiNode;
+
     property SylText:     String            read FText      write FText;
     property SylPosition: TSyllablePosition read FPosition  write FPosition;
   end;
@@ -107,6 +109,7 @@ type
   public
     constructor Create();
     constructor Create(LyInput: String);
+    function ToMEI: TMeiNode;
   end;
 
   { @abstract(Internal data structure for a single pitch or rest.)
@@ -730,6 +733,27 @@ begin
   inherited Create;
   FText := SylText;
   FPosition := SylPosition;
+end;
+
+function TSyllable.ToMEI: TMeiNode;
+var
+  Syl: TMeiNode;
+  WordPos: String;
+begin
+  Syl := TMeiNode.Create('syl');
+  Syl.TextNode := SylText;
+
+  if SylPosition > skSingle then
+  begin
+    case SylPosition of
+      skBeginning : WordPos := 'i';
+      skMiddle    : WordPos := 'm';
+      skEnd       : WordPos := 'f';
+    end;
+    Syl.AddAttribute('con', 'd');
+    Syl.AddAttribute('wordpos', WordPos);
+  end;
+  result := Syl;
 end;
 
 constructor TPitch.Create();
@@ -1529,7 +1553,12 @@ begin
 
   for ThisString in TokenizedInput do
   begin
-    if (ThisString = '--') and Assigned(Last) then
+    { Found a hyphen, this means the next item will be the continuation of the
+      previous. Change previous item's position marker to indicate the word
+      continues. A single word becomes a beginning; a word ending becomes a
+      middle. Don't add the hyphen to the syllable list.
+    }
+    if (Self.Count > 0) and (ThisString = '--') then
     begin
       case Last.SylPosition of
         skSingle : Last.SylPosition := skBeginning;
@@ -1538,8 +1567,13 @@ begin
     end
     else
     begin
+      { Found a string, not a hyphen (could also be '_'). If we are adding to
+        an open (continuing) word, mark this as the ending; otherwise just add a
+        single independent syllable. If we find another hyphen after this, we'll
+        change this to be a middle. 
+      }
       NewSyllable := TSyllable.Create(ThisString);
-      if Assigned(Last) then
+      if Self.Count > 0 then
       begin
         case Last.SylPosition of
           skBeginning, skMiddle : NewSyllable.SylPosition := skEnd;
@@ -1548,6 +1582,20 @@ begin
       Add(NewSyllable);
     end;
   end;
+end;
+
+function TSyllableList.ToMEI: TMeiNode;
+var
+  Verse, NewSyl: TMeiNode;
+  ThisSyllable: TSyllable;
+begin
+  Verse := TMeiNode.Create('verse');
+  for ThisSyllable in Self do
+  begin
+    NewSyl := ThisSyllable.ToMEI;
+    Verse.AppendChild(NewSyl);
+  end;
+  result := Verse;
 end;
 
 end.

@@ -1,4 +1,4 @@
-{$mode objfpc}{$H+}{$J-} {$ASSERTIONS+}
+{$mode objfpc}{$H+}{$J-}
 
 { @abstract(@code(ly2mei), A converter from Lilypond to MEI-XML)
   @author(Andrew Cashner, <andrewacashner@gmail.com>)
