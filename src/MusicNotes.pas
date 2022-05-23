@@ -98,6 +98,7 @@ type
     constructor Create();
     constructor Create(SylText: String; SylPosition: TSyllablePosition =
       skSingle);
+    procedure Assign(OtherSyl: TSyllable);
 
     function ToMEI: TMeiNode;
 
@@ -112,6 +113,7 @@ type
     function ToMEI: TMeiNode;
   end;
 
+  
   { @abstract(Internal data structure for a single pitch or rest.)
 
     Our internal structure for storing data for a pitch, using the labels
@@ -183,6 +185,8 @@ type
       only the duration. }
     function IsRest: Boolean;
 
+    function CanHaveSyllable: Boolean;
+
     { Is the pitch class and accidental the same as another? (Ignoring
       duration and other fields) }
     function PitchEq(P2: TPitch): Boolean;
@@ -198,7 +202,7 @@ type
     property Slur:       TMarkupPosition  read FSlur;
     property Coloration: TMarkupPosition  read FColoration;
     property Ligature:   TMarkupPosition  read FLigature;
-    property Syllable:   TSyllable        read FSyllable;
+    property Syllable:   TSyllable        read FSyllable    write FSyllable;
 
     property HasFermata:       Boolean    read FArticulations.FFermata;
     property HasAccent:        Boolean    read FArticulations.FAccent;
@@ -330,6 +334,7 @@ type
       @code(measure) linked to their notes by the @code(startid). }
     function AddFermatas: TMeasureList;
 
+
   public
     constructor Create();
 
@@ -341,6 +346,8 @@ type
     { Create an MEI @code(tempo) element, used for a section heading, and add
       it to the MEI @code(measure) element. }
     function AddMeiSectionHead(MeiMeasure: TMeiNode): TMeiNode;
+    
+    function AddLyrics(SyllableList: TSyllableList): TMeasureList;
 
     { Create a @code(lirio:voice) element representing all the music for one
       voice/layer. Used for testing. } 
@@ -735,6 +742,15 @@ begin
   FPosition := SylPosition;
 end;
 
+procedure TSyllable.Assign(OtherSyl: TSyllable);
+begin
+  if Assigned(OtherSyl) then
+  begin
+    FText := OtherSyl.SylText;
+    FPosition := OtherSyl.SylPosition;
+  end;
+end;
+
 function TSyllable.ToMEI: TMeiNode;
 var
   Syl: TMeiNode;
@@ -821,10 +837,6 @@ begin
   FArticulations := GetArticulations(EtcLy); 
 
   FAnnotation := EtcLy; { TODO just holding surplus text in case we need it }
-
-  { TODO just for testing }
-  FSyllable.SylText := 'la';
-  FSyllable.SylPosition := skSingle;
 end;
 
 destructor TPitch.Destroy();
@@ -844,6 +856,11 @@ end;
 function TPitch.IsRest: Boolean;
 begin
   result := FPitchName >= pkRest;
+end;
+
+function TPitch.CanHaveSyllable: Boolean;
+begin
+  result := (not IsRest) and (Tie <= mkStart) and (Slur <= mkStart);
 end;
 
 function TMeiNoteRest.IsNote: Boolean;
@@ -1510,6 +1527,36 @@ begin
   result := MeiMeasure;
 end;
 
+function TMeasureList.AddLyrics(SyllableList: TSyllableList): TMeasureList;
+var
+  ThisSyllable: TSyllable;
+  ThisMeasure: TPitchList;
+  ThisPitch: TPitch;
+  SyllableIndex: Integer;
+begin
+  for ThisMeasure in Self do
+  begin
+    SyllableIndex := 0;
+    for ThisPitch in ThisMeasure do
+    begin
+      if ThisPitch.CanHaveSyllable 
+        and (SyllableIndex < SyllableList.Count) then
+      begin
+        ThisSyllable := SyllableList[SyllableIndex];
+        if (ThisSyllable.SylText <> '_') then
+        begin
+          ThisPitch.Syllable.Assign(ThisSyllable);
+        end;
+        Inc(SyllableIndex);
+      end
+      else
+        continue;
+    end;
+  end;
+
+  result := Self;
+end;
+
 function TMeasureList.ToMEI: TMeiNode;
 var
   MeiRoot, MeiMeasure, MeiLines: TMeiNode;
@@ -1539,7 +1586,7 @@ begin
   inherited Create();
 end;
 
-{ TODO should there be a syllablelist in each measurelist, or what? }
+{ TODO deal with \EdLyrics and other markup }
 { given input of \lyrics expression }
 constructor TSyllableList.Create(LyInput: String);
 var
@@ -1549,6 +1596,8 @@ var
 begin
   inherited Create();
 
+  LyInput := CopyStringBetween(LyInput, '\\lyricmode {', '}');
+  { TODO maybe the problem is here? }
   TokenizedInput := LyInput.Split([' ', LineEnding]);
 
   for ThisString in TokenizedInput do
@@ -1565,7 +1614,7 @@ begin
         skEnd    : Last.SylPosition := skMiddle;
       end;
     end
-    else
+    else if (ThisString <> '__') then
     begin
       { Found a string, not a hyphen (could also be '_'). If we are adding to
         an open (continuing) word, mark this as the ending; otherwise just add a
@@ -1582,6 +1631,12 @@ begin
       Add(NewSyllable);
     end;
   end;
+  {DEBUG start}
+  for NewSyllable in Self do
+  begin
+    Write(NewSyllable.SylText + ' ');
+  end;
+  {DEBUG end}
 end;
 
 function TSyllableList.ToMEI: TMeiNode;

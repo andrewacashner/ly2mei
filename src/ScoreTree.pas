@@ -44,7 +44,8 @@ unit ScoreTree;
 
 interface
 
-uses SysUtils, StrUtils, Classes, StringTools, Outline, MEI, Header, MusicNotes;
+uses SysUtils, StrUtils, Classes, Generics.Collections, StringTools, Outline,
+  MEI, Header, MusicNotes;
 
 type 
   { Types of elements in the internal tree of @code(TLyObject) or
@@ -95,6 +96,11 @@ type
       { List of measures (lists of pitch objects), parsed from contents;
         ONLY for @code(ekLayer) type; otherwise empty (0 length)}
       FMeasureList: TMeasureList;
+      
+      { If this item is linked to another (as in Lyrics that match up with a
+      Voice via @code(\lyricsto) then this is the ID of the other item. }
+      FLinkID: String;
+
       { Left child node (tree) }
       FChild: TLyObject;
       { Right sibling node (tree) }
@@ -107,8 +113,10 @@ type
       node, not including its children or siblings. }
     function ToMeiScoreDefNode: TMeiNode;
 
-    { Find the first descendant node with the given type. }
-    function FindFirstDescendant(ElementType: TLyObjectType): TLyObject;
+    { Find the first descendant node with the given type (and also
+    the ID if given). }
+    function FindElement(ElementType: TLyObjectType; ElementID:
+      String = ''): TLyObject;
 
     { Find the first layer (@link(ekLayer) type) object in the tree in a
     pre-order traversal. }
@@ -117,8 +125,6 @@ type
     { Find the first staff (@link(ekStaff) type) object in the tree in a
     pre-order traversal. }
     function FindFirstStaff: TLyObject;
-
-    function ToSyllableList: TSyllableList;
 
     { Create a @link(TMeiNode) tree with the path to the first layer in the
       @link(TLyObject) tree. }
@@ -141,13 +147,16 @@ type
       tree. }
     function NumberElementsInOrder: TLyObject;
 
+    function AddLyrics: TLyObject;
+
   public
     constructor Create();
 
     { The @code(FType) field will be created automatically based on the
       @code(Name) argument. }
-    constructor Create(Name, ID: String; ContentsStr: String = ''; Num:
-      Integer = 1; Child: TLyObject = nil; Sibling: TLyObject = nil); 
+    constructor Create(Name, ID: String; LinkID: String = '';
+      ContentsStr: String = ''; Num: Integer = 1; Child: TLyObject = nil; 
+      Sibling: TLyObject = nil); 
 
     { Create a whole tree from Lilypond input as stringlist. }
     constructor Create(Source: String);
@@ -174,9 +183,17 @@ type
     property ID:        String        read FID;
     property Num:       Integer       read FNum           write FNum;
     property Contents:  String        read FContents;
-    property Measures:  TMeasureList  read FMeasureList;
+    property Measures:  TMeasureList  read FMeasureList   write FMeasureList;
+    property LinkID:    String        read FLinkID;
     property Child:     TLyObject     read FChild         write FChild;
     property Sibling:   TLyObject     read FSibling       write FSibling;
+  end;
+
+  TLyricsDict = class(specialize TObjectDictionary<String, TSyllableList>)
+  public
+    constructor Create(); override;
+    constructor Create(LyTree: TLyObject);
+    destructor Destroy(); override;
   end;
 
 { Create a new MEI tree consisting of the MEI @code(score) element, including
@@ -194,8 +211,9 @@ begin
   inherited Create;
 end;
 
-constructor TLyObject.Create(Name, ID: String; ContentsStr: String = ''; 
-  Num: Integer = 1; Child: TLyObject = nil; Sibling: TLyObject = nil); 
+constructor TLyObject.Create(Name, ID: String; LinkID: String = '';
+  ContentsStr: String = ''; Num: Integer = 1; Child: TLyObject = nil; 
+  Sibling: TLyObject = nil); 
   
   function NameToType(Name: String): TLyObjectType;
   var
@@ -218,6 +236,7 @@ begin
   FID       := ID;
   FNum      := Num;
   FContents := ContentsStr;
+  FLinkID   := LinkID;
   FChild    := Child;
   FSibling  := Sibling;
   
@@ -366,13 +385,14 @@ end;
 constructor TLyObject.Create(Source: String);
 var
   SearchIndex: Integer = 0;
-  SearchStr, ThisType, ThisID, ThisContents: String;
+  SearchStr, ThisType, ThisID, ThisLinkID, ThisContents: String;
   Outline: TIndexPair;
 begin
   Outline := TIndexPair.Create;
   SearchStr := Source;
   ThisType := '';
   ThisID := '';
+  ThisLinkID := '';
 
   if SearchStr.Contains('\new ') then
   begin
@@ -389,6 +409,12 @@ begin
       SearchStr := StringDropBefore(SearchStr, ThisID + '"');
     end;
 
+    { Find Link ID for Lyrics }
+    if (ThisType = 'Lyrics') and SearchStr.Contains('\lyricsto') then
+    begin
+      ThisLinkID := CopyStringBetween(SearchStr, '\lyricsto "', '"');
+    end;
+
     { Find Contents: Either an expression within double angle brackets or
       one within curly braces. If angle brackets, recursively look for nested
       @code(\new) expressions. }
@@ -399,7 +425,7 @@ begin
       Outline.MarkBalancedDelimiterSubstring(SearchStr, '<', '>');
       ThisContents := CopyStringRange(SearchStr, Outline, rkInclusive);
 
-      Create(ThisType, ThisID);
+      Create(ThisType, ThisID, ThisLinkID);
       if ThisContents.Contains('\new ') then
         FChild := TLyObject.Create(ThisContents);
     end
@@ -407,7 +433,7 @@ begin
     begin
       { Add this expression as a sibling, then move on to next }
       ThisContents := CopyBraceExpr(SearchStr);
-      Create(ThisType, ThisID, ThisContents);
+      Create(ThisType, ThisID, ThisLinkID, ThisContents);
     end;
 
     { Look for the next sibling where you left off from the last search }
@@ -422,6 +448,27 @@ constructor TLyObject.Create(LyInput: TStringList);
 begin
   Create(LyInput.Text);
   Self := NumberElementsInOrder;
+  Self := AddLyrics;
+end;
+
+
+function TLyObject.AddLyrics: TLyObject;
+var
+  LyricsDict: TLyricsDict;
+  ThisLyricEntry: TLyricsDict.TDictionaryPair;
+  ThisVoice: TLyObject = nil;
+begin
+  LyricsDict := TLyricsDict.Create(Self);
+  for ThisLyricEntry in LyricsDict do
+  begin
+    ThisVoice := Self.FindElement(ekLayer, ThisLyricEntry.Key);
+    if Assigned(ThisVoice) then
+    begin
+      ThisVoice.Measures := ThisVoice.Measures.AddLyrics(ThisLyricEntry.Value);
+    end;
+  end;
+  FreeAndNil(LyricsDict);
+  result := Self;
 end;
 
 type
@@ -702,34 +749,41 @@ begin
   result := NameString;
 end;
 
-function TLyObject.FindFirstDescendant(ElementType: TLyObjectType): 
-  TLyObject;
+function TLyObject.FindElement(ElementType: TLyObjectType; 
+  ElementID: String = ''): TLyObject;
 var
   FoundNode: TLyObject = nil;
+  NodeTest: Boolean;
 begin
-  if FType = ElementType then
+  if ElementID.IsEmpty then
+    NodeTest := FType = ElementType
+  else
+    NodeTest := (FType = ElementType) and (FID = ElementID);
+
+  if NodeTest then
     FoundNode := Self
   else if Assigned(FChild) then
   begin
-    FoundNode := FChild.FindFirstDescendant(ElementType);
+    FoundNode := FChild.FindElement(ElementType, ElementID);
   end;
 
   if not Assigned(FoundNode) and Assigned(FSibling) then
   begin
-    FoundNode := FSibling.FindFirstDescendant(ElementType);
+    FoundNode := FSibling.FindElement(ElementType, ElementID);
   end;
 
   result := FoundNode;
 end;
 
+
 function TLyObject.FindFirstLayer: TLyObject;
 begin
-  result := FindFirstDescendant(ekLayer);
+  result := FindElement(ekLayer);
 end;
 
 function TLyObject.FindFirstStaff: TLyObject;
 begin
-  result := FindFirstDescendant(ekStaff);
+  result := FindElement(ekStaff);
 end;
 
 function TLyObject.ToMeiLayerPath(MeiNode: TMeiNode = nil): TMeiNode;
@@ -758,27 +812,57 @@ begin
     result := nil;
 end;
 
-{ TODO need to match up "new Lyrics" with voice object of "\lyricsto" }
-function TLyObject.ToSyllableList: TSyllableList;
-var
-  SyllableList: TSyllableList = nil;
+constructor TLyricsDict.Create();
 begin
-  if FType = ekLyrics then
+  inherited Create();
+end;
+
+constructor TLyricsDict.Create(LyTree: TLyObject);
+
+  function AddNewLyrics(Dict: TLyricsDict; LyTree: TLyObject): TLyricsDict;
+  var
+    LyInput: String;
+    SyllableList: TSyllableList = nil;
+
+    MEI: TMeiNode; {DEBUG}
   begin
-    SyllableList := TSyllableList.Create(FContents);
-  end
-  else
-  begin
-    if Assigned(FChild) then
+    if LyTree.LyType = ekLyrics then
     begin
-      SyllableList := FChild.ToSyllableList;
+      SyllableList := TSyllableList.Create(LyTree.Contents);
+
+      { DEBUG start }
+      MEI := SyllableList.ToMEI;
+      WriteLn(stderr, MEI.XMLString);
+      FreeAndNil(MEI);
+      { DEBUG end} 
+
+      Dict.Add(LyTree.LinkID, SyllableList);
     end;
-    if not Assigned(SyllableList) and Assigned(FSibling) then
+    if Assigned(LyTree.Child) then
     begin
-      SyllableList := FSibling.ToSyllableList;
+      Dict := AddNewLyrics(Dict, LyTree.Child);
     end;
+    if Assigned(LyTree.Sibling) then
+    begin
+      Dict := AddNewLyrics(Dict, LyTree.Sibling);
+    end;
+    result := Dict;
   end;
-  result := SyllableList;
+
+begin
+  inherited Create();
+  Self := AddNewLyrics(Self, LyTree);
+end;
+
+destructor TLyricsDict.Destroy;
+var
+  ThisEntry: TLyricsDict.TDictionaryPair;
+begin
+  for ThisEntry in Self do
+  begin
+    ThisEntry.Value.Destroy;
+  end;
+  inherited Destroy;
 end;
 
 { TODO need to make sure all voices have same number of measures }
