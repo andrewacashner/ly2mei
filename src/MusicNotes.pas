@@ -87,11 +87,26 @@ type
     FFermata, FAccent, FStaccato, FTenuto, FStaccatissimo, FMarcato: Boolean;
   end; 
 
-  TSyllablePosition = (skEmpty, skSingle, skBeginning, skMiddle, skEnd);
+  TSyllablePosition = (skSingle, skBeginning, skMiddle, skEnd);
 
-  TSyllable = record
-    FText: String;
-    FPosition: TSyllablePosition;
+  TSyllable = class 
+  private
+    var
+      FText: String;
+      FPosition: TSyllablePosition;
+  public
+    constructor Create();
+    constructor Create(SylText: String; SylPosition: TSyllablePosition =
+      skSingle);
+
+    property SylText:     String            read FText      write FText;
+    property SylPosition: TSyllablePosition read FPosition  write FPosition;
+  end;
+
+  TSyllableList = class(specialize TObjectList<TSyllable>)
+  public
+    constructor Create();
+    constructor Create(LyInput: String);
   end;
 
   { @abstract(Internal data structure for a single pitch or rest.)
@@ -155,6 +170,8 @@ type
       given key. }
     constructor Create(LyInput: String; Key: TKeyKind);
 
+    destructor Destroy(); override;
+
     { When we find invalid input, we construct invalid pitches, with the
       fields set to "none" or negative values. Did we find a valid pitch? }
     function IsValid: Boolean;
@@ -179,8 +196,6 @@ type
     property Coloration: TMarkupPosition  read FColoration;
     property Ligature:   TMarkupPosition  read FLigature;
     property Syllable:   TSyllable        read FSyllable;
-    property SylText:    String           read FSyllable.FText;
-    property SylPosition: TSyllablePosition read FSyllable.FPosition;
 
     property HasFermata:       Boolean    read FArticulations.FFermata;
     property HasAccent:        Boolean    read FArticulations.FAccent;
@@ -704,10 +719,24 @@ begin
   result := Spec;
 end;
 
+constructor TSyllable.Create();
+begin
+  inherited Create;
+end;
+
+constructor TSyllable.Create(SylText: String; 
+  SylPosition: TSyllablePosition = skSingle);
+begin
+  inherited Create;
+  FText := SylText;
+  FPosition := SylPosition;
+end;
+
 constructor TPitch.Create();
 begin
   inherited Create;
   FID := GenerateXmlID;
+  FSyllable := TSyllable.Create;
 end;
 
 constructor TPitch.Create(LyInput: String; Key: TKeyKind);
@@ -770,8 +799,17 @@ begin
   FAnnotation := EtcLy; { TODO just holding surplus text in case we need it }
 
   { TODO just for testing }
-  FSyllable.FText := 'la';
-  FSyllable.FPosition := skSingle;
+  FSyllable.SylText := 'la';
+  FSyllable.SylPosition := skSingle;
+end;
+
+destructor TPitch.Destroy();
+begin
+  if Assigned(FSyllable) then
+  begin
+    FSyllable.Destroy;
+  end;
+  inherited Destroy;
 end;
 
 function TPitch.IsValid: Boolean;
@@ -899,18 +937,20 @@ end;
 
 procedure TMeiNoteRest.AddMeiSyllable(Pitch: TPitch);
 var
+  ThisSyllable: TSyllable;
   Verse, Syl: TMeiNode;
   WordPos: String;
 begin
-  if IsNote and not Pitch.SylText.IsEmpty then
+  ThisSyllable := Pitch.Syllable;
+  if IsNote and not ThisSyllable.SylText.IsEmpty then
   begin
     Verse := TMeiNode.Create('verse');
     Syl := TMeiNode.Create('syl');
-    Syl.TextNode := Pitch.SylText;
+    Syl.TextNode := ThisSyllable.SylText;
 
-    if Pitch.SylPosition > skSingle then
+    if ThisSyllable.SylPosition > skSingle then
     begin
-      case Pitch.SylPosition of
+      case ThisSyllable.SylPosition of
         skBeginning : WordPos := 'i';
         skMiddle    : WordPos := 'm';
         skEnd       : WordPos := 'f';
@@ -1468,6 +1508,46 @@ begin
     Inc(MeasureNum);
   end;
   result := MeiRoot;
+end;
+
+constructor TSyllableList.Create();
+begin
+  inherited Create();
+end;
+
+{ TODO should there be a syllablelist in each measurelist, or what? }
+{ given input of \lyrics expression }
+constructor TSyllableList.Create(LyInput: String);
+var
+  TokenizedInput: TStringArray;
+  ThisString: String;
+  NewSyllable: TSyllable;
+begin
+  inherited Create();
+
+  TokenizedInput := LyInput.Split([' ', LineEnding]);
+
+  for ThisString in TokenizedInput do
+  begin
+    if (ThisString = '--') and Assigned(Last) then
+    begin
+      case Last.SylPosition of
+        skSingle : Last.SylPosition := skBeginning;
+        skEnd    : Last.SylPosition := skMiddle;
+      end;
+    end
+    else
+    begin
+      NewSyllable := TSyllable.Create(ThisString);
+      if Assigned(Last) then
+      begin
+        case Last.SylPosition of
+          skBeginning, skMiddle : NewSyllable.SylPosition := skEnd;
+        end;
+      end;
+      Add(NewSyllable);
+    end;
+  end;
 end;
 
 end.

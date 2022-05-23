@@ -49,7 +49,7 @@ uses SysUtils, StrUtils, Classes, StringTools, Outline, MEI, Header, MusicNotes;
 type 
   { Types of elements in the internal tree of @code(TLyObject) or
     @code(TMEIElement) objects }
-  TLyObjectType = (ekAnonymous, ekStaffGrp, ekStaff, ekLayer, ekMeasure);
+  TLyObjectType = (ekAnonymous, ekStaffGrp, ekStaff, ekLayer, ekMeasure, ekLyrics);
 
   { @abstract(A node, which may be the base of a tree, of Lilypond code
     objects.)
@@ -204,6 +204,7 @@ constructor TLyObject.Create(Name, ID: String; ContentsStr: String = '';
         'ChoirStaff' : Element := ekStaffGrp;
       'Staff' :        Element := ekStaff;
       'Voice' :        Element := ekLayer;
+      'Lyrics' :       Element := ekLyrics;
     end;
     result := Element;
   end;
@@ -222,6 +223,11 @@ begin
     FMeasureList := TMeasureList.Create(FContents)
   else
     FMeasureList := TMeasureList.Create();
+
+  { TODO lyrics
+  if FType = ekLyrics then
+    SyllableList := TSyllableLIst.Create(FContents);
+  }
 end;
 
 destructor TLyObject.Destroy;
