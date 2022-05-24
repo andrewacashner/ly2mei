@@ -860,6 +860,8 @@ end;
 
 function TPitch.CanHaveSyllable: Boolean;
 begin
+  { DEBUG this doesn't work because we are not setting mkMiddle for notes
+  between slurs }
   result := (not IsRest) and (Tie <= mkStart) and (Slur <= mkStart);
 end;
 
@@ -994,7 +996,7 @@ begin
       case ThisSyllable.SylPosition of
         skBeginning : WordPos := 'i';
         skMiddle    : WordPos := 'm';
-        skEnd       : WordPos := 'f';
+        skEnd       : WordPos := 't';
       end;
       Syl.AddAttribute('con', 'd');
       Syl.AddAttribute('wordpos', WordPos);
@@ -1534,9 +1536,9 @@ var
   ThisPitch: TPitch;
   SyllableIndex: Integer;
 begin
+  SyllableIndex := 0;
   for ThisMeasure in Self do
   begin
-    SyllableIndex := 0;
     for ThisPitch in ThisMeasure do
     begin
       if ThisPitch.CanHaveSyllable 
@@ -1598,7 +1600,7 @@ begin
 
   LyInput := CopyStringBetween(LyInput, '\\lyricmode {', '}');
   { TODO maybe the problem is here? }
-  TokenizedInput := LyInput.Split([' ', LineEnding]);
+  TokenizedInput := LyInput.Split([' ', LineEnding], TStringSplitOptions.ExcludeEmpty);
 
   for ThisString in TokenizedInput do
   begin
@@ -1631,12 +1633,6 @@ begin
       Add(NewSyllable);
     end;
   end;
-  {DEBUG start}
-  for NewSyllable in Self do
-  begin
-    Write(NewSyllable.SylText + ' ');
-  end;
-  {DEBUG end}
 end;
 
 function TSyllableList.ToMEI: TMeiNode;

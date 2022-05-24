@@ -1,4 +1,4 @@
-\version "2.23"
+\version "2.2"
 \header {
   title = "Simple Lilypond Score with Default Syntax"
   composer = "Andrew Cashner"

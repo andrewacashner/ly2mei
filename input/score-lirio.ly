@@ -1,4 +1,4 @@
-\version "2.23"
+\version "2.2"
 \include "early-music.ly"
 \header {
   title = "Test of Lirio Score Reading"

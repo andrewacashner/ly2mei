@@ -821,20 +821,11 @@ constructor TLyricsDict.Create(LyTree: TLyObject);
 
   function AddNewLyrics(Dict: TLyricsDict; LyTree: TLyObject): TLyricsDict;
   var
-    LyInput: String;
     SyllableList: TSyllableList = nil;
-
-    MEI: TMeiNode; {DEBUG}
   begin
     if LyTree.LyType = ekLyrics then
     begin
       SyllableList := TSyllableList.Create(LyTree.Contents);
-
-      { DEBUG start }
-      MEI := SyllableList.ToMEI;
-      WriteLn(stderr, MEI.XMLString);
-      FreeAndNil(MEI);
-      { DEBUG end} 
 
       Dict.Add(LyTree.LinkID, SyllableList);
     end;
