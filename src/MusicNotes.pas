@@ -14,7 +14,8 @@ unit MusicNotes;
 
 interface
 
-uses SysUtils, StrUtils, Classes, Generics.Collections, StringTools, MEI;
+uses SysUtils, StrUtils, Classes, Generics.Collections, StringTools, Outline,
+  MEI;
 
 type 
   { Labels for pitch classes }
@@ -87,7 +88,8 @@ type
     FFermata, FAccent, FStaccato, FTenuto, FStaccatissimo, FMarcato: Boolean;
   end; 
 
-  TSyllablePosition = (skSingle, skBeginning, skMiddle, skEnd);
+  TSyllablePosition = (skSingle, skBeginning, skMiddle, skEnd, skExtend,
+    skEndExtend, skSingleExtend);
 
   TSyllable = class 
   private
@@ -99,7 +101,7 @@ type
     constructor Create(SylText: String; SylPosition: TSyllablePosition =
       skSingle);
     procedure Assign(OtherSyl: TSyllable);
-
+    
     function ToMEI: TMeiNode;
 
     property SylText:     String            read FText      write FText;
@@ -199,7 +201,7 @@ type
     property Dur:        TDuration        read FDur;
 
     property Tie:        TMarkupPosition  read FTie         write FTie;
-    property Slur:       TMarkupPosition  read FSlur;
+    property Slur:       TMarkupPosition  read FSlur        write FSlur;
     property Coloration: TMarkupPosition  read FColoration;
     property Ligature:   TMarkupPosition  read FLigature;
     property Syllable:   TSyllable        read FSyllable    write FSyllable;
@@ -334,6 +336,7 @@ type
       @code(measure) linked to their notes by the @code(startid). }
     function AddFermatas: TMeasureList;
 
+    function MarkBetweenSlurs: TMeasureList;
 
   public
     constructor Create();
@@ -754,7 +757,6 @@ end;
 function TSyllable.ToMEI: TMeiNode;
 var
   Syl: TMeiNode;
-  WordPos: String;
 begin
   Syl := TMeiNode.Create('syl');
   Syl.TextNode := SylText;
@@ -762,15 +764,105 @@ begin
   if SylPosition > skSingle then
   begin
     case SylPosition of
-      skBeginning : WordPos := 'i';
-      skMiddle    : WordPos := 'm';
-      skEnd       : WordPos := 'f';
+      skBeginning        : Syl.AddAttribute('wordpos', 'i');
+      skMiddle           : Syl.AddAttribute('wordpos', 'm');
+      skEnd, skEndExtend : Syl.AddAttribute('wordpos', 't');
     end;
-    Syl.AddAttribute('con', 'd');
-    Syl.AddAttribute('wordpos', WordPos);
+
+    case SylPosition of
+      skBeginning, skMiddle       : Syl.AddAttribute('con', 'd');
+      skEndExtend, skSingleExtend : Syl.AddAttribute('con', 'u');
+    end;
   end;
   result := Syl;
 end;
+
+constructor TSyllableList.Create();
+begin
+  inherited Create();
+end;
+
+{ TODO deal with \EdLyrics and other markup }
+{ TODO elided lyrics, e.g., 'a~un' or 'a_un' -> two syllables on one note }
+{ given input of \lyrics expression }
+constructor TSyllableList.Create(LyInput: String);
+
+  function ValidSyllable(Syl: String): Boolean;
+  begin
+    result := (Syl <> '{') and (Syl <> '}') and not Syl.StartsWith('\');
+  end;
+
+var
+  TokenizedInput: TStringArray;
+  ThisString: String;
+  NewSyllable: TSyllable;
+begin
+  inherited Create();
+
+  LyInput := LyArg(LyInput, '\\lyricmode', rkExclusive);
+
+  TokenizedInput := LyInput.Split([' ', LineEnding], 
+    TStringSplitOptions.ExcludeEmpty);
+
+  for ThisString in TokenizedInput do
+  begin
+    { Found a hyphen, this means the next item will be the continuation of the
+      previous. Change previous item's position marker to indicate the word
+      continues. A single word becomes a beginning; a word ending becomes a
+      middle. Don't add the hyphen to the syllable list.
+    }
+    if (Self.Count > 0) and (ThisString = '--') then
+    begin
+      case Last.SylPosition of
+        skSingle : Last.SylPosition := skBeginning;
+        skEnd    : Last.SylPosition := skMiddle;
+      end;
+    end
+    { Mark lyric extensions after the end of a word.
+      NB: Lyric extenders must be explicitly specified in Lilypond source }
+    else if (Self.Count > 0) and (ThisString = '__') then
+    begin
+      case Last.SylPosition of
+        skEnd    : Last.SylPosition := skEndExtend;
+        skSingle : Last.SylPosition := skSingleExtend;
+      end;
+    end
+    else if ValidSyllable(ThisString) then
+    begin
+      { Found a string, not a hyphen or markup instruction.
+        NB We are ignoring all commands (starting with backslashes) in lyrics.
+        We do make syllables for '_' so that we have placeholders to align
+        with text. If we are adding to an open (continuing) word, mark this as
+        the ending; otherwise just add a single independent syllable. If we
+        find another hyphen after this, we'll change this to be a middle. 
+      }
+      NewSyllable := TSyllable.Create(ThisString);
+      if Self.Count > 0 then
+      begin
+        case Last.SylPosition of
+          skBeginning, skMiddle : NewSyllable.SylPosition := skEnd;
+        end;
+      end;
+      Add(NewSyllable);
+    end;
+  end;
+end;
+
+function TSyllableList.ToMEI: TMeiNode;
+var
+  Verse, NewSyl: TMeiNode;
+  ThisSyllable: TSyllable;
+begin
+  Verse := TMeiNode.Create('verse');
+  for ThisSyllable in Self do
+  begin
+    NewSyl := ThisSyllable.ToMEI;
+    Verse.AppendChild(NewSyl);
+  end;
+  result := Verse;
+end;
+
+
 
 constructor TPitch.Create();
 begin
@@ -982,27 +1074,13 @@ procedure TMeiNoteRest.AddMeiSyllable(Pitch: TPitch);
 var
   ThisSyllable: TSyllable;
   Verse, Syl: TMeiNode;
-  WordPos: String;
 begin
   ThisSyllable := Pitch.Syllable;
   if IsNote and not ThisSyllable.SylText.IsEmpty then
   begin
     Verse := TMeiNode.Create('verse');
-    Syl := TMeiNode.Create('syl');
-    Syl.TextNode := ThisSyllable.SylText;
-
-    if ThisSyllable.SylPosition > skSingle then
-    begin
-      case ThisSyllable.SylPosition of
-        skBeginning : WordPos := 'i';
-        skMiddle    : WordPos := 'm';
-        skEnd       : WordPos := 't';
-      end;
-      Syl.AddAttribute('con', 'd');
-      Syl.AddAttribute('wordpos', WordPos);
-    end;
-
-    Verse := Verse.AppendChild(Syl);
+    Syl := ThisSyllable.ToMEI;
+    Verse.AppendChild(Syl);
     AppendChild(Verse);
   end;
 end;
@@ -1317,37 +1395,34 @@ begin
   FreeAndNil(LyLines);
 end;
 
+{ TODO would be nice to have an algorithm without the boolean switching }
 function TMeasureList.AddTies: TMeasureList;
 var
   ThisMeasure: TPitchList;
   ThisPitch, TiedPitch: TPitch;
-  PitchIndex: Integer;
   FoundTie: Boolean = False;
 begin
   for ThisMeasure in Self do
   begin
-    PitchIndex := 0;
-    while PitchIndex < ThisMeasure.Count do
+    for ThisPitch in ThisMeasure do 
     begin
-      ThisPitch := ThisMeasure.Items[PitchIndex];
-
       if ThisPitch.Tie = mkStart then
       begin
         TiedPitch := ThisPitch; 
+        if FoundTie then
+        begin
+          ThisPitch.Tie := mkEndStart;
+        end;
         FoundTie := True;
       end
       else if FoundTie then
       begin
         if ThisPitch.PitchEq(TiedPitch) then
-          ThisPitch.Tie := mkEndStart
-        else
         begin
-          ThisMeasure.Items[PitchIndex - 1].Tie := mkEnd;
+          ThisPitch.Tie := mkEnd;
           FoundTie := False;
-          Dec(PitchIndex);
         end;
       end;
-      Inc(PitchIndex);
     end;
   end;
   result := Self;
@@ -1390,8 +1465,9 @@ var
   ThisMeasure: TPitchList;
   ThisPitch: TPitch;
   LineField: TMarkupPosition;
-  ThisPitchID: String;
-  NewLinePosition: TLinePosition;
+  ThisID: String;
+  NewLinePosition: TLinePosition = nil;
+  FinishedLine: Boolean = False;
 begin
   Assert(Assigned(MeasureList));
   inherited Create();
@@ -1401,20 +1477,37 @@ begin
     for ThisPitch in ThisMeasure do
     begin
       LineField := SelectLineField(ThisPitch, LineKind);
-      ThisPitchID := ThisPitch.ID;
+      ThisID := ThisPitch.ID;
       case LineField of
-        mkStart : NewLinePosition := CreateStartPosition(ThisPitchID);
-        mkEnd : AddCompletePosition(Self, NewLinePosition, ThisPitchID);
+        mkStart : 
+        begin
+          NewLinePosition := CreateStartPosition(ThisID);
+          FinishedLine := False;
+        end;
+
+        mkEnd : 
+        begin
+          if Assigned(NewLinePosition) then
+          begin
+            AddCompletePosition(Self, NewLinePosition, ThisID);
+            FinishedLine := True;
+          end;
+        end;
+
         mkEndStart :
         begin
-          AddCompletePosition(Self, NewLinePosition, ThisPitchID);
-          NewLinePosition := CreateStartPosition(ThisPitchID);
-          { TODO what if NewLinePosition is incomplete: we have a start but no
-          end? or an end but no start? or overlapping, nested? }
+          if Assigned(NewLinePosition) then
+          begin
+            AddCompletePosition(Self, NewLinePosition, ThisID);
+          end;
+          NewLinePosition := CreateStartPosition(ThisID);
+          FinishedLine := False;
         end;
       end;
     end;
   end;
+  if Assigned(NewLinePosition) and not FinishedLine then
+    FreeAndNil(NewLinePosition);
 end;
 
 
@@ -1500,12 +1593,38 @@ begin
   result := Self;
 end;
 
+function TMeasureList.MarkBetweenSlurs: TMeasureList;
+var
+  ThisMeasure: TPitchList;
+  ThisPitch: TPitch;
+  InSlur: Boolean;
+begin
+  InSlur := False;
+  for ThisMeasure in Self do
+  begin
+    for ThisPitch in ThisMeasure do
+    begin
+      case ThisPitch.Slur of
+        mkStart, mkMiddle, mkEndStart : 
+          InSlur := True;
+        mkEnd : 
+          InSlur := False;
+        mkNone : 
+          if InSlur then
+            ThisPitch.Slur := mkMiddle;
+      end;
+    end;
+  end;
+  result := Self;
+end;
+
 function TMeasureList.AddAllLines: TMeasureList;
 begin
   Self := AddLines(lkTie);
   Self := AddLines(lkSlur);
   Self := AddLines(lkColoration);
   Self := AddLines(lkLigature);
+  Self := MarkBetweenSlurs;
   result := Self;
 end;
 
@@ -1545,7 +1664,7 @@ begin
         and (SyllableIndex < SyllableList.Count) then
       begin
         ThisSyllable := SyllableList[SyllableIndex];
-        if (ThisSyllable.SylText <> '_') then
+        if ThisSyllable.SylText <> '_' then
         begin
           ThisPitch.Syllable.Assign(ThisSyllable);
         end;
@@ -1581,72 +1700,6 @@ begin
     Inc(MeasureNum);
   end;
   result := MeiRoot;
-end;
-
-constructor TSyllableList.Create();
-begin
-  inherited Create();
-end;
-
-{ TODO deal with \EdLyrics and other markup }
-{ given input of \lyrics expression }
-constructor TSyllableList.Create(LyInput: String);
-var
-  TokenizedInput: TStringArray;
-  ThisString: String;
-  NewSyllable: TSyllable;
-begin
-  inherited Create();
-
-  LyInput := CopyStringBetween(LyInput, '\\lyricmode {', '}');
-  { TODO maybe the problem is here? }
-  TokenizedInput := LyInput.Split([' ', LineEnding], TStringSplitOptions.ExcludeEmpty);
-
-  for ThisString in TokenizedInput do
-  begin
-    { Found a hyphen, this means the next item will be the continuation of the
-      previous. Change previous item's position marker to indicate the word
-      continues. A single word becomes a beginning; a word ending becomes a
-      middle. Don't add the hyphen to the syllable list.
-    }
-    if (Self.Count > 0) and (ThisString = '--') then
-    begin
-      case Last.SylPosition of
-        skSingle : Last.SylPosition := skBeginning;
-        skEnd    : Last.SylPosition := skMiddle;
-      end;
-    end
-    else if (ThisString <> '__') then
-    begin
-      { Found a string, not a hyphen (could also be '_'). If we are adding to
-        an open (continuing) word, mark this as the ending; otherwise just add a
-        single independent syllable. If we find another hyphen after this, we'll
-        change this to be a middle. 
-      }
-      NewSyllable := TSyllable.Create(ThisString);
-      if Self.Count > 0 then
-      begin
-        case Last.SylPosition of
-          skBeginning, skMiddle : NewSyllable.SylPosition := skEnd;
-        end;
-      end;
-      Add(NewSyllable);
-    end;
-  end;
-end;
-
-function TSyllableList.ToMEI: TMeiNode;
-var
-  Verse, NewSyl: TMeiNode;
-  ThisSyllable: TSyllable;
-begin
-  Verse := TMeiNode.Create('verse');
-  for ThisSyllable in Self do
-  begin
-    NewSyl := ThisSyllable.ToMEI;
-    Verse.AppendChild(NewSyl);
-  end;
-  result := Verse;
 end;
 
 end.

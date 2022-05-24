@@ -40,7 +40,7 @@ MusicA = {
   | f'4 e'4\color d'4 c'4\endcolor
 }
 LyricsA = \lyricmode {
-  Can -- ción de no -- tas
+  Can -- ción __ de no -- tas
 }
 
 MusicT = {
@@ -51,7 +51,7 @@ MusicT = {
   | \[ d'4 c'4\color bes4\endcolor( a4) \]
 }
 LyricsT = \lyricmode {
-  mun -- dum sub -- ter -- ra -- ne -- um
+  mun -- dum sub -- ter -- ra -- ne -- um __
 }
 
 MusicB = {

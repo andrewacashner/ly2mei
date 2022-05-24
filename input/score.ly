@@ -31,7 +31,7 @@ MusicA = {
   | f'4 e'4)(\marcato \] d'4 c'4\fermata)
 }
 LyricsA = \lyricmode {
-  Ma -- ny slurs
+  Ma -- ny slurs __
 }
 
 MusicT = {
@@ -42,7 +42,7 @@ MusicT = {
   | d'4 d'4 bes4-.--\marcato a4\fermata
 }
 LyricsT = \lyricmode {
-  Ri -- sing notes tied __ back down
+  Ri -- sing \markup { \italic { notes } } tied _ back down
 }
 
 MusicB = {

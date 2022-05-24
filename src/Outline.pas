@@ -62,12 +62,15 @@ function CopyStringRange(Source: String; Outline: TIndexPair; ModeFlag:
   TRangeMode): String;
 
 { Return a substring that is a complete matched-brace expression,
-including the braces. }
-function CopyBraceExpr(Source: String): String;
+by default including the braces. }
+function CopyBraceExpr(Source: String; Mode: TRangeMode = rkInclusive):
+  String; 
 
 { Find the first occurence of a given Lilypond command in a string and return
-  its brace-delimited argument. Return an empty string if not found. }
-function LyArg(Source, Command: String): String;
+  its brace-delimited argument (by default including the braces). Return an
+  empty string if not found. } 
+function LyArg(Source, Command: String; Mode: TRangeMode = rkInclusive):
+  String; 
 
 { Find all the quoted portions of a given string and return them as a single
   string, delimited by spaces. }
@@ -178,7 +181,8 @@ begin
   Self.MarkBalancedDelimiterSubstring(Source, '{', '}');
 end;
 
-function CopyBraceExpr(Source: String): String;
+function CopyBraceExpr(Source: String; Mode: TRangeMode = rkInclusive):
+  String; 
 var
   Outline: TIndexPair;
   TempStr: String = '';
@@ -187,13 +191,14 @@ begin
   Outline.MarkMatchedBraces(Source);
   if Outline.IsValid then
   begin
-    TempStr := CopyStringRange(Source, Outline, rkInclusive);
+    TempStr := CopyStringRange(Source, Outline, Mode);
   end;
   FreeAndNil(Outline);
   result := TempStr;
 end;
 
-function LyArg(Source, Command: String): String;
+function LyArg(Source, Command: String; Mode: TRangeMode = rkInclusive):
+  String; 
 var
   SearchStr: String = '';
   Arg: String = '';
@@ -201,7 +206,7 @@ begin
   if Source.Contains(Command) then
   begin
     SearchStr := StringDropBefore(Source, Command);
-    Arg := CopyBraceExpr(SearchStr);
+    Arg := CopyBraceExpr(SearchStr, Mode);
   end;
   result := Arg;
 end;
