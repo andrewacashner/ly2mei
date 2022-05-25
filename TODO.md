@@ -11,6 +11,9 @@
 
 - deal with FiguredBass
 
+- deal with differing numbers of measures in diff. voices
+- support \IncipitStaff and \InstrumentName in \score
+
 # Optimize, refactor
 
 (DONE for current code 5/3)

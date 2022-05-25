@@ -799,25 +799,25 @@ FiguresAc = \figuremode {
     <<
       \new Staff = "s-SI"
       <<
-        \IncipitStaff "[TIPLE 1]" "Ti. 1" { \IncipitSI }
+        % \IncipitStaff "[TIPLE 1]" "Ti. 1" { \IncipitSI }
         \new Voice = "SI" { \MusicSI }
         \new Lyrics = "LineISI" \lyricsto "SI" { \LyricsSI }
       >>
       \new Staff = "s-SII"
       <<
-        \IncipitStaff "[TIPLE 2]" "Ti. 2" { \IncipitSII }
+        % \IncipitStaff "[TIPLE 2]" "Ti. 2" { \IncipitSII }
         \new Voice = "SII" { \MusicSII }
         \new Lyrics = "LineISII" \lyricsto "SII" { \LyricsSII }
       >>
       \new Staff = "s-SIII"
       <<
-        \IncipitStaff "[TIPLE 3]" "Ti. 3" { \IncipitSIII }
+        % \IncipitStaff "[TIPLE 3]" "Ti. 3" { \IncipitSIII }
         \new Voice = "SIII" { \MusicSIII }
         \new Lyrics \lyricsto "SIII" { \LyricsSIII }
       >>
       \new Staff = "s-T"
       <<
-        \IncipitStaff "[TENOR]" "T." { \IncipitT }
+        % \IncipitStaff "[TENOR]" "T." { \IncipitT }
         \new Voice = "T" { \MusicT }
         \new Lyrics \lyricsto "T" { \LyricsT }
       >>
@@ -827,12 +827,12 @@ FiguresAc = \figuremode {
       \ShowChoirStaffBracket
       \new Staff = "s-Ac"
       <<
-        \IncipitStaff 
-        \TwoLineName "ACOMP." "ARPA"
-        "Ac."
-        { \IncipitAc }
+        % \IncipitStaff 
+        % \TwoLineName "ACOMP." "ARPA"
+        % "Ac."
+        % { \IncipitAc }
         \new Voice = "Ac" { \MusicAc }
-        \new FiguredBass { \FiguresAc }
+%        \new FiguredBass { \FiguresAc }
       >>
     >>
   >>

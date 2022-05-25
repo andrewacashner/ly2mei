@@ -6,3 +6,4 @@ output/
 .*.swp
 *.o
 *.pdf
+*.log
