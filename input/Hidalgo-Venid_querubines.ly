@@ -7,7 +7,7 @@
 % 2019-09-18    Begun in Lilypond
 % }}}1
 
-\version "2.23"
+\version "2.2"
 \include "villancico.ly"
 
 % {{{1 header
@@ -17,7 +17,7 @@
   composer  = "JUAN HIDALGO"
   dates     = "(1614–1685)"
   poet      = "Anonymous"
-  editor    = "Andrew A. Cashner"
+  editor    = "Edited by Andrew A. Cashner"
   copyright = "Copyright © 2021 Andrew A. Cashner"
   source    = \markup { \italic "D-Mbs:" "Mus. mss. 2897" }
 }

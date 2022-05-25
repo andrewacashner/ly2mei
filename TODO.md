@@ -6,12 +6,9 @@
     - (DONE) Avoid creating duplicates
     - (DONE) Need to encode lines in the measure of their startID note
 - (DONE) deal with multiple articulations on one note
+- (DONE) deal with Lyrics
+    - NB we are ignoring markup or other \commands within lyrics
 
-- deal with Lyrics
-    - make a list of syllables with connector attributes
-    - make a list of pitch indices
-    - filter pitches inside slurs or ties from the list
-    - match syllables and pitches (put syllable into field within TPitch?)
 - deal with FiguredBass
 
 # Optimize, refactor
