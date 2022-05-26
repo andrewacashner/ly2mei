@@ -190,18 +190,9 @@ end;
 
 destructor TMeiNode.Destroy();
 begin
-  FAttributes.Destroy;
-
-  if Assigned(FChild) then
-  begin
-    FChild.Destroy;
-  end;
-
-  if Assigned(FSibling) then
-  begin
-    FSibling.Destroy;
-  end;
-
+  FAttributes.Free;
+  FChild.Free;
+  FSibling.Free;
   inherited Destroy;
 end;
 
@@ -301,20 +292,14 @@ end;
 
 function TMeiNode.AddFirstChild(Child: TMeiNode): TMeiNode;
 begin
-  if Assigned(FChild) then
-  begin
-    FChild.Destroy;
-  end;
+  FChild.Free;
   FChild := Child;
   result := Self;
 end;
 
 function TMeiNode.AddFirstSibling(Sibling: TMeiNode): TMeiNode;
 begin
-  if Assigned(FSibling) then
-  begin
-    FSibling.Destroy;
-  end;
+  FSibling.Free;
   FSibling := Sibling;
   result := Self;
 end;

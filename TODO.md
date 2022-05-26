@@ -10,6 +10,23 @@
     - NB we are ignoring markup or other \commands within lyrics
 
 - deal with FiguredBass
+    - (DONE) add basic classes, MEI output
+    - add constructors to parse input and create those classes
+        - need to store staff number enclosing the figured bass
+        - need to calculate time stamp from durations
+        - need to parse ly text commands
+
+- figured bass looks like this, within `<measure>`:
+
+````
+<harm staff="5" place="below" tstamp="1">
+  <fb>
+    <f>6</f>
+    <f>♯</f>
+  </fb>
+</harm>
+````
+
 
 - deal with differing numbers of measures in diff. voices
 - support \IncipitStaff and \InstrumentName in \score
@@ -29,3 +46,5 @@
 - try/finally more?
 - Remove unused code
 
+- Improve basic parsing functions (e.g., TLyObject\.Create) to reduce number
+  of states, conditions, loops; too confusing at present

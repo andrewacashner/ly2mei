@@ -271,6 +271,29 @@ type
     function ToMEI: TMeiNode;
   end;
 
+  TFiguredBass = class
+  private
+    var
+      FStaffNum: Integer;
+      FTimeStamp: Integer;
+      FFigures: TStringList;
+  public
+    constructor Create();
+    destructor Destroy(); override;
+
+    function ToMEI: TMeiNode;
+
+    property StaffNum:  Integer     read FStaffNum;
+    property TimeStamp: Integer     read FTimeStamp;
+    property Figures:   TStringList read FFigures;
+  end;
+
+  TFiguredBassList = class(specialize TObjectList<TFiguredBass>)
+  public
+    { list of siblings }
+    function ToMEI: TMeiNode;
+  end;
+
 
   { @abstract(A list of @link(TPitch) objects, corresponding to one measure of
      music.) }
@@ -280,6 +303,7 @@ type
       FBarlineRight: TBarline;
       FFermataList: TFermataList;
       FLineList: TLineList;
+      FFigureList: TFiguredBassList; 
    
     { Set the data needed for the right barline attribute. }
     procedure SetBarlineRight(Source: String);
@@ -799,7 +823,7 @@ var
 begin
   inherited Create();
 
-  LyInput := LyArg(LyInput, '\\lyricmode', rkExclusive);
+  LyInput := LyArg(LyInput, '\lyricmode', rkExclusive);
 
   TokenizedInput := LyInput.Split([' ', LineEnding], 
     TStringSplitOptions.ExcludeEmpty);
@@ -933,10 +957,7 @@ end;
 
 destructor TPitch.Destroy();
 begin
-  if Assigned(FSyllable) then
-  begin
-    FSyllable.Destroy;
-  end;
+  FSyllable.Free;
   inherited Destroy;
 end;
 
@@ -1217,11 +1238,64 @@ begin
   result := Root;
 end;
 
+constructor TFiguredBass.Create();
+begin
+  inherited Create();
+  FFigures := TStringList.Create();
+end;
+
+destructor TFiguredBass.Destroy();
+begin
+  FFigures.Free;
+  inherited Destroy();
+end;
+
+function TFiguredBass.ToMEI: TMeiNode;
+var
+  HarmNode: TMeiNode = nil;
+  FiguredBassNode: TMeiNode = nil;
+  ThisFigureNode: TMeiNode = nil;
+  ThisFigure: String;
+begin
+  HarmNode := TMeiNode.Create('harm');
+  HarmNode.AddAttribute('staff', IntToStr(FStaffNum));
+  HarmNode.AddAttribute('tstamp', IntToStr(FTimeStamp));
+
+  FiguredBassNode := TMeiNode.Create('fb');
+  for ThisFigure in FFigures do
+  begin
+    ThisFigureNode := TMeiNode.Create('f');
+    ThisFigureNode.TextNode := ThisFigure;
+    FiguredBassNode := FiguredBassNode.AppendChild(ThisFigureNode);
+  end;
+  HarmNode := HarmNode.AppendChild(FiguredBassNode);
+  result := HarmNode;
+end;
+
+{ list of siblings }
+function TFiguredBassList.ToMEI: TMeiNode;
+var
+  Root: TMeiNode = nil;
+  NewHarmNode: TMeiNode = nil;
+  ThisFiguredBass: TFiguredBass;
+begin
+  for ThisFiguredBass in Self do
+  begin
+    NewHarmNode := ThisFiguredBass.ToMEI;
+    if not Assigned(Root) then
+      Root := NewHarmNode
+    else
+      Root := Root.AppendSibling(NewHarmNode);
+  end;
+  result := Root;
+end;
+
 constructor TPitchList.Create();
 begin
   inherited Create;
   FFermataList := TFermataList.Create();
   FLineList := TLineList.Create();
+  FFigureList := TFiguredBassList.Create();
 end;
 
 { TODO add all commands to be replaced (i.e., ignored) }
@@ -1267,14 +1341,9 @@ end;
 
 destructor TPitchList.Destroy();
 begin
-  if Assigned(FFermataList) then
-  begin
-    FFermataList.Destroy;
-  end;
-  if Assigned(FLineList) then
-  begin
-    FLineList.Destroy;
-  end;
+  FFermataList.Free;
+  FLineList.Free;
+  FFigureList.Free;
   inherited Destroy;
 end;
 

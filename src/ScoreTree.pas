@@ -50,7 +50,8 @@ uses SysUtils, StrUtils, Classes, Generics.Collections, StringTools, Outline,
 type 
   { Types of elements in the internal tree of @code(TLyObject) or
     @code(TMEIElement) objects }
-  TLyObjectType = (ekAnonymous, ekStaffGrp, ekStaff, ekLayer, ekMeasure, ekLyrics);
+  TLyObjectType = (ekAnonymous, ekStaffGrp, ekStaff, ekLayer, ekMeasure, 
+    ekLyrics, ekFigures);
 
   { @abstract(A node, which may be the base of a tree, of Lilypond code
     objects.)
@@ -222,9 +223,10 @@ constructor TLyObject.Create(Name, ID: String; LinkID: String = '';
     case Name of
       'StaffGroup', 
         'ChoirStaff' : Element := ekStaffGrp;
-      'Staff' :        Element := ekStaff;
-      'Voice' :        Element := ekLayer;
-      'Lyrics' :       Element := ekLyrics;
+      'Staff'        : Element := ekStaff;
+      'Voice'        : Element := ekLayer;
+      'Lyrics'       : Element := ekLyrics;
+      'FiguredBass'  : Element := ekFigures;
     end;
     result := Element;
   end;
@@ -248,21 +250,9 @@ end;
 
 destructor TLyObject.Destroy;
 begin
-  if Assigned(FChild) then 
-  begin
-    FChild.Destroy;
-  end;
-
-  if Assigned(FSibling) then 
-  begin
-    FSibling.Destroy;
-  end;
-
-  if Assigned(FMeasureList) then
-  begin
-    FMeasureList.Destroy;
-  end;
-
+  FChild.Free;
+  FSibling.Free;
+  FMeasureList.Free;
   inherited Destroy;
 end;
 
@@ -855,7 +845,7 @@ var
 begin
   for ThisEntry in Self do
   begin
-    ThisEntry.Value.Destroy;
+    ThisEntry.Value.Free;
   end;
   inherited Destroy;
 end;
@@ -928,6 +918,8 @@ begin
     
     MeiTree := MeiTree.AppendChild(MeiLayerPath);
     MeiTree := AddMeiFermatasAndLines(LyLayer, MeiTree, MeasureNum);
+  { TODO
+    MeiTree := AddFiguredBass(LyLayer, MeiTree, MeasureNum); }
 
     if Assigned(LyStaff.Sibling) then
     begin
