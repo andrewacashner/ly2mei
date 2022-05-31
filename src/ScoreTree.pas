@@ -438,6 +438,259 @@ begin
   FreeAndNil(Outline);
 end;
 
+{ Parse a Lilypond @code(\score) expression into a tree of @link(TLyObject)
+nodes. A score expression consists of the command @code(\score) followed by a single argument in curly braces. That argument contains (in our system) a single "simultaneous event" group enclosed in double angle brackets (@code(<<...>>)). 
+
+Within the simultaneous group there is a series of @code(\new) expressions.
+These can define a @code(Staff), and groups of staves may be enclosed in a
+@code(StaffGroup) or @code(ChoirStaff). The contents of each staff or
+staff-group type are enclosed in simultaneous event group brackets. 
+A staff, in turn, includes @code(\new) expressions to define a @code(Voice),
+@code(Lyrics), or @code(FiguredBass).
+
+So we will see this structure: 
+@longcode(#
+  \score ❴ 
+    << 
+      \new ChoirStaff 
+      << 
+        \new Staff = "s-Soprano" 
+          << 
+            \new Voice = "Soprano" ❴ c'2 d'2 ... ❵  
+            \new Lyrics \lyricsto "Soprano" ❴ do re ... ❵ 
+          >>
+         \new Staff = "s-Alto" 
+          << ... >> 
+        ...
+      >>
+      ...
+    >> 
+  ❵
+#)
+
+We may define a @code(\new) command, then, as follows:
+  @orderedlist(
+    @item(The command @code('\new '),)
+    @item(followed by one of the following type labels: @code('ChoirStaff'),
+    @code('StaffGroup'), @code('Staff'), @code('Voice'), @code('Lyrics'), or
+    @code('FiguredBass').) 
+    @item(Optionally, the type label may be followed by an ID label, denoted by an equals sign and an ID string in double quotation marks, e.g., @code('\new Voice = "Soprano"').)
+    @item(A @code(Lyrics) item must (in our system) include a command that links the lyrics to a particular @code(Voice): @code('\lyricsto "ID"') where ID matches the ID label of a voice.)
+    @item(@code(StaffGroup), @code(ChoirStaff), and @code(Staff) elements are followed by an expression in double angle brackets (@code(<< ... >>)), which will include more @code(\new) expressions.)
+    @item(@code(Voice), @code(Lyrics), and @code(FiguredBass) items are followed by an expression in curly braces (@code(❴ ... ❵)). In our system, these arguments may not include further @code(\new) expressions.)
+    @item(A @code(Voice) item's argument must be a music expression (the default mode); a @code(Lyrics) item's argument must be in lyrics mode (@code(\lyricmode ❴ ... ❵)); a @code(FiguredBass) item's argument must be in figures mode (@code(\figuremode)).)
+  )
+
+Summary: 
+@longcode(#
+\score ❴ << [(one or more:) \new ... ] >> ❵
+
+\new [Label] [= "ID"] [(if Label = Lyrics:) \lyricsto "VoiceID"] 
+  | (if ChoirStaff, StaffGroup, or Staff:) [ << [(one or more:) \new] >> ]
+  | (if Voice, Lyrics, or FiguredBass:)    [ ❴ [contents in appropriate mode] ❵ ]
+#)
+
+To parse the score: look for the command, find the matched brace argument,
+find the matched angle-brackets expression within. Parse contents, reading
+only @code(\new) expressions as defined, ignoring rest.
+
+To parse a @code(\new) expression: find the command, extract the label, look
+for an ID and extract if there is one; if Lyrics, look for @code(\lyricsto)
+command.  If staff or staff group type, look for matched angle-brackets
+expression; otherwise look for matched curly-brace expression.  If staff or
+staff group type, search argument for more @code(\new) expressions.
+
+From the score expression, construct a tree of @link(TLyObject) elements. Each
+contains a type label, an ID (automatically assigned if none is specified), a
+link ID (for lyrics, connecting to another item's ID; blank if none is
+  specified), and links to children and siblings.
+
+
+}
+  { START HERE TODO }
+  { pattern matching approach 
+possible valid inputs:
+1. \new Lyrics = "[ID]" \lyricsto "[LinkID]" ❴ [Contents] ❵ 
+2. \new [LABEL] = "[ID]" ❴ [Contents] ❵
+3. \new [LABEL] = "[ID]" << [Contents] >>
+4. \new [LABEL] ❴ [Contents] ❵
+5. \new [LABEL] << [Contents] >>
+
+subtests:
+IsNew x: x = '\new'
+IsEquals x: x = '='
+IsQuoted x: x.StartsWith('"') and x.EndsWith('"')
+HasID Input: IsNew(Input[0]) && IsEquals(Input[2]) && IsQuoted(Input[3])
+HasBraceArg Input N: FindBalancedDelimiter(Str, '❴', '❵') <> ''
+HasBracketArg Str: FindBalancedDelimiter(Str, '<<', '>>') <> ''
+
+tests: 
+1. HasID(Input) and (Input[1] = 'Lyrics') and (Input[4] = '\lyricsto') and (IsQuoted(Input[5])) and HasBracketArg(Unwords(Input, 6));
+2. HasID(Input) and HasBraceArg(Unwords(Input, 4));
+3. HasID(Input) and HasBracketArg(Unwords(Input, 4));
+4. not HasID(Input) and HasBraceArg(Unwords(Input, 2);
+5. not HasID(Input) and HasBracketArg(Unwords(Input, 2);
+
+assignments: 
+1. Label := Input[1], ID := Input[3], LinkID := Input[5], Contents := BraceArg(Input);
+2. Label := Input[1], ID := Input[3], LinkID := '', Contents := BraceArg(Input);
+3. Label := Input[1], ID := Input[3], LinkID := '', Contents := BracketArg(Input);
+4. Label := Input[1], ID := auto, LinkID := '', Contents := BraceArg(Input);
+5. Label := Input[1], ID := auto, LinkID := '', Contents := BracketArg(Input);
+
+}
+function IsNew(InputStr: String): Boolean;
+begin
+  result := InputStr = '\new';
+end;
+
+function IsEqualSign(InputStr: String): Boolean;
+begin
+  result := InputStr = '=';
+end;
+
+function IsQuoted(InputStr: String): Boolean;
+begin
+  result := InputStr.StartsWith('"') and InputStr.EndsWith('"');
+end;
+
+function HasID(Words: Array of String): Boolean;
+var
+  Answer: Boolean = False;
+begin
+  if Words.Count >= 4 then
+  begin
+    Answer := IsNew(Words[0]) and IsEqualSign(Words[1]) and IsQuoted(Words[2]);
+  end;
+  result :=  Answer;
+end;
+
+function IsNewLyrics(Words: Array of String): Boolean;
+var
+  Answer: Boolean = False;
+begin
+  if Words.Count >= 6 then
+  begin
+    Answer := HasID(Words) and (Words[1] = 'Lyrics') 
+                and (Words[4] = '\lyricsto') and IsQuoted(Words[5]);
+  end;
+  result := Answer;
+end;
+
+{ TODO test for brackets/braces or not? }
+
+function TestNewExpression(Words: Array of String; StartIndex: Integer): Boolean;
+var
+  Answer: Boolean = False;
+begin
+ { Do tests }
+end;
+
+
+function ReadScore(LyInput: String): String;
+var
+  Score: String;
+  OutputStr: String = '';
+begin
+  Score := CommandArgBraces(LyInput, '\score');
+  OutputStr := BalancedDelimiterSubstringWords(Score, '<<', '>>');
+  result := OutputStr;
+end;
+
+function ReadNewExpr(LyInput: String): TLyObject;
+var
+  OutputStr: String = '';
+  TestWords: TStringArray;
+  TestStr, ThisWord: String;
+  WordIndex, StartIndex, EndIndex, Level: Integer;
+  TypeLabel, ID, LinkID, Contents: String;
+  NewObject: TLyObject = nil;
+begin
+  WordIndex := 0;
+  for ThisWord in Words do
+  begin
+    if IsNew(ThisWord) then
+    begin
+      if TestNewExpression(Words, WordIndex) then
+      begin
+        NewNode := TLyObject.Create(ThisWord, WordIndex); { TODO }
+      end;
+    end;
+    Inc(WordIndex);
+  end;
+  result := NewNode;
+end;
+
+
+{ long way  
+  if LyInput.Contains('\new ') then 
+  begin
+    TestWords := Words(InputStr);
+
+    
+    WordIndex := 0;
+    Level := 0;
+    for ThisWord in TestWords do
+    begin
+      if ThisWord = '\new' then
+      begin
+        if Level = 0 then
+        begin
+          Inc(WordIndex);
+          if WordIndex < TestWords.Count then
+          begin
+            TypeLabel := TestWords[WordIndex];
+            Inc(WordIndex);
+            if WordIndex < TestWords.Count then
+            begin
+              if (TestWords[WordIndex] = '=') 
+                and (WordIndex + 1 < TestWords.Count) then
+              begin
+                Inc(WordIndex);
+                ID := TestWords[WordIndex];
+              end;
+              Inc(WordIndex);
+              if (WordIndex < TestWords.Count) then
+              begin
+                if (TypeLabel = 'Lyrics') and (TestWords[WordIndex] = 'lyricsto') then
+                begin
+                  Inc(WordIndex);
+                  if (WordIndex < TestWords.Count) then
+                  begin
+                    LinkID := TestWords[WordIndex];
+                  end
+                  else LinkID := '';
+                end;
+                Inc(WordIndex);
+                if WordIndex < TestWord.Count then
+                begin
+                  ContentsTest := Unwords(TestWords, WordIndex);
+
+                  case TypeLabel of
+                  'StaffGroup', 'ChoirStaff', 'Staff' :
+                    Contents := BalancedDelimiterSubstringWords(ContentsTest, '<<', '>>');
+
+                  'Voice', 'Lyrics', 'FiguredBass' :
+                    Contents := BalancedDelimiterSubstringWords(ContentsTest, '{', '}');
+                  end;
+                end;
+              end;
+            end;
+          end;
+        end;
+      end;
+    end;
+  end;
+  if not Contents.IsEmpty then
+  begin
+    NewObject := TLyObject.Create(TypeLabel, ID, LinkID, Contents);
+  end;
+
+  result := NewObject;
+  FreeAndNil(TestWords);
+end;
+}
+
 constructor TLyObject.Create(LyInput: TStringList);
 begin
   Create(LyInput.Text);

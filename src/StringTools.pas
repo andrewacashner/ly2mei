@@ -17,8 +17,12 @@ function FirstCharStr(Source: String): String;
 { Copy the portion of a string that follows the end of a given substring. }
 function StringDropBefore(Source, StartAfter: String): String;
 
+function SubstringAfter(Source, StartAfter: String): String;
+
 { Return the portion of a string before a given delimiter. }
 function StringDropAfter(Source, EndBefore: String): String;
+
+function SubstringBefore(Source, EndBefore: String): String;
 
 { Return the portion of a string between two substrings (exclusive); if the
   substrings are not found, return the original string unchanged. }
@@ -55,6 +59,17 @@ type
 { Return a string consisting of the text of a stringlist starting at a
   given index. }
 function ToStringFromIndex(InputLines: TStringList; Index: Integer): String; 
+
+function Words(InputStr: String): TStringArray;
+function Unwords(StringArray: TStringArray): String;
+
+function BalancedDelimiterSubstringWords(InputStr, StartDelim, EndDelim:
+  String): String; 
+
+function CommandArg(InputStr, Command, StartDelim, EndDelim: String): String;
+
+function CommandArgBraces(InputStr, Command: String): String;
+function CommandArgAngleBrackets(InputStr, Command: String): String;
 
 implementation
 
@@ -93,6 +108,16 @@ begin
     OutputStr := Source.Substring(0, Source.IndexOf(EndBefore));
   end;
   result := OutputStr;
+end;
+
+function SubstringAfter(Source, StartAfter: String): String;
+begin
+  result := StringDropBefore(Source, StartAfter);
+end;
+
+function SubstringBefore(Source, EndBefore: String): String;
+begin
+  result := StringDropAfter(Source, EndBefore);
 end;
 
 function CopyStringBetween(Source, StartAfter, EndBefore: String): String;
@@ -194,6 +219,94 @@ begin
   Assign(TempLines);
   FreeAndNil(TempLines);
   result := Self;
+end;
+
+function Words(InputStr: String): TStringArray;
+begin
+  result := InputStr.Split([' ', LineEnding], TStringSplitOptions.ExcludeEmpty);
+end;
+
+function Unwords(StringArray: TStringArray; StartIndex: Integer = -1;
+  EndIndex: String = -1): String); 
+var
+  OutputStr: String = '';
+begin
+  if StartIndex = -1 then
+    OutputStr := OutputStr.Join(' ', StringWords)
+  else if EndIndex = -1 then
+    OutputStr := OutputStr.Join(' ', StringWords, StartIndex)
+  else
+    OutputStr := OutputStr.Join(' ', StringWords, StartIndex, EndIndex - StartIndex);
+  
+  result := OutputStr;
+end;
+
+function BalancedDelimiterSubstringWords(InputStr, StartDelim, EndDelim:
+  String): String; 
+var
+  OutputStr: String = '';
+  StringWords: TStringArray;
+  ThisWord: String;
+  WordIndex, StartIndex, EndIndex, DelimLevel: Integer;
+  InsideDelim: Boolean;
+begin
+  StringWords := Words(InputStr);
+
+  WordIndex := 0;
+  DelimLevel := 0;
+  for ThisWord in StringWords do
+  begin
+    if ThisWord = StartDelim then
+    begin
+      if DelimLevel = 0 then
+      begin
+        StartIndex := WordIndex + 1;
+      end;
+      Inc(DelimLevel);
+    end
+    else if ThisWord = EndDelim then
+    begin
+      Dec(DelimLevel);
+      if DelimLevel = 0 then
+      begin
+        EndIndex := WordIndex - 1;
+        break;
+      end;
+    end;
+    Inc(WordIndex);
+  end;
+
+  if EndIndex > StartIndex then
+  begin
+    OutputStr := Unwords(StringWords, StartIndex, EndIndex);
+  end;
+
+  result := OutputStr;
+
+  FreeAndNil(StringWords);
+end;
+
+function CommandArg(InputStr, Command, StartDelim, EndDelim: String): String;
+var
+  OutputStr: String = '';
+  TestStr: String;
+begin
+  if InputStr.Contains(Command) then
+  begin
+    TestStr := SubstringAfter(InputStr, Command);
+    OutputStr := BalancedDelimiterSubstringWords(TestStr, StartDelim, EndDelim);
+  end;
+  result := OutputStr;
+end;
+
+function CommandArgBraces(InputStr, Command: String): String;
+begin
+  result := CommandArg(InputStr, Command, '{', '}');
+end;
+
+function CommandArgAngleBrackets(InputStr, Command: String): String;
+begin
+  result := CommandArg(InputStr, Command, '<<', '>>');
 end;
 
 end.
