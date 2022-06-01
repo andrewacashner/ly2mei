@@ -44,8 +44,8 @@ unit ScoreTree;
 
 interface
 
-uses SysUtils, StrUtils, Classes, Generics.Collections, StringTools, Outline,
-  MEI, Header, MusicNotes;
+uses SysUtils, StrUtils, Classes, Generics.Collections, StringTools, MEI,
+  Header, MusicNotes;
 
 type 
   { Types of elements in the internal tree of @code(TLyObject) or
@@ -131,16 +131,13 @@ type
       @link(TLyObject) tree. }
     function ToMeiLayerPath(MeiNode: TMeiNode = nil): TMeiNode;
    
-    { Follow the left children all the way to the end; return the last one. }
     function LastChild: TLyObject;
-
-    { Follow the right siblings all the way to the end; return the last one. }
     function LastSibling: TLyObject;
-
-    { Add given child to the end of the chain of children. }
-    function AppendLastChild(NewChild: TLyObject): TLyObject;
-
-    { Add given sibling to the end of the chain of siblings. }
+    function AddFirstChild(Child: TLyObject): TLyObject;
+    function AddFirstSibling(Sibling: TLyObject): TLyObject;
+    function AppendSibling(Sibling: TLyObject): TLyObject;
+    function AppendChild(Child: TLyObject): TLyObject;
+    function AppendLastChild(Child: TLyObject): TLyObject;
     function AppendLastSibling(NewSibling: TLyObject): TLyObject;
 
     { Number ChoirStaff, StaffGroup, Staff, and Voice elements consecutively
@@ -159,13 +156,6 @@ type
       ContentsStr: String = ''; Num: Integer = 1; Child: TLyObject = nil; 
       Sibling: TLyObject = nil); 
 
-    { Create a whole tree from Lilypond input as stringlist. }
-    constructor Create(Source: String);
-
-    { Create a whole tree from Lilypond input as stringlist, and number the
-      elements consecutively. }
-    constructor Create(LyInput: TStringList);
-
     { Destroy the whole tree. }
     destructor Destroy; override;
 
@@ -179,17 +169,22 @@ type
       music data, converting from Lilypond structure. }
     function ToMeiSection: TMeiNode;
 
-    property LyType:    TLyObjectType read FType;
+    property LyType:    TLyObjectType read FType          write FType;
     property Name:      String        read FName;
     property ID:        String        read FID;
     property Num:       Integer       read FNum           write FNum;
-    property Contents:  String        read FContents;
+    property Contents:  String        read FContents      write FContents;
     property Measures:  TMeasureList  read FMeasureList   write FMeasureList;
     property LinkID:    String        read FLinkID;
     property Child:     TLyObject     read FChild         write FChild;
     property Sibling:   TLyObject     read FSibling       write FSibling;
   end;
 
+function NewObject(LyWords: TStringArray): TLyObject;
+
+function CreateFullScoreTree(LyInput: TStringList): TLyObject;
+
+type
   TLyricsDict = class(specialize TObjectDictionary<String, TSyllableList>)
   public
     constructor Create(); override;
@@ -256,6 +251,7 @@ begin
   inherited Destroy;
 end;
 
+
 function TLyObject.LastChild: TLyObject;
 begin
   if not Assigned(FChild) then
@@ -272,9 +268,50 @@ begin
     result := FSibling.LastSibling;
 end;
 
-function TLyObject.AppendLastChild(NewChild: TLyObject): TLyObject;
+
+function TLyObject.AddFirstChild(Child: TLyObject): TLyObject;
 begin
-  Self.LastChild.FChild := NewChild;
+  FChild.Free;
+  FChild := Child;
+  result := Self;
+end;
+
+function TLyObject.AddFirstSibling(Sibling: TLyObject): TLyObject;
+begin
+  FSibling.Free;
+  FSibling := Sibling;
+  result := Self;
+end;
+
+function TLyObject.AppendSibling(Sibling: TLyObject): TLyObject;
+var
+  EndSibling: TLyObject;
+begin
+  EndSibling := Self.LastSibling;
+  EndSibling := EndSibling.AddFirstSibling(Sibling);
+  result := Self;
+end;
+
+function TLyObject.AppendChild(Child: TLyObject): TLyObject;
+var
+  ThisChild: TLyObject;
+begin
+  if not Assigned(FChild) then
+    Self := Self.AddFirstChild(Child)
+  else
+  begin
+    ThisChild := Self.FChild;
+    ThisChild := ThisChild.AppendSibling(Child);
+  end;
+  result := Self;
+end;
+
+function TLyObject.AppendLastChild(Child: TLyObject): TLyObject;
+var
+  EndChild: TLyObject;
+begin
+  EndChild := Self.LastChild;
+  EndChild := EndChild.AddFirstChild(Child);
   result := Self;
 end;
 
@@ -283,6 +320,11 @@ begin
   Self.LastSibling.FSibling := NewSibling;
   result := Self;
 end;
+
+
+{ TODO replace above with generic functions and specialize for TMeiNode and
+TLyObject }
+
 
 function TLyObject.NumberElementsInOrder: TLyObject;
 { The counters need to be outside the scope of this function so that we can
@@ -369,73 +411,6 @@ begin
   end;
 
   result := XmlNode;
-end;
-
-{ Build an LCRS tree of Lilypond @code(\new) objects. }
-constructor TLyObject.Create(Source: String);
-var
-  SearchIndex: Integer = 0;
-  SearchStr, ThisType, ThisID, ThisLinkID, ThisContents: String;
-  Outline: TIndexPair;
-begin
-  Outline := TIndexPair.Create;
-  SearchStr := Source;
-  ThisType := '';
-  ThisID := '';
-  ThisLinkID := '';
-
-  if SearchStr.Contains('\new ') then
-  begin
-    SearchIndex := SearchStr.IndexOf('\new ');
-    
-    { Find Type }
-    ThisType := CopyStringBetween(SearchStr, '\new ', ' ');
-    SearchStr := StringDropBefore(SearchStr, ThisType);
-
-    { Find ID }
-    if SearchStr.StartsWith(' = "') then
-    begin 
-      ThisID := CopyStringBetween(SearchStr, ' = "', '"');
-      SearchStr := StringDropBefore(SearchStr, ThisID + '"');
-    end;
-
-    { Find Link ID for Lyrics }
-    if (ThisType = 'Lyrics') and SearchStr.Contains('\lyricsto') then
-    begin
-      ThisLinkID := CopyStringBetween(SearchStr, '\lyricsto "', '"');
-    end;
-
-    { Find Contents: Either an expression within double angle brackets or
-      one within curly braces. If angle brackets, recursively look for nested
-      @code(\new) expressions. }
-    if SearchStr.TrimLeft.StartsWith('<<') then
-    begin
-      { Search within group for nested @code(\new) expressions and save them
-        as children; then move on after this group. Omit content string. }
-      Outline.MarkBalancedDelimiterSubstring(SearchStr, '<', '>');
-      ThisContents := CopyStringRange(SearchStr, Outline, rkInclusive);
-
-      Create(ThisType, ThisID, ThisLinkID);
-      if ThisContents.Contains('\new ') then
-      begin
-        FChild := TLyObject.Create(ThisContents);
-      end;
-    end
-    else
-    begin
-      { Save brace expression in this node }
-      ThisContents := CopyBraceExpr(SearchStr);
-      Create(ThisType, ThisID, ThisLinkID, ThisContents);
-    end;
-
-    { Look for the next sibling where you left off from the last search }
-    Source := StringDropBefore(Source.Substring(SearchIndex), ThisContents);
-    if Source.Contains('\new ') then
-    begin
-      FSibling := TLyObject.Create(Source);
-    end;
-  end;
-  FreeAndNil(Outline);
 end;
 
 { Parse a Lilypond @code(\score) expression into a tree of @link(TLyObject)
@@ -549,13 +524,6 @@ begin
   result := InputStr = '=';
 end;
 
-const 
-  LBrace: String = '{';
-  RBrace: String = '}';
-  LBracket: String = '<<';
-  RBracket: String = '>>';
-  DblQuote: String = '"';
-
 function IsOpenBrace(InputStr: String): Boolean;
 begin
   result := InputStr = LBrace;
@@ -571,23 +539,30 @@ begin
   result := InputStr.StartsWith(DblQuote) and InputStr.EndsWith(DblQuote);
 end;
 
-function StartsNew(Words: Array of String): Boolean;
-begin
-  result := IsNewCmd(Words[0]);
-end;
-
-function HasID(Words: Array of String): Boolean;
+function StartsNew(Words: TStringArray): Boolean;
 var
   Answer: Boolean = False;
 begin
-  if Words.Count >= 4 then
+  if Length(Words) > 0 then
   begin
-    Answer := IsNewCmd(Words[0]) and IsEqualSign(Words[1]) and IsQuoted(Words[2]);
+    Answer := IsNewCmd(Words[0]);
+  end;
+
+  result := Answer;
+end;
+
+function HasID(Words: TStringArray): Boolean;
+var
+  Answer: Boolean = False;
+begin
+  if Length(Words) >= 4 then
+  begin
+    Answer := StartsNew(Words) and IsEqualSign(Words[2]) and IsQuoted(Words[3]);
   end;
   result :=  Answer;
 end;
 
-function IndexAfterLabelOrID(Words: Array of String): Integer;
+function IndexAfterLabelOrID(Words: TStringArray): Integer;
 var
   Index: Integer;
 begin
@@ -604,13 +579,13 @@ begin
   result := Index;
 end;
 
-function IsNewLyrics(Words: Array of String): Boolean;
+function IsNewLyrics(Words: TStringArray): Boolean;
 var
   Answer: Boolean = False;
   Index: Integer;
 begin
-  Index := IndexAfterLabelOrID;
-  if (Index <> -1) and (Words.Count >= Index + 3) then
+  Index := IndexAfterLabelOrID(Words);
+  if (Index <> -1) and (Length(Words) >= Index + 3) then
   begin
     Answer := (Words[Index] = '\lyricsto') 
       and IsQuoted(Words[Index + 1])
@@ -619,56 +594,58 @@ begin
   result := Answer;
 end;
 
-function IsNewWithBraceArg(Words: Array of String; TypeLabel: String): Boolean;
+function IsNewWithBraceArg(Words: TStringArray; TypeLabel: String): Boolean;
 var
   Index: Integer;
 begin
-  Index := IndexAfterLabelOrID;
-  result := (Index <> -1) and (Words[1] = TypeLabel) 
-              and IsOpenBrace(Words[Index])
+  Index := IndexAfterLabelOrID(Words);
+  result := (Index <> -1) and (Length(Words) > Index) 
+              and (Words[1] = TypeLabel) and IsOpenBrace(Words[Index])
 end;
 
-function IsNewVoiceOrFigureType(Words: Array of String): Boolean;
+function IsNewVoiceOrFigureType(Words: TStringArray): Boolean;
 var
   Index: Integer;
 begin
-  Index := IndexAfterLabelOrID;
-  result := (Index <> -1) 
+  Index := IndexAfterLabelOrID(Words);
+  result := (Index <> -1) and (Length(Words) > Index)
             and ((Words[1] = 'Voice') 
               or (Words[1] = 'FiguredBass'))
             and IsOpenBrace(Words[Index]);
 end;
 
-function IsNewVoice(Words: Array of String): Boolean;
+function IsNewVoice(Words: TStringArray): Boolean;
 begin
   result := IsNewWithBraceArg(Words, 'Voice');
 end;
 
-function IsNewFiguredBass(Words: Array of String): Boolean;
+function IsNewFiguredBass(Words: TStringArray): Boolean;
 begin
   result := IsNewWithBraceArg(Words, 'FiguredBass');
 end;
 
-function IsNewWithBracketArg(Words: Array of String; TypeLabel: String): Boolean;
+function IsNewWithBracketArg(Words: TStringArray; TypeLabel: String): Boolean;
 var
   Index: Integer;
 begin
-  Index := IndexAfterLabelOrID;
-  result := (Index <> -1) and (Words[1] = TypeLabel) 
-              and IsOpenBracket(Words[Index])
+  Index := IndexAfterLabelOrID(Words);
+  result := (Index <> -1) and (Length(Words) > Index) 
+            and (Words[1] = TypeLabel) and IsOpenBracket(Words[Index])
 end;
 
-function IsNewStaffType(Words: Array of String): Boolean;
+function IsNewStaffType(Words: TStringArray): Boolean;
+var
+  Index: Integer;
 begin
-  Index := IndexAfterLabelOrID;
-  result := (Index <> -1) 
+  Index := IndexAfterLabelOrID(Words);
+  result := (Index <> -1) and (Length(Words) > Index)
               and ((Words[1] = 'StaffGroup') 
                 or (Words[1] = 'ChoirStaff') 
                 or (Words[1] = 'Staff'))
               and IsOpenBracket(Words[Index]);
 end;
 
-function ArgIndex(Words: Array of String): Integer;
+function ArgIndex(Words: TStringArray): Integer;
 var
   Index: Integer = -1;
 begin
@@ -684,7 +661,7 @@ begin
   result := Index;
 end;
 
-function IDIndex(Words: Array of String): Integer;
+function IDIndex(Words: TStringArray): Integer;
 var
   Index: Integer = -1;
 begin
@@ -695,7 +672,7 @@ begin
   result := Index;
 end;
 
-function LinkIDIndex(Words: Array of String): Integer;
+function LinkIDIndex(Words: TStringArray): Integer;
 var
   Index: Integer = -1;
 begin
@@ -709,73 +686,26 @@ begin
   result := Index;
 end;
 
-function ReadScore(LyInput: String): String;
-var
-  Score: String;
-  OutputStr: String = '';
+function IsStaffOrVoiceTypeLongEnough(Words: TStringArray): Boolean;
 begin
-  Score := CommandArgBraces(LyInput, '\score');
-  OutputStr := BalancedDelimiterSubstringWords(Score, '<<', '>>');
-  result := OutputStr;
+  result := (HasID(Words) and (Length(Words) >= 7)) 
+              or (not HasID(Words) and (Length(Words) >= 5));
 end;
 
-function NewScoreTree(LyInput: String): TLyObject;
-var
-  Root: TLyObject = nil;
-  NewNode: TLyObject = nil;
-  LyScore, ThisWord, ContentsStr: String;
-  LyWords, TestWords: Array of String;
-  WordIndex: Integer;
+function IsLyricsTypeLongEnough(Words: TStringArray): Boolean;
 begin
-  LyScore := ReadScore(LyInput);
-  if not LyScore.IsEmpty then
-  begin
-    Root := TLyObject.Create(ekScore);
-    ContentsStr := WordArrayToString(LyScore);
-    Root.Contents := ContentsStr;
-    
-    LyWords := StringToWordArray(LyString);
-
-    WordIndex := 0;
-    for ThisWord in LyWords do
-    begin
-      if IsNewCmd(ThisWord) then
-      begin
-        TestWords := Copy(LyWords, WordIndex + 1);
-        NewNode := NewObject(TestWords); { find children in NewObject }
-        if Assigned(NewNode) then
-        begin
-          Root := Root.AppendChild(NewNode);
-          { continue to find siblings }
-        end;
-      end;
-      Inc(WordIndex);
-    end;
-  end;
-  result := Root;
-  FreeAndNil(TestWords);
-end;
-
-function IsStaffOrVoiceTypeLongEnough(Words: Array of String): Boolean;
-begin
-  result := (HasID(Words) and (Words.Count >= 6)) 
-              or (not HasID(Words) and (Words.Count >= 4));
-end;
-
-function IsLyricsTypeLongEnough(Words: Array of String): Boolean;
-begin
-  result := (HasID(Words) and (Words.Count >= 8)) 
-              or (not HasID(Words) and (Words.Count >= 6));
+  result := (HasID(Words) and (Length(Words) >= 9)) 
+              or (not HasID(Words) and (Length(Words) >= 7));
 end;
 
 
-function NewStaffType(LyWords: Array of String): TLyObject;
+function NewStaffType(LyWords: TStringArray): TLyObject;
 var
   NewNode: TLyObject = nil;
   ChildNode: TLyObject = nil;
   Name, ContentsStr: String;
   ID: String = '';
-  TestWords, ContentsWords: Array of String;
+  TestWords, ContentsWords: TStringArray;
 begin
   Assert(IsNewStaffType(LyWords));
   if IsStaffOrVoiceTypeLongEnough(LyWords) then
@@ -783,13 +713,13 @@ begin
     Name := LyWords[1];
     if HasID(LyWords) then
     begin
-      ID := LyWords[3].DeQuotedString(DblQuote);
+      ID := LyWords[3].DeQuotedString(ChDblQuote);
     end;
     NewNode := TLyObject.Create(Name, ID);
    
     TestWords := Copy(LyWords, ArgIndex(LyWords));
     ContentsWords := BracketedSubarray(TestWords);
-    if ContentsWords.Count > 0 then
+    if Length(ContentsWords) > 0 then
     begin
       ContentsStr := WordArrayToString(ContentsWords);
       NewNode.Contents := ContentsStr;
@@ -799,37 +729,33 @@ begin
         ChildNode := NewObject(ContentsWords);
         if Assigned(ChildNode) then
         begin
-          NewNode := NewNode.AppendChild(NewLyObjectTree(ContentsWords));
+          NewNode := NewNode.AppendChild(NewObject(ContentsWords));
         end;
       end;
     end;
   end;
-  FreeAndNil(TestWords);
-  FreeAndNil(ContentsWords);
   result := NewNode;
 end;
 
-function GetContentsString(LyWords: Array of String): String;
+function GetContentsString(LyWords: TStringArray): String;
 var
-  TestWords, ContentsWords: Array of String;
+  TestWords, ContentsWords: TStringArray;
   ContentsStr: String = '';
 begin
   TestWords := Copy(LyWords, ArgIndex(LyWords));
   ContentsWords := BracedSubarray(TestWords);
-  if ContentsWords.Count > 0 then
+  if Length(ContentsWords) > 0 then
   begin
     ContentsStr := WordArrayToString(ContentsWords);
   end;
-  FreeAndNil(TestWords);
-  FreeAndNil(ContentsWords);
   result := ContentsStr;
 end;
 
 
-function NewVoiceOrFigureType(LyWords: Array of String): TLyObject;
+function NewVoiceOrFigureType(LyWords: TStringArray): TLyObject;
 var
   NewNode: TLyObject = nil;
-  Name, ContentsStr: String;
+  Name: String;
   ID: String = '';
 begin
   Assert(IsNewVoiceOrFigureType(LyWords));
@@ -838,17 +764,17 @@ begin
     Name := LyWords[1];
     if HasID(LyWords) then
     begin
-      ID := LyWords[3].DeQuotedString(DblQuote);
+      ID := LyWords[3].DeQuotedString(ChDblQuote);
     end;
-    NewNode := TLyObject.Create(Name, ID, '', GetContentsStr(LyWords));
+    NewNode := TLyObject.Create(Name, ID, '', GetContentsString(LyWords));
   end;
   result := NewNode;
 end;
 
-function NewLyrics(LyWords: Array of String): TLyObject;
+function NewLyrics(LyWords: TStringArray): TLyObject;
 var
   NewNode: TLyObject = nil;
-  Name, ContentsStr, LinkID: String;
+  Name, LinkID: String;
   ID: String = '';
   IndexLinkID: Integer = 3;
 begin
@@ -858,22 +784,33 @@ begin
     Name := LyWords[1];
     if HasID(LyWords) then
     begin
-      ID := LyWords[3].DeQuotedString(DblQuote);
+      ID := LyWords[3].DeQuotedString(ChDblQuote);
       IndexLinkID := 5;
     end;
-    LinkID := LyWords[IndexLinkID].DeQuotedString(DblQuote);
+    LinkID := LyWords[IndexLinkID].DeQuotedString(ChDblQuote);
     
-    NewNode := TLyObject.Create(Name, ID, LinkID, GetContentsStr(LyWords));
+    NewNode := TLyObject.Create(Name, ID, LinkID, GetContentsString(LyWords));
   end;
   result := NewNode;
 end;
 
-function NewObject(LyWords: Array of String): TLyObject;
+
+function ReadScore(LyInput: String): String;
+var
+  Score: String;
+  OutputStr: String = '';
+begin
+  Score := CommandArgBraces(LyInput, '\score');
+  if not Score.IsEmpty then
+  begin
+    OutputStr := BracketedSubstring(Score);
+  end;
+  result := OutputStr;
+end;
+
+function NewObject(LyWords: TStringArray): TLyObject;
 var
   NewNode: TLyObject = nil;
-  ChildNode: TLyObject = nil;
-  ContentsStr: String;
-  ContentsWords: Array of String;
 begin
   if IsNewStaffType(LyWords) then
     NewNode := NewStaffType(LyWords)
@@ -881,18 +818,65 @@ begin
     NewNode := NewVoiceOrFigureType(LyWords)
   else if IsNewLyrics(LyWords) then
     NewNode := NewLyrics(LyWords);
-
+  
   result := NewNode;
-  FreeAndNil(ContentsWords);
 end;
 
-{ TODO plug in new functions to old system }
 
-constructor TLyObject.Create(LyInput: TStringList);
+function NewScoreTree(LyInput: String): TLyObject;
+var
+  Root: TLyObject = nil;
+  NewNode: TLyObject = nil;
+  LyScore, ThisWord: String;
+  LyWords, TestWords: TStringArray;
+  WordIndex: Integer;
 begin
-  Create(LyInput.Text);
-  Self := NumberElementsInOrder;
-  Self := AddLyrics;
+  LyScore := ReadScore(LyInput);
+  if not LyScore.IsEmpty then
+  begin
+    Root := TLyObject.Create();
+    Root.LyType := ekScore;
+    Root.Contents := LyScore;
+    
+    LyWords := StringToWordArray(LyScore);
+
+    WordIndex := 0;
+    for ThisWord in LyWords do
+    begin
+      if IsNewCmd(ThisWord) then
+      begin
+        TestWords := Copy(LyWords, WordIndex);
+        NewNode := NewObject(TestWords); { find children in NewObject }
+        if Assigned(NewNode) then
+        begin
+          Root := Root.AppendChild(NewNode);
+          break;
+          { continue after contents of new node to find siblings 
+          TODO
+          this is not the right way to look for siblings; that must be
+          recursive like we are doing for children in NewObject 
+          } 
+        end;
+      end;
+      Inc(WordIndex);
+    end;
+  end;
+  result := Root;
+end;
+
+
+
+function CreateFullScoreTree(LyInput: TStringList): TLyObject;
+var
+  Score: TLyObject = nil;
+begin
+  Score := NewScoreTree(LyInput.Text);
+  if Assigned(Score) then
+  begin
+    Score := Score.NumberElementsInOrder;
+    Score := Score.AddLyrics;
+  end;
+  result := Score;
 end;
 
 
@@ -1040,7 +1024,7 @@ begin
   begin
     FKind := mkModern;
     SearchStr := StringDropBefore(LyMeterStr, '\time ');
-    NumStr := ExtractWord(1, SearchStr, [' ', LineEnding]);
+    NumStr := ExtractWord(1, SearchStr, [ChSpace, LineEnding]);
 
     MeterNums := NumStr.Split(['/'], 2);
     FCount := StrToInt(MeterNums[0]);
@@ -1183,6 +1167,7 @@ var
   NameString: String;
 begin
   case FType of
+    ekScore     : NameString := 'score';
     ekStaffGrp  : NameString := 'staffGrp';
     ekStaff     : NameString := 'staff';
     ekLayer     : NameString := 'layer';
@@ -1442,18 +1427,25 @@ function CreateMeiScore(LyInput: TStringList): TMeiNode;
   end;
 
 var
-  LyTree: TLyObject;
-  MeiScore, MeiScoreDef, MeiSection: TMeiNode;
+  LyTree: TLyObject = nil;
+  MeiScore: TMeiNode = nil;
+  MeiScoreDef, MeiSection: TMeiNode;
 begin
-  LyTree := TLyObject.Create(LyInput);
- 
-  MeiScore    := CreateEmptyMeiScore;
-  MeiScoreDef := LyTree.ToMeiScoreDef;
-  MeiSection  := LyTree.ToMeiSection;
+  LyTree := CreateFullScoreTree(LyInput);
 
-  MeiScore := MeiScore.AppendLastChild(MeiScoreDef);
-  MeiScoreDef := MeiScoreDef.AppendSibling(MeiSection);
-  
+  if Assigned(LyTree) then
+  begin
+    MeiScore := LyTree.ToXMLAsIs;
+    { TODO still testing LyTree
+    MeiScore    := CreateEmptyMeiScore;
+    MeiScoreDef := LyTree.ToMeiScoreDef;
+    MeiSection  := LyTree.ToMeiSection;
+
+    MeiScore := MeiScore.AppendLastChild(MeiScoreDef);
+    MeiScoreDef := MeiScoreDef.AppendSibling(MeiSection);
+    }
+  end;
+
   FreeAndNil(LyTree);
   result := MeiScore;
 end;
@@ -1462,12 +1454,15 @@ function CreateMeiDocument(LyInput: TStringList): TMeiNode;
 var
   Root, MeiHeader, MeiScore: TMeiNode;
 begin
-  Root      := TMeiNode.CreateMeiRoot;
-  MeiHeader := CreateMeiHead(LyInput);
-  MeiScore  := CreateMeiScore(LyInput);
+  Root := TMeiNode.CreateMeiRoot;
+  if LyInput.Count > 0 then
+  begin
+    MeiHeader := CreateMeiHead(LyInput);
+    MeiScore  := CreateMeiScore(LyInput);
 
-  Root := Root.AppendChild(MeiHeader);
-  Root := Root.AppendChild(MeiScore);
+    Root := Root.AppendChild(MeiHeader);
+    Root := Root.AppendChild(MeiScore);
+  end;
   result := Root;
 end;
 

@@ -321,7 +321,7 @@ begin
     Self := Self.AddFirstChild(Child)
   else
   begin
-    ThisChild:= Self.FChild;
+    ThisChild := Self.FChild;
     ThisChild := ThisChild.AppendSibling(Child);
   end;
   result := Self;

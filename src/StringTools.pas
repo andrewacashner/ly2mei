@@ -8,8 +8,15 @@ interface
 
 uses SysUtils, Classes;
 
-{ Write notes to standard error if compiled with @code(-dDEBUG) }
-procedure DebugLn(Msg: String);
+const 
+  Space:    String = ' ';
+  ChSpace:    Char = ' ';
+  DblQuote: String = '"';
+  ChDblQuote: Char = '"';
+  LBrace:   String = '{';
+  RBrace:   String = '}';
+  LBracket: String = '<<';
+  RBracket: String = '>>';
 
 { Return a string containing just the first character of the given string. }
 function FirstCharStr(Source: String): String;
@@ -61,7 +68,9 @@ type
 function ToStringFromIndex(InputLines: TStringList; Index: Integer): String; 
 
 function StringToWordArray(InputStr: String): TStringArray;
-function WordArrayToString(StringArray: TStringArray): String;
+
+function WordArrayToString(StringArray: TStringArray; StartIndex: Integer = -1;
+  EndIndex: Integer = -1): String; 
 
 function BalancedDelimiterSubstringWords(InputStr, StartDelim, EndDelim:
   String): String; 
@@ -69,19 +78,18 @@ function BalancedDelimiterSubstringWords(InputStr, StartDelim, EndDelim:
 function BalancedDelimiterSubarrayWords(InputWords: TStringArray; 
   StartDelim, EndDelim: String): TStringArray; 
 
+function BracketedSubarray(InputWords: TStringArray): TStringArray;
+function BracedSubarray(InputWords: TStringArray): TStringArray;
+function BracketedSubstring(InputStr: String): String;
+function BracedSubstring(InputStr: String): String;
+
 function CommandArg(InputStr, Command, StartDelim, EndDelim: String): String;
 
 function CommandArgBraces(InputStr, Command: String): String;
 function CommandArgAngleBrackets(InputStr, Command: String): String;
 
-implementation
 
-procedure DebugLn(Msg: String);
-begin
-  {$ifdef DEBUG}
-  WriteLn(stderr, '> ' + Msg);
-  {$endif}
-end;
+implementation
 
 function FirstCharStr(Source: String): String;
 begin
@@ -213,33 +221,38 @@ var
   ThisString: String;
   TempLines: TStringList;
 begin
-  TempLines := TStringList.Create;
-  for ThisString in Self do
+  if Self.Count > 0 then
   begin
-    if not ThisString.Trim.IsEmpty then
-      TempLines.Add(ThisString);
+    TempLines := TStringList.Create;
+    for ThisString in Self do
+    begin
+      if not ThisString.Trim.IsEmpty then
+        TempLines.Add(ThisString);
+    end;
+    Assign(TempLines);
+    FreeAndNil(TempLines);
   end;
-  Assign(TempLines);
-  FreeAndNil(TempLines);
   result := Self;
 end;
 
 function StringToWordArray(InputStr: String): TStringArray;
 begin
-  result := InputStr.Split([' ', LineEnding], TStringSplitOptions.ExcludeEmpty);
+  result := InputStr.Split([Space, LineEnding], TStringSplitOptions.ExcludeEmpty);
 end;
 
 function WordArrayToString(StringArray: TStringArray; StartIndex: Integer = -1;
-  EndIndex: String = -1): String); 
+  EndIndex: Integer = -1): String; 
 var
   OutputStr: String = '';
 begin
   if StartIndex = -1 then
-    OutputStr := OutputStr.Join(' ', StringWords)
+    OutputStr := OutputStr.Join(Space, StringArray)
   else if EndIndex = -1 then
-    OutputStr := OutputStr.Join(' ', StringWords, StartIndex)
+    OutputStr := OutputStr.Join(Space, StringArray, StartIndex, 
+                  Length(StringArray) - StartIndex)
   else
-    OutputStr := OutputStr.Join(' ', StringWords, StartIndex, EndIndex - StartIndex);
+    OutputStr := OutputStr.Join(Space, StringArray, StartIndex, 
+                  EndIndex - StartIndex);
   
   result := OutputStr;
 end;
@@ -250,10 +263,9 @@ var
   OutputWords: TStringArray;
   ThisWord: String;
   WordIndex, StartIndex, EndIndex, DelimLevel: Integer;
-  InsideDelim: Boolean;
 begin
-  WordIndex := 0;
   DelimLevel := 0;
+  WordIndex := 0;
   for ThisWord in InputWords do
   begin
     if ThisWord = StartDelim then
@@ -269,7 +281,7 @@ begin
       Dec(DelimLevel);
       if DelimLevel = 0 then
       begin
-        EndIndex := WordIndex - 1;
+        EndIndex := WordIndex;
         break;
       end;
     end;
@@ -279,12 +291,7 @@ begin
   if EndIndex > StartIndex then
   begin
     OutputWords := Copy(InputWords, StartIndex, EndIndex - StartIndex);
-  end
-  else
-  begin
-    SetLength(OutputWords, 0);
   end;
-
   result := OutputWords;
 end;
 
@@ -297,15 +304,11 @@ begin
   StringWords := StringToWordArray(InputStr);
   WordsInsideDelims := BalancedDelimiterSubarrayWords(StringWords, 
                         StartDelim, EndDelim);
-  if WordsInsideDelims.Count > 0 then
+  if Length(WordsInsideDelims) > 0 then
   begin
     OutputStr := WordArrayToString(WordsInsideDelims);
   end;
-
   result := OutputStr;
-
-  FreeAndNil(StringWords);
-  FreeAndNil(WordsInsideDelims);
 end;
 
 function BracketedSubarray(InputWords: TStringArray): TStringArray;
@@ -323,7 +326,7 @@ begin
   result := BalancedDelimiterSubstringWords(InputStr, LBracket, RBracket);
 end;
 
-function BracketedSubstring(InputStr: String): String;
+function BracedSubstring(InputStr: String): String;
 begin
   result := BalancedDelimiterSubstringWords(InputStr, LBrace, RBrace);
 end;
@@ -345,12 +348,12 @@ end;
 
 function CommandArgBraces(InputStr, Command: String): String;
 begin
-  result := CommandArg(InputStr, Command, '{', '}');
+  result := CommandArg(InputStr, Command, LBrace, RBrace);
 end;
 
 function CommandArgAngleBrackets(InputStr, Command: String): String;
 begin
-  result := CommandArg(InputStr, Command, '<<', '>>');
+  result := CommandArg(InputStr, Command, LBracket, RBracket);
 end;
 
 end.

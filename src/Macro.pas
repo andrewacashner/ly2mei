@@ -157,9 +157,9 @@ function ProcessMacros(InputLines: TStringListPlus): TStringListPlus;
     begin
       for Macro in Dict do
       begin
-        OutputStr := OutputStr.Replace(Macro.Key + ' ', 
+        OutputStr := OutputStr.Replace('\' + Macro.Key + ' ', 
           Macro.Value + ' ', [rfReplaceAll]);
-        OutputStr := OutputStr.Replace(Macro.Key + LineEnding, 
+        OutputStr := OutputStr.Replace('\' + Macro.Key + LineEnding, 
           Macro.Value + LineEnding, [rfReplaceAll]);
       end;
     end;
@@ -253,10 +253,13 @@ end;
 
 function ExpandMacros(InputLines: TStringListPlus): TStringListPlus;
 begin
-  InputLines := InputLines.RemoveComments;
-  InputLines := ProcessMacros(InputLines);
-  InputLines := InputLines.RemoveBlankLines;
-  InputLines := ExpandMultiRests(InputLines);
+  if InputLines.Count > 0 then
+  begin
+    InputLines := InputLines.RemoveComments;
+    InputLines := ProcessMacros(InputLines);
+    InputLines := InputLines.RemoveBlankLines;
+    InputLines := ExpandMultiRests(InputLines);
+  end;
   result := InputLines;
 end;
    
