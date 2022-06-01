@@ -60,11 +60,14 @@ type
   given index. }
 function ToStringFromIndex(InputLines: TStringList; Index: Integer): String; 
 
-function Words(InputStr: String): TStringArray;
-function Unwords(StringArray: TStringArray): String;
+function StringToWordArray(InputStr: String): TStringArray;
+function WordArrayToString(StringArray: TStringArray): String;
 
 function BalancedDelimiterSubstringWords(InputStr, StartDelim, EndDelim:
   String): String; 
+
+function BalancedDelimiterSubarrayWords(InputWords: TStringArray; 
+  StartDelim, EndDelim: String): TStringArray; 
 
 function CommandArg(InputStr, Command, StartDelim, EndDelim: String): String;
 
@@ -221,12 +224,12 @@ begin
   result := Self;
 end;
 
-function Words(InputStr: String): TStringArray;
+function StringToWordArray(InputStr: String): TStringArray;
 begin
   result := InputStr.Split([' ', LineEnding], TStringSplitOptions.ExcludeEmpty);
 end;
 
-function Unwords(StringArray: TStringArray; StartIndex: Integer = -1;
+function WordArrayToString(StringArray: TStringArray; StartIndex: Integer = -1;
   EndIndex: String = -1): String); 
 var
   OutputStr: String = '';
@@ -241,20 +244,17 @@ begin
   result := OutputStr;
 end;
 
-function BalancedDelimiterSubstringWords(InputStr, StartDelim, EndDelim:
-  String): String; 
+function BalancedDelimiterSubarrayWords(InputWords: TStringArray; 
+  StartDelim, EndDelim: String): TStringArray; 
 var
-  OutputStr: String = '';
-  StringWords: TStringArray;
+  OutputWords: TStringArray;
   ThisWord: String;
   WordIndex, StartIndex, EndIndex, DelimLevel: Integer;
   InsideDelim: Boolean;
 begin
-  StringWords := Words(InputStr);
-
   WordIndex := 0;
   DelimLevel := 0;
-  for ThisWord in StringWords do
+  for ThisWord in InputWords do
   begin
     if ThisWord = StartDelim then
     begin
@@ -278,13 +278,57 @@ begin
 
   if EndIndex > StartIndex then
   begin
-    OutputStr := Unwords(StringWords, StartIndex, EndIndex);
+    OutputWords := Copy(InputWords, StartIndex, EndIndex - StartIndex);
+  end
+  else
+  begin
+    SetLength(OutputWords, 0);
+  end;
+
+  result := OutputWords;
+end;
+
+function BalancedDelimiterSubstringWords(InputStr, StartDelim, EndDelim:
+  String): String; 
+var
+  OutputStr: String = '';
+  StringWords, WordsInsideDelims: TStringArray;
+begin
+  StringWords := StringToWordArray(InputStr);
+  WordsInsideDelims := BalancedDelimiterSubarrayWords(StringWords, 
+                        StartDelim, EndDelim);
+  if WordsInsideDelims.Count > 0 then
+  begin
+    OutputStr := WordArrayToString(WordsInsideDelims);
   end;
 
   result := OutputStr;
 
   FreeAndNil(StringWords);
+  FreeAndNil(WordsInsideDelims);
 end;
+
+function BracketedSubarray(InputWords: TStringArray): TStringArray;
+begin
+  result := BalancedDelimiterSubarrayWords(InputWords, LBracket, RBracket);
+end;
+
+function BracedSubarray(InputWords: TStringArray): TStringArray;
+begin
+  result := BalancedDelimiterSubarrayWords(InputWords, LBrace, RBrace);
+end;
+
+function BracketedSubstring(InputStr: String): String;
+begin
+  result := BalancedDelimiterSubstringWords(InputStr, LBracket, RBracket);
+end;
+
+function BracketedSubstring(InputStr: String): String;
+begin
+  result := BalancedDelimiterSubstringWords(InputStr, LBrace, RBrace);
+end;
+
+
 
 function CommandArg(InputStr, Command, StartDelim, EndDelim: String): String;
 var

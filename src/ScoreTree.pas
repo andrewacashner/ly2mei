@@ -50,8 +50,8 @@ uses SysUtils, StrUtils, Classes, Generics.Collections, StringTools, Outline,
 type 
   { Types of elements in the internal tree of @code(TLyObject) or
     @code(TMEIElement) objects }
-  TLyObjectType = (ekAnonymous, ekStaffGrp, ekStaff, ekLayer, ekMeasure, 
-    ekLyrics, ekFigures);
+  TLyObjectType = (ekAnonymous, ekScore, ekStaffGrp, ekStaff, ekLayer,
+    ekMeasure, ekLyrics, ekFigures);
 
   { @abstract(A node, which may be the base of a tree, of Lilypond code
     objects.)
@@ -517,19 +517,19 @@ possible valid inputs:
 5. \new [LABEL] << [Contents] >>
 
 subtests:
-IsNew x: x = '\new'
+IsNewCmd x: x = '\new'
 IsEquals x: x = '='
 IsQuoted x: x.StartsWith('"') and x.EndsWith('"')
-HasID Input: IsNew(Input[0]) && IsEquals(Input[2]) && IsQuoted(Input[3])
+HasID Input: IsNewCmd(Input[0]) && IsEquals(Input[2]) && IsQuoted(Input[3])
 HasBraceArg Input N: FindBalancedDelimiter(Str, '❴', '❵') <> ''
 HasBracketArg Str: FindBalancedDelimiter(Str, '<<', '>>') <> ''
 
 tests: 
-1. HasID(Input) and (Input[1] = 'Lyrics') and (Input[4] = '\lyricsto') and (IsQuoted(Input[5])) and HasBracketArg(Unwords(Input, 6));
-2. HasID(Input) and HasBraceArg(Unwords(Input, 4));
-3. HasID(Input) and HasBracketArg(Unwords(Input, 4));
-4. not HasID(Input) and HasBraceArg(Unwords(Input, 2);
-5. not HasID(Input) and HasBracketArg(Unwords(Input, 2);
+1. HasID(Input) and (Input[1] = 'Lyrics') and (Input[4] = '\lyricsto') and (IsQuoted(Input[5])) and HasBracketArg(WordArrayToString(Input, 6));
+2. HasID(Input) and HasBraceArg(WordArrayToString(Input, 4));
+3. HasID(Input) and HasBracketArg(WordArrayToString(Input, 4));
+4. not HasID(Input) and HasBraceArg(WordArrayToString(Input, 2);
+5. not HasID(Input) and HasBracketArg(WordArrayToString(Input, 2);
 
 assignments: 
 1. Label := Input[1], ID := Input[3], LinkID := Input[5], Contents := BraceArg(Input);
@@ -539,7 +539,7 @@ assignments:
 5. Label := Input[1], ID := auto, LinkID := '', Contents := BracketArg(Input);
 
 }
-function IsNew(InputStr: String): Boolean;
+function IsNewCmd(InputStr: String): Boolean;
 begin
   result := InputStr = '\new';
 end;
@@ -549,24 +549,31 @@ begin
   result := InputStr = '=';
 end;
 
+const 
+  LBrace: String = '{';
+  RBrace: String = '}';
+  LBracket: String = '<<';
+  RBracket: String = '>>';
+  DblQuote: String = '"';
+
 function IsOpenBrace(InputStr: String): Boolean;
 begin
-  result := InputStr = '{';
+  result := InputStr = LBrace;
 end;
 
 function IsOpenBracket(InputStr: String): Boolean;
 begin
-  result := InputStr = '<<';
+  result := InputStr = LBracket;
 end;
 
 function IsQuoted(InputStr: String): Boolean;
 begin
-  result := InputStr.StartsWith('"') and InputStr.EndsWith('"');
+  result := InputStr.StartsWith(DblQuote) and InputStr.EndsWith(DblQuote);
 end;
 
 function StartsNew(Words: Array of String): Boolean;
 begin
-  result := IsNew(Words[0]);
+  result := IsNewCmd(Words[0]);
 end;
 
 function HasID(Words: Array of String): Boolean;
@@ -575,7 +582,7 @@ var
 begin
   if Words.Count >= 4 then
   begin
-    Answer := IsNew(Words[0]) and IsEqualSign(Words[1]) and IsQuoted(Words[2]);
+    Answer := IsNewCmd(Words[0]) and IsEqualSign(Words[1]) and IsQuoted(Words[2]);
   end;
   result :=  Answer;
 end;
@@ -702,14 +709,6 @@ begin
   result := Index;
 end;
 
-function TestNewExpression(Words: Array of String; StartIndex: Integer): Boolean;
-var
-  Answer: Boolean = False;
-begin
- { Do tests }
-end;
-
-
 function ReadScore(LyInput: String): String;
 var
   Score: String;
@@ -720,99 +719,174 @@ begin
   result := OutputStr;
 end;
 
-function ReadNewExpr(LyInput: String): TLyObject;
+function NewScoreTree(LyInput: String): TLyObject;
 var
-  OutputStr: String = '';
-  TestWords: TStringArray;
-  TestStr, ThisWord: String;
-  WordIndex, StartIndex, EndIndex, Level: Integer;
-  TypeLabel, ID, LinkID, Contents: String;
-  NewObject: TLyObject = nil;
+  Root: TLyObject = nil;
+  NewNode: TLyObject = nil;
+  LyScore, ThisWord, ContentsStr: String;
+  LyWords, TestWords: Array of String;
+  WordIndex: Integer;
 begin
-  WordIndex := 0;
-  for ThisWord in Words do
+  LyScore := ReadScore(LyInput);
+  if not LyScore.IsEmpty then
   begin
-    if IsNew(ThisWord) then
+    Root := TLyObject.Create(ekScore);
+    ContentsStr := WordArrayToString(LyScore);
+    Root.Contents := ContentsStr;
+    
+    LyWords := StringToWordArray(LyString);
+
+    WordIndex := 0;
+    for ThisWord in LyWords do
     begin
-      if TestNewExpression(Words, WordIndex) then
+      if IsNewCmd(ThisWord) then
       begin
-        NewNode := TLyObject.Create(ThisWord, WordIndex); { TODO }
+        TestWords := Copy(LyWords, WordIndex + 1);
+        NewNode := NewObject(TestWords); { find children in NewObject }
+        if Assigned(NewNode) then
+        begin
+          Root := Root.AppendChild(NewNode);
+          { continue to find siblings }
+        end;
       end;
+      Inc(WordIndex);
     end;
-    Inc(WordIndex);
   end;
-  result := NewNode;
+  result := Root;
+  FreeAndNil(TestWords);
+end;
+
+function IsStaffOrVoiceTypeLongEnough(Words: Array of String): Boolean;
+begin
+  result := (HasID(Words) and (Words.Count >= 6)) 
+              or (not HasID(Words) and (Words.Count >= 4));
+end;
+
+function IsLyricsTypeLongEnough(Words: Array of String): Boolean;
+begin
+  result := (HasID(Words) and (Words.Count >= 8)) 
+              or (not HasID(Words) and (Words.Count >= 6));
 end;
 
 
-{ long way  
-  if LyInput.Contains('\new ') then 
+function NewStaffType(LyWords: Array of String): TLyObject;
+var
+  NewNode: TLyObject = nil;
+  ChildNode: TLyObject = nil;
+  Name, ContentsStr: String;
+  ID: String = '';
+  TestWords, ContentsWords: Array of String;
+begin
+  Assert(IsNewStaffType(LyWords));
+  if IsStaffOrVoiceTypeLongEnough(LyWords) then
   begin
-    TestWords := Words(InputStr);
-
-    
-    WordIndex := 0;
-    Level := 0;
-    for ThisWord in TestWords do
+    Name := LyWords[1];
+    if HasID(LyWords) then
     begin
-      if ThisWord = '\new' then
+      ID := LyWords[3].DeQuotedString(DblQuote);
+    end;
+    NewNode := TLyObject.Create(Name, ID);
+   
+    TestWords := Copy(LyWords, ArgIndex(LyWords));
+    ContentsWords := BracketedSubarray(TestWords);
+    if ContentsWords.Count > 0 then
+    begin
+      ContentsStr := WordArrayToString(ContentsWords);
+      NewNode.Contents := ContentsStr;
+      
+      if ContentsStr.Contains('\new') then
       begin
-        if Level = 0 then
+        ChildNode := NewObject(ContentsWords);
+        if Assigned(ChildNode) then
         begin
-          Inc(WordIndex);
-          if WordIndex < TestWords.Count then
-          begin
-            TypeLabel := TestWords[WordIndex];
-            Inc(WordIndex);
-            if WordIndex < TestWords.Count then
-            begin
-              if (TestWords[WordIndex] = '=') 
-                and (WordIndex + 1 < TestWords.Count) then
-              begin
-                Inc(WordIndex);
-                ID := TestWords[WordIndex];
-              end;
-              Inc(WordIndex);
-              if (WordIndex < TestWords.Count) then
-              begin
-                if (TypeLabel = 'Lyrics') and (TestWords[WordIndex] = 'lyricsto') then
-                begin
-                  Inc(WordIndex);
-                  if (WordIndex < TestWords.Count) then
-                  begin
-                    LinkID := TestWords[WordIndex];
-                  end
-                  else LinkID := '';
-                end;
-                Inc(WordIndex);
-                if WordIndex < TestWord.Count then
-                begin
-                  ContentsTest := Unwords(TestWords, WordIndex);
-
-                  case TypeLabel of
-                  'StaffGroup', 'ChoirStaff', 'Staff' :
-                    Contents := BalancedDelimiterSubstringWords(ContentsTest, '<<', '>>');
-
-                  'Voice', 'Lyrics', 'FiguredBass' :
-                    Contents := BalancedDelimiterSubstringWords(ContentsTest, '{', '}');
-                  end;
-                end;
-              end;
-            end;
-          end;
+          NewNode := NewNode.AppendChild(NewLyObjectTree(ContentsWords));
         end;
       end;
     end;
   end;
-  if not Contents.IsEmpty then
-  begin
-    NewObject := TLyObject.Create(TypeLabel, ID, LinkID, Contents);
-  end;
-
-  result := NewObject;
   FreeAndNil(TestWords);
+  FreeAndNil(ContentsWords);
+  result := NewNode;
 end;
-}
+
+function GetContentsString(LyWords: Array of String): String;
+var
+  TestWords, ContentsWords: Array of String;
+  ContentsStr: String = '';
+begin
+  TestWords := Copy(LyWords, ArgIndex(LyWords));
+  ContentsWords := BracedSubarray(TestWords);
+  if ContentsWords.Count > 0 then
+  begin
+    ContentsStr := WordArrayToString(ContentsWords);
+  end;
+  FreeAndNil(TestWords);
+  FreeAndNil(ContentsWords);
+  result := ContentsStr;
+end;
+
+
+function NewVoiceOrFigureType(LyWords: Array of String): TLyObject;
+var
+  NewNode: TLyObject = nil;
+  Name, ContentsStr: String;
+  ID: String = '';
+begin
+  Assert(IsNewVoiceOrFigureType(LyWords));
+  if IsStaffOrVoiceTypeLongEnough(LyWords) then
+  begin
+    Name := LyWords[1];
+    if HasID(LyWords) then
+    begin
+      ID := LyWords[3].DeQuotedString(DblQuote);
+    end;
+    NewNode := TLyObject.Create(Name, ID, '', GetContentsStr(LyWords));
+  end;
+  result := NewNode;
+end;
+
+function NewLyrics(LyWords: Array of String): TLyObject;
+var
+  NewNode: TLyObject = nil;
+  Name, ContentsStr, LinkID: String;
+  ID: String = '';
+  IndexLinkID: Integer = 3;
+begin
+  Assert(IsNewLyrics(LyWords));
+  if IsLyricsTypeLongEnough(LyWords) then
+  begin
+    Name := LyWords[1];
+    if HasID(LyWords) then
+    begin
+      ID := LyWords[3].DeQuotedString(DblQuote);
+      IndexLinkID := 5;
+    end;
+    LinkID := LyWords[IndexLinkID].DeQuotedString(DblQuote);
+    
+    NewNode := TLyObject.Create(Name, ID, LinkID, GetContentsStr(LyWords));
+  end;
+  result := NewNode;
+end;
+
+function NewObject(LyWords: Array of String): TLyObject;
+var
+  NewNode: TLyObject = nil;
+  ChildNode: TLyObject = nil;
+  ContentsStr: String;
+  ContentsWords: Array of String;
+begin
+  if IsNewStaffType(LyWords) then
+    NewNode := NewStaffType(LyWords)
+  else if IsNewVoiceOrFigureType(LyWords) then
+    NewNode := NewVoiceOrFigureType(LyWords)
+  else if IsNewLyrics(LyWords) then
+    NewNode := NewLyrics(LyWords);
+
+  result := NewNode;
+  FreeAndNil(ContentsWords);
+end;
+
+{ TODO plug in new functions to old system }
 
 constructor TLyObject.Create(LyInput: TStringList);
 begin
