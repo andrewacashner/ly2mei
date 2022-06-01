@@ -549,9 +549,24 @@ begin
   result := InputStr = '=';
 end;
 
+function IsOpenBrace(InputStr: String): Boolean;
+begin
+  result := InputStr = '{';
+end;
+
+function IsOpenBracket(InputStr: String): Boolean;
+begin
+  result := InputStr = '<<';
+end;
+
 function IsQuoted(InputStr: String): Boolean;
 begin
   result := InputStr.StartsWith('"') and InputStr.EndsWith('"');
+end;
+
+function StartsNew(Words: Array of String): Boolean;
+begin
+  result := IsNew(Words[0]);
 end;
 
 function HasID(Words: Array of String): Boolean;
@@ -565,19 +580,127 @@ begin
   result :=  Answer;
 end;
 
+function IndexAfterLabelOrID(Words: Array of String): Integer;
+var
+  Index: Integer;
+begin
+  if StartsNew(Words) then
+  begin
+    if HasID(Words) then
+      Index := 4
+    else 
+      Index := 2;
+  end
+  else 
+    Index := -1;
+
+  result := Index;
+end;
+
 function IsNewLyrics(Words: Array of String): Boolean;
 var
   Answer: Boolean = False;
+  Index: Integer;
 begin
-  if Words.Count >= 6 then
+  Index := IndexAfterLabelOrID;
+  if (Index <> -1) and (Words.Count >= Index + 3) then
   begin
-    Answer := HasID(Words) and (Words[1] = 'Lyrics') 
-                and (Words[4] = '\lyricsto') and IsQuoted(Words[5]);
+    Answer := (Words[Index] = '\lyricsto') 
+      and IsQuoted(Words[Index + 1])
+      and IsOpenBrace(Words[Index + 2]);
   end;
   result := Answer;
 end;
 
-{ TODO test for brackets/braces or not? }
+function IsNewWithBraceArg(Words: Array of String; TypeLabel: String): Boolean;
+var
+  Index: Integer;
+begin
+  Index := IndexAfterLabelOrID;
+  result := (Index <> -1) and (Words[1] = TypeLabel) 
+              and IsOpenBrace(Words[Index])
+end;
+
+function IsNewVoiceOrFigureType(Words: Array of String): Boolean;
+var
+  Index: Integer;
+begin
+  Index := IndexAfterLabelOrID;
+  result := (Index <> -1) 
+            and ((Words[1] = 'Voice') 
+              or (Words[1] = 'FiguredBass'))
+            and IsOpenBrace(Words[Index]);
+end;
+
+function IsNewVoice(Words: Array of String): Boolean;
+begin
+  result := IsNewWithBraceArg(Words, 'Voice');
+end;
+
+function IsNewFiguredBass(Words: Array of String): Boolean;
+begin
+  result := IsNewWithBraceArg(Words, 'FiguredBass');
+end;
+
+function IsNewWithBracketArg(Words: Array of String; TypeLabel: String): Boolean;
+var
+  Index: Integer;
+begin
+  Index := IndexAfterLabelOrID;
+  result := (Index <> -1) and (Words[1] = TypeLabel) 
+              and IsOpenBracket(Words[Index])
+end;
+
+function IsNewStaffType(Words: Array of String): Boolean;
+begin
+  Index := IndexAfterLabelOrID;
+  result := (Index <> -1) 
+              and ((Words[1] = 'StaffGroup') 
+                or (Words[1] = 'ChoirStaff') 
+                or (Words[1] = 'Staff'))
+              and IsOpenBracket(Words[Index]);
+end;
+
+function ArgIndex(Words: Array of String): Integer;
+var
+  Index: Integer = -1;
+begin
+  if IsNewVoiceorFigureType(Words) or IsNewStaffType(Words) then
+    Index := 2
+  else if IsNewLyrics(Words) then
+    Index := 4;
+
+  if (Index <> -1) and HasID(Words) then
+  begin
+    Index := Index + 2;
+  end;
+  result := Index;
+end;
+
+function IDIndex(Words: Array of String): Integer;
+var
+  Index: Integer = -1;
+begin
+  if HasID(Words) then
+  begin
+    Index := 3;
+  end;
+  result := Index;
+end;
+
+function LinkIDIndex(Words: Array of String): Integer;
+var
+  Index: Integer = -1;
+begin
+  if IsNewLyrics(Words) then
+  begin
+    if HasId(Words) then
+      Index := 5
+    else
+      Index := 3;
+  end;
+  result := Index;
+end;
 
 function TestNewExpression(Words: Array of String; StartIndex: Integer): Boolean;
 var
