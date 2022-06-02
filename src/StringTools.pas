@@ -9,14 +9,14 @@ interface
 uses SysUtils, Classes;
 
 const 
-  Space:    String = ' ';
-  ChSpace:    Char = ' ';
-  DblQuote: String = '"';
-  ChDblQuote: Char = '"';
-  LBrace:   String = '{';
-  RBrace:   String = '}';
-  LBracket: String = '<<';
-  RBracket: String = '>>';
+  cSpace:    String = ' ';
+  cChSpace:    Char = ' ';
+  cDblQuote: String = '"';
+  cChDblQuote: Char = '"';
+  cLBrace:   String = '{';
+  cRBrace:   String = '}';
+  cLBracket: String = '<<';
+  cRBracket: String = '>>';
 
 { Return a string containing just the first character of the given string. }
 function FirstCharStr(Source: String): String;
@@ -24,7 +24,12 @@ function FirstCharStr(Source: String): String;
 { Copy the portion of a string that follows the end of a given substring. }
 function StringDropBefore(Source, StartAfter: String): String;
 
+{ Copy the portion of a string that precedes the beginning of a given substring. }
 function SubstringAfter(Source, StartAfter: String): String;
+
+{ Copy the portion of a string that starts at the beginning of the given
+substring. }
+function SubstringStartingWith(Source, StartHere: String): String;
 
 { Return the portion of a string before a given delimiter. }
 function StringDropAfter(Source, EndBefore: String): String;
@@ -69,8 +74,7 @@ function ToStringFromIndex(InputLines: TStringList; Index: Integer): String;
 
 function StringToWordArray(InputStr: String): TStringArray;
 
-function WordArrayToString(StringArray: TStringArray; StartIndex: Integer = -1;
-  EndIndex: Integer = -1): String; 
+function WordArrayToString(StringArray: TStringArray): String;
 
 function BalancedDelimiterSubstringWords(InputStr, StartDelim, EndDelim:
   String): String; 
@@ -129,6 +133,11 @@ end;
 function SubstringBefore(Source, EndBefore: String): String;
 begin
   result := StringDropAfter(Source, EndBefore);
+end;
+
+function SubstringStartingWith(Source, StartHere: String): String;
+begin
+  result := Source.Substring(Source.IndexOf(StartHere));
 end;
 
 function CopyStringBetween(Source, StartAfter, EndBefore: String): String;
@@ -237,23 +246,17 @@ end;
 
 function StringToWordArray(InputStr: String): TStringArray;
 begin
-  result := InputStr.Split([Space, LineEnding], TStringSplitOptions.ExcludeEmpty);
+  result := InputStr.Split([cSpace, LineEnding], TStringSplitOptions.ExcludeEmpty);
 end;
 
-function WordArrayToString(StringArray: TStringArray; StartIndex: Integer = -1;
-  EndIndex: Integer = -1): String; 
+function WordArrayToString(StringArray: TStringArray): String;
 var
   OutputStr: String = '';
 begin
-  if StartIndex = -1 then
-    OutputStr := OutputStr.Join(Space, StringArray)
-  else if EndIndex = -1 then
-    OutputStr := OutputStr.Join(Space, StringArray, StartIndex, 
-                  Length(StringArray) - StartIndex)
-  else
-    OutputStr := OutputStr.Join(Space, StringArray, StartIndex, 
-                  EndIndex - StartIndex);
-  
+  if Length(StringArray) > 0 then
+  begin
+    OutputStr := String.Join(cSpace, StringArray);
+  end;
   result := OutputStr;
 end;
 
@@ -313,22 +316,22 @@ end;
 
 function BracketedSubarray(InputWords: TStringArray): TStringArray;
 begin
-  result := BalancedDelimiterSubarrayWords(InputWords, LBracket, RBracket);
+  result := BalancedDelimiterSubarrayWords(InputWords, cLBracket, cRBracket);
 end;
 
 function BracedSubarray(InputWords: TStringArray): TStringArray;
 begin
-  result := BalancedDelimiterSubarrayWords(InputWords, LBrace, RBrace);
+  result := BalancedDelimiterSubarrayWords(InputWords, cLBrace, cRBrace);
 end;
 
 function BracketedSubstring(InputStr: String): String;
 begin
-  result := BalancedDelimiterSubstringWords(InputStr, LBracket, RBracket);
+  result := BalancedDelimiterSubstringWords(InputStr, cLBracket, cRBracket);
 end;
 
 function BracedSubstring(InputStr: String): String;
 begin
-  result := BalancedDelimiterSubstringWords(InputStr, LBrace, RBrace);
+  result := BalancedDelimiterSubstringWords(InputStr, cLBrace, cRBrace);
 end;
 
 
@@ -348,12 +351,12 @@ end;
 
 function CommandArgBraces(InputStr, Command: String): String;
 begin
-  result := CommandArg(InputStr, Command, LBrace, RBrace);
+  result := CommandArg(InputStr, Command, cLBrace, cRBrace);
 end;
 
 function CommandArgAngleBrackets(InputStr, Command: String): String;
 begin
-  result := CommandArg(InputStr, Command, LBracket, RBracket);
+  result := CommandArg(InputStr, Command, cLBracket, cRBracket);
 end;
 
 end.

@@ -65,7 +65,7 @@ constructor THeader.Create(InputLines: TStringList);
   begin
     Value := CopyStringBetween(InputStr, Delim, LineEnding).Trim;
     if IsASingleQuotedString(Value) then 
-      Value := Value.DeQuotedString(ChDblQuote)
+      Value := Value.DeQuotedString(cChDblQuote)
     else
     begin
       MarkupStr := LyArg(Value, '\markup');
