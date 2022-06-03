@@ -76,6 +76,8 @@ function StringToWordArray(InputStr: String): TStringArray;
 
 function WordArrayToString(StringArray: TStringArray): String;
 
+function WordArrayToString(StringArray: TStringArray; StartIndex, EndIndex: Integer): String;
+
 function BalancedDelimiterSubstringWords(InputStr, StartDelim, EndDelim:
   String): String; 
 
@@ -258,6 +260,14 @@ begin
     OutputStr := String.Join(cSpace, StringArray);
   end;
   result := OutputStr;
+end;
+
+function WordArrayToString(StringArray: TStringArray; StartIndex, EndIndex: Integer): String;
+var
+  SubArray: TStringArray;
+begin
+  SubArray := Copy(StringArray, StartIndex, EndIndex - StartIndex);
+  result := WordArrayToString(SubArray);
 end;
 
 function BalancedDelimiterSubarrayWords(InputWords: TStringArray; 

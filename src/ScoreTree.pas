@@ -237,7 +237,6 @@ begin
   FChild    := Child;
   FSibling  := Sibling;
  
-  WriteLn(stderr, 'new node contents: ' + FContents);
   if FType = ekLayer then
     FMeasureList := TMeasureList.Create(FContents)
   else
@@ -699,29 +698,13 @@ begin
               or (not HasID(Words) and (Length(Words) >= 7));
 end;
 
-function SubarrayAfterNew(LyWords: TStringArray): TStringArray;
-var
-  ThisWord: String;
-  Index: Integer;
-begin
-  Index := 0;
-  for ThisWord in LyWords do
-  begin
-    if ThisWord <> '\new' then
-      Inc(Index)
-    else
-      break;
-  end;
-  result := Copy(LyWords, Index);
-end;
-
 function NewStaffType(LyWords: TStringArray): TLyObject;
 var
   NewNode: TLyObject = nil;
   ChildNode: TLyObject = nil;
   Name, ContentsStr: String;
   ID: String = '';
-  TestWords, ContentsWords, NextNew: TStringArray;
+  TestWords, ContentsWords: TStringArray;
 begin
   Assert(IsNewStaffType(LyWords));
   if IsStaffOrVoiceTypeLongEnough(LyWords) then
@@ -739,11 +722,12 @@ begin
     begin
       ContentsStr := WordArrayToString(ContentsWords);
       NewNode.Contents := ContentsStr;
-      
+
       if ContentsStr.Contains('\new') then
       begin
-        NextNew := SubarrayAfterNew(ContentsWords); {TODO dealing with newlines & substitutes, finding start of next \new }
-        ChildNode := NewObject(NextNew);
+        ContentsStr := SubstringStartingWith(ContentsStr, '\new');
+        ContentsWords := StringToWordArray(ContentsStr);
+        ChildNode := NewObject(ContentsWords);
         if Assigned(ChildNode) then
         begin
           NewNode.Child := ChildNode;
@@ -811,18 +795,16 @@ end;
 
 function ReadScore(LyInput: String): String;
 var
-  MarkedLines, Score: String;
+  Score: String;
   OutputStr: String = '';
 begin
-  MarkedLines := LyInput.Replace(LineEnding, ' ¶ ');
-  WriteLn(stderr, 'ReadScore: ' + MarkedLines);
-  Score := CommandArgBraces(MarkedLines, '\score');
+  Score := CommandArgBraces(LyInput, '\score');
   if not Score.IsEmpty then
   begin
     OutputStr := BracketedSubstring(Score);
+    OutputStr := ReplaceLyCommands(OutputStr);
   end;
   result := OutputStr;
-  WriteLn(stderr, 'post ReadScore: ' + OutputStr);
 end;
 
 function NewObject(LyWords: TStringArray): TLyObject;
@@ -841,7 +823,6 @@ begin
 
   if Assigned(NewNode) then
   begin
-  WriteLn(stderr, 'made new node with contents: ' + NewNode.Contents);
     TestStr := WordArrayToString(LyWords);
     TestStr := SubstringAfter(TestStr, NewNode.Contents);
     if TestStr.Contains('\new') then
@@ -877,7 +858,6 @@ begin
     if LyScore.Contains('\new') then
     begin
       LyScore := SubstringStartingWith(LyScore, '\new');
-      WriteLn(stderr, 'try to build score with input: ' + LyScore);
       LyWords := StringToWordArray(LyScore);
       NewNode := NewObject(LyWords);
       if Assigned(NewNode) then
@@ -1161,7 +1141,15 @@ function TLyObject.ToMeiScoreDef: TMeiNode;
   var
     MeiTree: TMeiNode;
   begin
-    MeiTree := LyNode.ToMeiScoreDefNode;
+    if (LyNode.LyType = ekScore) and Assigned(LyNode.Child) then
+    begin
+      MeiTree := TMeiNode.Create('staffGrp');
+      MeiTree := MeiTree.AppendChild(InnerScoreDef(LyNode.Child));
+    end
+    else 
+    begin
+      MeiTree := LyNode.ToMeiScoreDefNode;
+    end;
 
     if (LyNode.LyType = ekStaffGrp) and Assigned(LyNode.Child) then
     begin
@@ -1179,8 +1167,7 @@ var
   ScoreDef, MainStaffGrp: TMeiNode;
 begin
   ScoreDef := TMeiNode.Create('scoreDef');
-  MainStaffGrp := TMeiNode.Create('staffGrp');
-  MainStaffGrp := MainStaffGrp.AppendChild(InnerScoreDef(Self));
+  MainStaffGrp := InnerScoreDef(Self);
   ScoreDef := ScoreDef.AppendChild(MainStaffGrp);
   result := ScoreDef;
 end;
@@ -1357,6 +1344,8 @@ begin
   result := MeiMeasure;
 end;
 
+{ TODO start mei conversion is not finding all parts of tree, because tree now
+starts with score node as root (?) }
 function BuildMeiMeasureTree(LyTree: TLyObject; MeiTree: TMeiNode; 
   MeasureNum: Integer): TMeiNode;
 var
@@ -1458,15 +1447,15 @@ begin
 
   if Assigned(LyTree) then
   begin
-    MeiScore := LyTree.ToXMLAsIs;
     { TODO still testing LyTree
+    MeiScore := LyTree.ToXMLAsIs;
+    }
     MeiScore    := CreateEmptyMeiScore;
     MeiScoreDef := LyTree.ToMeiScoreDef;
     MeiSection  := LyTree.ToMeiSection;
 
     MeiScore := MeiScore.AppendLastChild(MeiScoreDef);
     MeiScoreDef := MeiScoreDef.AppendSibling(MeiSection);
-    }
   end;
 
   FreeAndNil(LyTree);

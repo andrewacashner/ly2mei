@@ -314,7 +314,7 @@ type
     { Create a new list of pitches from the Lilypond input string for a single
       measure of music, and the key relevant to this music. Recursively create
       all the pitches contained in the list. }
-    constructor Create(LyInput: String; Key: TKeyKind);
+    constructor Create(Notes: TStringArray; Key: TKeyKind);
 
     destructor Destroy(); override;
 
@@ -437,6 +437,8 @@ function FindLyKey(KeyStr: String): TKeyKind;
 { Set information for right barline type in this measure. } 
 function AddMeiBarlineAttr(MeiMeasure: TMeiNode; PitchList: TPitchList):
   TMeiNode; 
+
+function ReplaceLyCommands(Source: String): String;
 
 implementation
 
@@ -1317,18 +1319,32 @@ begin
   result := Source;
 end;
 
-constructor TPitchList.Create(LyInput: String; Key: TKeyKind);
+constructor TPitchList.Create(Notes: TStringArray; Key: TKeyKind);
 var
+  NoteIndex: Integer;
   ThisNote: String;
-  Notes: TStringArray;
   NewPitch: TPitch;
 begin
   Create;
-  LyInput := ReplaceLyCommands(LyInput);
-
-  Notes := LyInput.Split([' ']);
-  for ThisNote in Notes do
+  NoteIndex := 0;
+  while NoteIndex < Length(Notes) do
   begin
+    ThisNote := Notes[NoteIndex];
+
+    { TODO improve }
+    if (ThisNote = '\bar') and (NoteIndex +  1 < Length(Notes)) then
+    begin
+      SetBarlineRight('\bar ' + Notes[NoteIndex + 1]);
+      NoteIndex := NoteIndex + 2;
+      continue;
+    end
+    else if ThisNote.Contains('Bar') then
+    begin
+      SetBarlineRight(ThisNote);
+      Inc(NoteIndex);
+      continue;
+    end;
+
     NewPitch := TPitch.Create(ThisNote, Key);
     if NewPitch.IsValid then
       Self.Add(NewPitch)
@@ -1336,6 +1352,7 @@ begin
     begin
       FreeAndNil(NewPitch);
     end;
+    Inc(NoteIndex);
   end;
 end;
 
@@ -1426,8 +1443,12 @@ end;
 constructor TMeasureList.Create(LyInput: String);
 var
   Key: TKeyKind;
-  LyLines: TStringArray;
-  SearchStr, ThisLine, TestLine, MeasureStr: String;
+  LyWords: TStringArray;
+  SearchStr, ThisWord, TestLine, MeasureStr: String;
+  WordIndex: Integer;
+  NextWord: String;
+  MeasureStart, MeasureEnd, MeasureIndex: Integer;
+  Notes: TStringArray;
 begin
   inherited Create;
   { Find the key signature for this voice }
@@ -1435,29 +1456,41 @@ begin
   Key := FindLyKey(SearchStr);
 
   { Find measures and parse the notes in them }
-  LyLines := LyInput.Split([' ¶ '], TStringSplitOptions.ExcludeEmpty);
-  WriteLn(stderr, 'LyLines[0]:' + LyLines[0]);
-  for ThisLine in LyLines do
+  { a measure is from '|' to next '|' or '❵' }
+  LyWords := StringToWordArray(LyInput);
+  WordIndex := 0;
+  while WordIndex < Length(LyWords) do
   begin
-    WriteLn(stderr, 'ThisLine: ' + ThisLine);
-    TestLine := ThisLine.TrimLeft;
-    if TestLine.StartsWith('\Section ') then
-    begin
-      FHeaderText := CopyStringBetween(ThisLine, '\Section "', '"');
-    end
-    
-    else if TestLine.StartsWith('\bar') or TestLine.Contains('Bar') then
-    begin
-      Self.Last.SetBarlineRight(ThisLine);
-    end
+    ThisWord := LyWords[WordIndex];
 
-    else if TestLine.StartsWith('|') then
+    { TODO improve }
+    if (ThisWord = '\Section') and (WordIndex + 1 < Length(LyWords)) then
     begin
-      MeasureStr := SubstringAfter(ThisLine, '| ');
-      WriteLn(stderr, 'Try to create measure from input: ' + MeasureStr);
-
-      Self.Add(TPitchList.Create(MeasureStr, Key));
+      FHeaderText := LyWords[WordIndex + 1].DeQuotedString(cChDblQuote);
+      WordIndex := WordIndex + 2;
+      continue;
     end;
+
+    if ThisWord = '|' then
+    begin
+      MeasureStart := WordIndex + 1;
+      MeasureIndex := MeasureStart;
+      while MeasureIndex < Length(LyWords) do
+      begin
+        NextWord := LyWords[MeasureIndex];
+        if (NextWord = '|') or (NextWord = '}') then
+        begin
+          MeasureEnd := MeasureIndex;
+          WordIndex := MeasureEnd - 1;
+          break;
+        end
+        else
+          Inc(MeasureIndex);
+      end;
+      Notes := Copy(LyWords, MeasureStart, MeasureEnd - MeasureStart);
+      Self.Add(TPitchList.Create(Notes, Key));
+    end;
+    Inc(WordIndex);
   end;
 
   Self := AddTies;
