@@ -1426,7 +1426,7 @@ end;
 constructor TMeasureList.Create(LyInput: String);
 var
   Key: TKeyKind;
-  LyLines: TStringListPlus;
+  LyLines: TStringArray;
   SearchStr, ThisLine, TestLine, MeasureStr: String;
 begin
   inherited Create;
@@ -1435,9 +1435,11 @@ begin
   Key := FindLyKey(SearchStr);
 
   { Find measures and parse the notes in them }
-  LyLines := TStringListPlus.Create(LyInput);
+  LyLines := LyInput.Split([' ¶ '], TStringSplitOptions.ExcludeEmpty);
+  WriteLn(stderr, 'LyLines[0]:' + LyLines[0]);
   for ThisLine in LyLines do
   begin
+    WriteLn(stderr, 'ThisLine: ' + ThisLine);
     TestLine := ThisLine.TrimLeft;
     if TestLine.StartsWith('\Section ') then
     begin
@@ -1451,7 +1453,8 @@ begin
 
     else if TestLine.StartsWith('|') then
     begin
-      MeasureStr := StringDropBefore(ThisLine, '| ');
+      MeasureStr := SubstringAfter(ThisLine, '| ');
+      WriteLn(stderr, 'Try to create measure from input: ' + MeasureStr);
 
       Self.Add(TPitchList.Create(MeasureStr, Key));
     end;
@@ -1461,7 +1464,6 @@ begin
   Self := AddFermatas;
   Self := AddAllLines;
 
-  FreeAndNil(LyLines);
 end;
 
 { TODO would be nice to have an algorithm without the boolean switching }

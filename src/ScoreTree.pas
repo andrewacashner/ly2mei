@@ -236,7 +236,8 @@ begin
   FLinkID   := LinkID;
   FChild    := Child;
   FSibling  := Sibling;
-  
+ 
+  WriteLn(stderr, 'new node contents: ' + FContents);
   if FType = ekLayer then
     FMeasureList := TMeasureList.Create(FContents)
   else
@@ -698,13 +699,29 @@ begin
               or (not HasID(Words) and (Length(Words) >= 7));
 end;
 
+function SubarrayAfterNew(LyWords: TStringArray): TStringArray;
+var
+  ThisWord: String;
+  Index: Integer;
+begin
+  Index := 0;
+  for ThisWord in LyWords do
+  begin
+    if ThisWord <> '\new' then
+      Inc(Index)
+    else
+      break;
+  end;
+  result := Copy(LyWords, Index);
+end;
+
 function NewStaffType(LyWords: TStringArray): TLyObject;
 var
   NewNode: TLyObject = nil;
   ChildNode: TLyObject = nil;
   Name, ContentsStr: String;
   ID: String = '';
-  TestWords, ContentsWords: TStringArray;
+  TestWords, ContentsWords, NextNew: TStringArray;
 begin
   Assert(IsNewStaffType(LyWords));
   if IsStaffOrVoiceTypeLongEnough(LyWords) then
@@ -725,7 +742,8 @@ begin
       
       if ContentsStr.Contains('\new') then
       begin
-        ChildNode := NewObject(ContentsWords);
+        NextNew := SubarrayAfterNew(ContentsWords); {TODO dealing with newlines & substitutes, finding start of next \new }
+        ChildNode := NewObject(NextNew);
         if Assigned(ChildNode) then
         begin
           NewNode.Child := ChildNode;
@@ -793,15 +811,18 @@ end;
 
 function ReadScore(LyInput: String): String;
 var
-  Score: String;
+  MarkedLines, Score: String;
   OutputStr: String = '';
 begin
-  Score := CommandArgBraces(LyInput, '\score');
+  MarkedLines := LyInput.Replace(LineEnding, ' ¶ ');
+  WriteLn(stderr, 'ReadScore: ' + MarkedLines);
+  Score := CommandArgBraces(MarkedLines, '\score');
   if not Score.IsEmpty then
   begin
     OutputStr := BracketedSubstring(Score);
   end;
   result := OutputStr;
+  WriteLn(stderr, 'post ReadScore: ' + OutputStr);
 end;
 
 function NewObject(LyWords: TStringArray): TLyObject;
@@ -820,6 +841,7 @@ begin
 
   if Assigned(NewNode) then
   begin
+  WriteLn(stderr, 'made new node with contents: ' + NewNode.Contents);
     TestStr := WordArrayToString(LyWords);
     TestStr := SubstringAfter(TestStr, NewNode.Contents);
     if TestStr.Contains('\new') then
@@ -855,6 +877,7 @@ begin
     if LyScore.Contains('\new') then
     begin
       LyScore := SubstringStartingWith(LyScore, '\new');
+      WriteLn(stderr, 'try to build score with input: ' + LyScore);
       LyWords := StringToWordArray(LyScore);
       NewNode := NewObject(LyWords);
       if Assigned(NewNode) then
