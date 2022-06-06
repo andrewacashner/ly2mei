@@ -1372,7 +1372,12 @@ begin
     begin
       MeiTree := BuildMeiMeasureTree(LyStaff.Sibling, MeiTree, MeasureNum);
     end;
-  
+ 
+    if (LyTree.LyType = ekScore) and Assigned(LyTree.Child) then
+    begin
+      LyTree := LyTree.Child;
+    end;
+
     if (LyTree.LyType <> ekStaff) and Assigned(LyTree.Sibling) then
     begin
       MeiTree := BuildMeiMeasureTree(LyTree.Sibling, MeiTree, MeasureNum);
@@ -1387,10 +1392,10 @@ end;
   { TODO we do not support multiple \score expressions }
 function TLyObject.ToMeiSection: TMeiNode;
 var
-  LayerNode: TLyObject;
+  LayerNode: TLyObject = nil;
   MeasureList: TMeasureList;
   MeiSection, MeiMeasureTree: TMeiNode;
-  MeasureCount, MeasureNum: Integer;
+  MeasureNum: Integer;
 begin
   MeiSection := TMeiNode.Create('section');
   
@@ -1398,8 +1403,7 @@ begin
   if Assigned(LayerNode) then
   begin
     MeasureList := LayerNode.Measures;
-    MeasureCount := MeasureList.Count;
-    for MeasureNum := 0 to MeasureCount - 1 do
+    for MeasureNum := 0 to MeasureList.Count - 1 do
     begin
       MeiMeasureTree := TMeiNode.Create('measure');
       MeiMeasureTree.AddAttribute('n', IntToStr(MeasureNum + 1));
