@@ -270,27 +270,47 @@ type
       as siblings. }
     function ToMEI: TMeiNode;
   end;
+  
+  TMeterKind = (mkNone, mkMensuralTempusImperfectum,
+    mkMensuralProportioMinor, mkModern);
+  
+  TMeter = class 
+  private
+    var
+      FKind: TMeterKind;
+      FCount, FUnit: Integer;
+  public
+    constructor Create(LyMeterStr: String);
+    property Kind:      TMeterKind read FKind;
+    property BeatCount: Integer    read FCount;
+    property BeatUnit:  Integer    read FUnit;
+  end;
+
 
   TFiguredBass = class
   private
     var
       FStaffNum: Integer;
-      FTimeStamp: Integer;
-      FFigures: TStringList;
+      FTimeStamp: Single;
+      FFigures: TStringArray;
   public
     constructor Create();
+    constructor Create(LyInput: String);
     destructor Destroy(); override;
 
     function ToMEI: TMeiNode;
 
-    property StaffNum:  Integer     read FStaffNum;
-    property TimeStamp: Integer     read FTimeStamp;
-    property Figures:   TStringList read FFigures;
+    property StaffNum:  Integer      read FStaffNum;
+    property TimeStamp: Integer      read FTimeStamp;
+    property Figures:   TStringArray read FFigures;
   end;
 
   TFiguredBassList = class(specialize TObjectList<TFiguredBass>)
   public
-    { list of siblings }
+    constructor Create();
+    function Create(StaffNum: Integer; Meter: TMeter; LyInput: String);
+
+    { return tree that is a list of siblings }
     function ToMEI: TMeiNode;
   end;
 
@@ -823,7 +843,7 @@ var
   ThisString: String;
   NewSyllable: TSyllable;
 begin
-  inherited Create();
+  Create();
 
   LyInput := LyArg(LyInput, '\lyricmode', rkExclusive);
 
@@ -1240,10 +1260,108 @@ begin
   result := Root;
 end;
 
+constructor TMeter.Create(LyMeterStr: String);
+var
+  SearchStr, NumStr: String;
+  MeterNums: TStringArray;
+begin
+  inherited Create;
+
+  if LyMeterStr.Contains('\MeterDuple') then
+    FKind := mkMensuralTempusImperfectum
+  else if LyMeterStr.Contains('\MeterTriple') then
+    FKind := mkMensuralProportioMinor
+  else if LyMeterStr.Contains('\time ') then
+  begin
+    FKind := mkModern;
+    SearchStr := StringDropBefore(LyMeterStr, '\time ');
+    NumStr := ExtractWord(1, SearchStr, [cChSpace, LineEnding]);
+
+    MeterNums := NumStr.Split(['/'], 2);
+    FCount := StrToInt(MeterNums[0]);
+    FUnit := StrToInt(MeterNums[1]);
+  end;
+end;
+
 constructor TFiguredBass.Create();
 begin
   inherited Create();
-  FFigures := TStringList.Create();
+end;
+
+function IsValidFiguredBassInput(LyInput: String): Boolean;
+begin
+  result := not LyInput.IsEmpty
+              and LyInput[Length(LyInput) - 1].IsNumber
+              and ((LyInput.StartsWith('<') 
+                      and LyInput[1].Contains('>'))
+                    or LyInput.StartsWith('s'));
+end;
+
+
+function CalcTimeStamp(Meter: TMeter; LyInput: String): Single;
+
+  function DotCount(LyInput: String): Integer;
+  var
+    CharIndex: Integer;
+    Dots: Integer = 0;
+  begin
+    if LyInput.EndsWith('.') then
+    begin
+      CharIndex := Length(LyInput) - 1;
+      while (CharIndex > 0) and (LyInput[CharIndex] = '.') do
+      begin
+        Inc(Dots);
+      end;
+    end;
+    result := Dots;
+  end;
+
+var
+  TimeStamp: Single = 0.0;
+  ThisDur: Integer;
+  DurBase: Integer;
+  Dots: Integer = 0;
+begin
+  case Meter.Kind of
+    mkModern :
+      DurBase := Meter.BeatUnit;
+    mkMensuralTempusImperfectum, mkMensuralProportioMinor :
+      DurBase := 2;
+  end;
+
+  if LyInput.Contains('.') then
+  begin
+    LyInput := SubstringBefore(LyInput, '.');
+    Dots := DotCount(LyInput);
+  end;
+
+  ThisDur := StrToInt(LyInput);
+
+  TimeStamp := ThisDur / DurBase;
+  { TODO this is not enough. You need this number, a time length relative to
+  the base beat count of the meter, but you also need the offset from the start of the measure, which you can only get by looking at the whole measure. }
+  result := TimeStamp;
+end;
+
+{ TODO START }
+constructor TFiguredBass.Create(StaffNum: Integer; Meter: TMeter; LyInput: String);
+var
+  Duration: Integer;
+begin
+  Create();
+  FStaffNum := StaffNum;
+
+  if LyInput.StartsWith('s') then
+  begin
+    FFigures := nil;
+    FTimeStamp := CalcTimeStamp(Meter, LyInput.Substring(1));
+  end
+  else
+  begin
+    { parse < ... > expression }
+    FTimeStamp := {} ;
+    FFigures := {} ;
+  end;
 end;
 
 destructor TFiguredBass.Destroy();
@@ -1273,6 +1391,41 @@ begin
   HarmNode := HarmNode.AppendChild(FiguredBassNode);
   result := HarmNode;
 end;
+
+function TFiguredBassList.Create()
+begin
+  inherited Create();
+end;
+
+function TFiguredBassList.Create(StaffNum: Integer; Meter: TMeter; LyInput: String);
+var
+  TokenizedInput: TStringArray;
+  ThisString: String;
+  NewFigure: TFiguredBass;
+begin
+  Create();
+
+  LyInput := LyArg(LyInput, '\figuremode', rkExclusive);
+
+  TokenizedInput := LyInput.Split([' ', LineEnding], 
+    TStringSplitOptions.ExcludeEmpty);
+
+  for ThisString in TokenizedInput do
+  begin
+    if IsValidFiguredBassInput(ThisString) then
+    begin
+      NewFigure := TFiguredBass.Create(StaffNum, Meter, ThisString);
+      Add(NewFigure);
+    end;
+  end;
+end;
+
+
+
+
+end;
+
+
 
 { list of siblings }
 function TFiguredBassList.ToMEI: TMeiNode;

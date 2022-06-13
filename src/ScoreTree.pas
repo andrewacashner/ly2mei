@@ -996,45 +996,6 @@ begin
   result := StaffDefNode;
 end;
 
-type
-  TMeterKind = (mkNone, mkMensuralTempusImperfectum,
-    mkMensuralProportioMinor, mkModern);
-  
-  TMeter = class 
-  private
-    var
-      FKind: TMeterKind;
-      FCount, FUnit: Integer;
-  public
-    constructor Create(LyMeterStr: String);
-    property Kind:      TMeterKind read FKind;
-    property BeatCount: Integer    read FCount;
-    property BeatUnit:  Integer    read FUnit;
-  end;
-
-constructor TMeter.Create(LyMeterStr: String);
-var
-  SearchStr, NumStr: String;
-  MeterNums: TStringArray;
-begin
-  inherited Create;
-
-  if LyMeterStr.Contains('\MeterDuple') then
-    FKind := mkMensuralTempusImperfectum
-  else if LyMeterStr.Contains('\MeterTriple') then
-    FKind := mkMensuralProportioMinor
-  else if LyMeterStr.Contains('\time ') then
-  begin
-    FKind := mkModern;
-    SearchStr := StringDropBefore(LyMeterStr, '\time ');
-    NumStr := ExtractWord(1, SearchStr, [cChSpace, LineEnding]);
-
-    MeterNums := NumStr.Split(['/'], 2);
-    FCount := StrToInt(MeterNums[0]);
-    FUnit := StrToInt(MeterNums[1]);
-  end;
-end;
-
 function AddMEIMeterAttribute(StaffDefNode: TMeiNode; Meter: TMeter): TMeiNode;
 begin
   Assert(Assigned(StaffDefNode));
@@ -1295,6 +1256,9 @@ begin
   inherited Destroy;
 end;
 
+
+
+
 { TODO need to make sure all voices have same number of measures }
 function CreateMeiMeasure(LyLayer: TLyObject; MeasureNum: Integer): TMeiNode;
 var
@@ -1368,16 +1332,21 @@ begin
   { TODO
     MeiTree := AddFiguredBass(LyLayer, MeiTree, MeasureNum); }
 
+    { Process the other staves in this group, siblings to LyStaff (not LyTree,
+    the current root) }
     if Assigned(LyStaff.Sibling) then
     begin
       MeiTree := BuildMeiMeasureTree(LyStaff.Sibling, MeiTree, MeasureNum);
     end;
- 
+
+    { If we are at the top of the tree, move down one level so we can check
+    staff groups or staves }
     if (LyTree.LyType = ekScore) and Assigned(LyTree.Child) then
     begin
       LyTree := LyTree.Child;
     end;
 
+    { Find staves in the other staff groups }
     if (LyTree.LyType <> ekStaff) and Assigned(LyTree.Sibling) then
     begin
       MeiTree := BuildMeiMeasureTree(LyTree.Sibling, MeiTree, MeasureNum);

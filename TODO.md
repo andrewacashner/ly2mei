@@ -16,7 +16,14 @@
         - need to calculate time stamp from durations
         - need to parse ly text commands
 
-- figured bass looks like this, within `<measure>`:
+- Lilypond figured bass looks like this, in its own input layer (in lirio we
+  are not allowing ad hoc figured bass within music input):
+
+````
+\new FiguredBass { \figuremode { \time 4/4 | <6>1 | <+>2 <7->2 | <5 4>2 } }
+````
+
+- MEI figured bass looks like this, within `<measure>`:
 
 ````
 <harm staff="5" place="below" tstamp="1">
@@ -27,7 +34,37 @@
 </harm>
 ````
 
+- parse figure series
+    - start with contents of `\new FiguredBass { }` for a particular staff (need
+      staff ID)
+    - get contents of `\figuremode { }`
+    - read time signature if there is one, or import from rest of program
+    - split at spaces
+    - read one measure at a time (as we did for pitch input, from `|` to `|` or `}`
+    - match pattern: `<[[1-7_].[+ - ! -- ++ \+ / \\ \!].*] ].*>[1 2 3 8 16 \breve].[.].*`
+    - for each: parse, convert, store
+        -for each number+mod separated by spaces:
+            - number: 
+                - numeral -> numeral
+                - `_` -> no numeral (just accidental following)
+            - modifier
+                - `+`   -> `♯`
+                - `-`   -> `♭`
+                - `!`   -> `♮`
+                - `--`  -> `` (U+E264)
+                - `++`  -> `` (U+E263)
+                - `\+`  -> `+`
+                - `/`   -> `/`
+                - `\\`  -> `\`
+                - `\!`  -> look back for previous figure with same number and
+                                add @extender="true" to it, don't add anything
+                                to this one
+        - rhythm value (number + dot) -> tstamp based on time signature
+        
 
+
+
+# also
 - deal with differing numbers of measures in diff. voices
 - support \IncipitStaff and \InstrumentName in \score
 
