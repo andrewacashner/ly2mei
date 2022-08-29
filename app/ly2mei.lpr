@@ -24,6 +24,12 @@ begin
     
     InputLines.LoadFromFile(ParamStr(1));
     InputLines := ExpandMacros(InputLines);
+
+    for OutputStr in InputLines do
+    begin
+      DebugLn(String(OutputStr));
+    end;
+
     MeiTree := CreateMeiDocument(InputLines);
     OutputStr := MeiDocString(MeiTree);
    

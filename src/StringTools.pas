@@ -8,6 +8,8 @@ interface
 
 uses SysUtils, Classes;
 
+procedure DebugLn(Source: String);
+
 const 
   cSpace:    String = ' ';
   cChSpace:    Char = ' ';
@@ -96,6 +98,13 @@ function CommandArgAngleBrackets(InputStr, Command: String): String;
 
 
 implementation
+
+procedure DebugLn(Source: String);
+begin
+  {$ifdef DEBUG }
+  WriteLn(stderr, '> ' + Source);
+  {$endif}
+end;
 
 function FirstCharStr(Source: String): String;
 begin

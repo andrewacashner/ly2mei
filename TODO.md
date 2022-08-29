@@ -9,6 +9,13 @@
 - (DONE) deal with Lyrics
     - NB we are ignoring markup or other \commands within lyrics
 
+- section headings mid-voice
+- meter, key changes mid-voice
+
+- pitch input!: support "as" not just "aes"
+- enable input files
+
+## Figured Bass
 - deal with FiguredBass
     - (DONE) add basic classes, MEI output
     - add constructors to parse input and create those classes

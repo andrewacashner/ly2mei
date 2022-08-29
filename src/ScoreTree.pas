@@ -44,7 +44,7 @@ unit ScoreTree;
 
 interface
 
-uses SysUtils, StrUtils, Classes, Generics.Collections, StringTools, MEI,
+uses SysUtils, Classes, Generics.Collections, StringTools, MEI,
   Header, MusicNotes;
 
 type 
