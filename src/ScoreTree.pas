@@ -1014,6 +1014,7 @@ begin
       begin
         StaffDefNode.AddAttribute('mensur.sign', 'C');
         StaffDefNode.AddAttribute('mensur.tempus', '2');
+        StaffDefNode.AddAttribute('mensur.slash', '0');
         StaffDefNode.AddAttribute('proport.num', '3');
       end;
 

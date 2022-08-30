@@ -127,7 +127,7 @@ MusicSI = {
 
   % m. 82 end estribillo
   | c''1.\fermata
-  \FineEd
+%  \FineEd
   \FinalBar
   % }}}3
 

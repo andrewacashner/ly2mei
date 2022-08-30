@@ -253,6 +253,9 @@ end;
 
 function ExpandMacros(InputLines: TStringListPlus): TStringListPlus;
 begin
+  DebugLn('(Macro.ExpandMacros) Initial input text:');
+  DebugLines(InputLines);
+
   if InputLines.Count > 0 then
   begin
     InputLines := InputLines.RemoveComments;
@@ -260,6 +263,10 @@ begin
     InputLines := InputLines.RemoveBlankLines;
     InputLines := ExpandMultiRests(InputLines);
   end;
+
+  DebugLn('(Macro.ExpandMacros) Input text with macros expanded:');
+  DebugLines(InputLines);
+
   result := InputLines;
 end;
    

@@ -8,8 +8,6 @@ interface
 
 uses SysUtils, Classes;
 
-procedure DebugLn(Source: String);
-
 const 
   cSpace:    String = ' ';
   cChSpace:    Char = ' ';
@@ -97,14 +95,11 @@ function CommandArgBraces(InputStr, Command: String): String;
 function CommandArgAngleBrackets(InputStr, Command: String): String;
 
 
-implementation
-
 procedure DebugLn(Source: String);
-begin
-  {$ifdef DEBUG }
-  WriteLn(stderr, '> ' + Source);
-  {$endif}
-end;
+procedure DebugLines(Source: TStringList);
+procedure DebugLines(Source: TStringListPlus);
+
+implementation
 
 function FirstCharStr(Source: String): String;
 begin
@@ -377,5 +372,32 @@ function CommandArgAngleBrackets(InputStr, Command: String): String;
 begin
   result := CommandArg(InputStr, Command, cLBracket, cRBracket);
 end;
+
+procedure DebugLn(Source: String);
+begin
+  {$ifdef DEBUG}
+  WriteLn(stderr, '> ' + Source);
+  {$endif}
+end;
+
+procedure DebugLines(Source: TStringList);
+{$ifdef DEBUG}
+var
+  ThisLine: String;
+{$endif}
+begin
+  {$ifdef DEBUG}
+  for ThisLine in Source do
+  begin
+    DebugLn(ThisLine);
+  end;
+  {$endif}
+end;
+
+procedure DebugLines(Source: TStringListPlus);
+begin
+  DebugLines(TStringList(Source));
+end;
+
 
 end.
