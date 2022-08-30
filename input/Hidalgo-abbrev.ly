@@ -28,7 +28,7 @@ MusicSI = {
   \MeterTriple
 
   % {{{3 estribillo
-%  \Section "[ESTRIBILLO] SOLO"
+  \Section "[ESTRIBILLO] SOLO"
   | r2 r2 bes'2
   | d''2 d''2. e''4
   | f''2. g''4 f''2
@@ -59,7 +59,7 @@ MusicSI = {
 
   % m. 33 a 4
   | r2 r2 
-%  \Section "A 4"
+  \Section "A 4"
   f'2
   | bes'2 bes'2 bes'2
   | c''2. c''4 d''2
@@ -90,7 +90,7 @@ MusicSI = {
   \break
 
   % m. 55 Duo
-%  \Section "DÚO"
+  \Section "DÚO"
   | r2 d''2 e''2 
   | f''1.
   | r2 a'2 bes'2
@@ -127,7 +127,7 @@ MusicSI = {
 
   % m. 82 end estribillo
   | c''1.\fermata
-%  \FineEd
+  \FineEd
   \FinalBar
   % }}}3
 

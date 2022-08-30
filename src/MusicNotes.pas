@@ -1261,13 +1261,16 @@ begin
 end;
 
 { TODO add all commands to be replaced (i.e., ignored) }
+{ TODO is this working? }
 function ReplaceLyCommands(Source: String): String;
 var 
-  Translation: Array[0..3, 0..1] of String = ( 
+  Translation: Array[0..5, 0..1] of String = ( 
     ('\break', ''),  { ignore breaks }
     ('\[ ', '\['),   { group start ligature with next note }
     (' \]', '\]'),   { group end ligature with previous note }
-    ('\colorOne', '') { TODO for now; not supported by MEI? }
+    ('\colorOne', ''), { TODO for now; not supported by MEI? }
+    ('\FineEd', '\RepeatMsg "[Fine]"'),
+    ('\Fine', '\RepeatMsg "Fine"')
   );
   PairIndex: Integer;
 begin
@@ -1399,12 +1402,14 @@ begin
   inherited Create;
 end;
 
+{ This is the main algorithm for parsing the Lilypond input for a single
+voice.  }
 constructor TMeasureList.Create(LyInput: String);
 var
   Key: TKeyKind;
   LyWords: TStringArray;
-  SearchStr, ThisWord, TestLine, MeasureStr: String;
-  WordIndex: Integer;
+  SearchStr, ThisWord: String;
+  WordIndex, ArgIndex: Integer;
   NextWord: String;
   MeasureStart, MeasureEnd, MeasureIndex: Integer;
   Notes: TStringArray;
@@ -1422,7 +1427,12 @@ begin
   begin
     ThisWord := LyWords[WordIndex];
 
-    { TODO improve }
+    { TODO improve 
+      also look for other commands outside measure (e.g., \RepeatMsg, \Fine)
+
+    inadequate because a section heading can be multiple words
+    separated by spaces; instead need to look for open and close parens 
+
     if (ThisWord = '\Section') and (WordIndex + 1 < Length(LyWords)) then
     begin
       FHeaderText := LyWords[WordIndex + 1].DeQuotedString(cChDblQuote);
@@ -1430,7 +1440,34 @@ begin
       continue;
     end;
 
-    if ThisWord = '|' then
+    the below works for finding argument but we only have one field for header text for the whole music list?
+    also a section heading can be in the middle of a bar!
+
+    this would all need to be put in a function also
+    }
+
+    if ThisWord.StartsWith('\') then
+    begin
+      if (ThisWord = '\Section') and LyWords[WordIndex + 1].StartsWith('"') then
+      begin
+        Inc(WordIndex);
+        for ArgIndex := WordIndex to Length(LyWords) - 1 do
+        begin
+          if LyWords[ArgIndex].EndsWith('"') then
+            break;
+        end;
+        if ArgIndex > WordIndex then
+        begin
+          FHeaderText := String.Join(' ', LyWords, 
+            WordIndex, ArgIndex - WordIndex + 1);
+          FHeaderText := FHeaderText.DeQuotedString(cChDblQuote);
+          DebugLn('Found section header text: "' + FHeaderText + '"');
+
+          WordIndex := ArgIndex;
+        end;
+      end;
+    end
+    else if ThisWord = '|' then
     begin
       MeasureStart := WordIndex + 1;
       MeasureIndex := MeasureStart;
