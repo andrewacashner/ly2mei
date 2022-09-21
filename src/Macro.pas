@@ -19,8 +19,7 @@ type
   TIndexList = class(specialize TList<Integer>)
   public
     { Macro definitions must start at the beginning of the line, and be in the
-    format @code(label = < value >) or @code(label = \command < value >) where 
-    @code(<>) are curly braces. }
+    format @code(label = ❴ value ❵) or @code(label = \command ❴ value ❵). }
     constructor Create(InputLines: TStringListPlus);
   end;
 
@@ -33,24 +32,31 @@ type
   { A single key-value pair used in the dictionary. }
   TMacroKeyValue = TMacroDict.TDictionaryPair;
 
+{ Find all commands to include other files, of the form @code(\include
+  "file.ly"), and insert the content of those files at that point in the
+  string list. }
+function IncludeFiles(InputLines: TStringListPlus): TStringListPlus;
+
 { Find, parse, and save macro definitions in a stringlist. Delete
   the definition expressions and expand the macro calls.
 
-  A macro must have the form @code(label = < arg >) or 
-  @code(label = \command < arg >) where @code(<>) are curly braces. We
-  don't accept @code(label = "string") or other formats. The label must be
-  at the beginning of a line. 
+  A macro must have the form @code(label = ❴ arg ❵) or 
+  @code(label = \command ❴ arg ❵). We don't accept @code(label = "string") or
+  other formats. The label must be at the beginning of a line. 
+
+  (TODO: The program actually does accept @code(label = "string"), but was
+  this intentional or a byproduct?)
 
   A macro call must be followed by a space or newline. Otherwise we could not
   have commands like @code(\SopranoI) and @code(\SopranoII). }
 function ProcessMacros(InputLines: TStringListPlus): TStringListPlus;
 
 { Write out Lilypond multimeasure rests as individual rests: @code(| R1*2)
-becomes @code(| R1\n| R1). }
+  becomes @code(| R1\n| R1). }
 function ExpandMultiRests(InputLines: TStringListPlus): TStringListPlus;
 
 { Modify the stringlist: Clean up text (remove comments, blank lines) and
-expand macros and multirests. }
+  expand macros and multirests. }
 function ExpandMacros(InputLines: TStringListPlus): TStringListPlus;
 
 implementation
@@ -129,6 +135,51 @@ begin
   end;
   FreeAndNil(IndexList);
 end;
+
+function IncludeFiles(InputLines: TStringListPlus): TStringListPlus;
+var
+  FileLines, OutputLines: TStringListPlus;
+  ThisStr, TestStr, FileName: String;
+begin
+  OutputLines := TStringListPlus.Create();
+  FileLines := TStringListPlus.Create();
+
+  for ThisStr in InputLines do
+  begin
+    { Copy the input file, but replace lines with command 
+      @code(\include "file.ly") with contents of named file.
+      If the file can't be found, just skip this line. }
+    if not ThisStr.Contains('\include') then
+    begin
+      OutputLines.Add(ThisStr);
+    end
+    else
+    begin
+      TestStr := SubstringAfter(ThisStr, '\include ').Trim;
+      FileName := CopyFirstQuotedString(TestStr);
+      if not FileExists(FileName) then
+      begin
+        WriteLn(stderr, 'File not found: Could not include file "' + FileName + '"');
+      end
+      else
+      begin
+        try
+          FileLines.LoadFromFile(FileName);
+          OutputLines.AddStrings(FileLines);
+        except
+          on Error: EInOutError do
+            WriteLn(stderr, 'File handling error occurred. Reason: ', Error.Message);
+        end;
+      end;
+    end;
+  end;
+ 
+  InputLines.Assign(OutputLines);
+  FreeAndNil(OutputLines);
+  FreeAndNil(FileLines);
+  result := InputLines;
+end;
+
 
 function ProcessMacros(InputLines: TStringListPlus): TStringListPlus;
 
@@ -258,6 +309,7 @@ begin
 
   if InputLines.Count > 0 then
   begin
+    InputLines := IncludeFiles(InputLines);
     InputLines := InputLines.RemoveComments;
     InputLines := ProcessMacros(InputLines);
     InputLines := InputLines.RemoveBlankLines;

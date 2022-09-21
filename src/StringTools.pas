@@ -24,7 +24,7 @@ function FirstCharStr(Source: String): String;
 { Copy the portion of a string that follows the end of a given substring. }
 function StringDropBefore(Source, StartAfter: String): String;
 
-{ Copy the portion of a string that precedes the beginning of a given substring. }
+{ Copy the portion of a string that follows the end of a given substring. }
 function SubstringAfter(Source, StartAfter: String): String;
 
 { Copy the portion of a string that starts at the beginning of the given

@@ -1,6 +1,6 @@
 \version "2.2"
 
-\input "melodia-data.ly"
+\include "input/melodia-data.ly"
 
 \header {
     title = \title
@@ -11,10 +11,10 @@
 
 \score {
     <<
-        \new staff 
+        \new Staff 
         <<
-            \new voice = "mel" { \clef "treble" \melody }
-            \new lyrics \lyricsto "mel" { \lyricmode { \words } }
+            \new Voice = "mel" { \clef "treble" \melody }
+            \new Lyrics \lyricsto "mel" { \lyricmode { \words } }
         >>
     >>
 }

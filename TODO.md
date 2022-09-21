@@ -13,7 +13,7 @@
 - meter, key changes mid-voice
 
 - pitch input!: support "as" not just "aes"
-- enable input files
+- (DONE) enable input files
 
 ## Figured Bass
 - deal with FiguredBass

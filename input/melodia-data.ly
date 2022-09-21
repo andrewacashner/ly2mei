@@ -12,7 +12,7 @@ melody = {
     | f'2 r4
 }
 
-words = {
+words = \lyricmode {
     ¡can -- ta, can -- tan -- te!
 }
 
