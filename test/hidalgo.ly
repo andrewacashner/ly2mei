@@ -16,7 +16,7 @@
 | bes'2 bes'2 bes'2
 | bes'2. bes'4 a'2
 | a'2 g'2 bes'2
-| a'2 f'2 f''2^\markup { \column { \line "one" line "two" } }
+| a'2 f'2 f''2^\markup { \column { \line "one" \line "two" } }
 
 | r2 d''2 f''2 
 | f''1.

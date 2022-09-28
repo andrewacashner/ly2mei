@@ -30,6 +30,80 @@ begin
   end;
 end;
 
+function FindCloseBrace(InputWords: TStringList; StartIndex: Integer): Integer;
+var
+  EndIndex: Integer;
+begin
+  if InputWords[StartIndex] = '}' then
+    EndIndex := StartIndex
+  else
+    EndIndex := FindCloseBrace(InputWords, StartIndex + 1);
+  
+  result := EndIndex;
+end;
+
+function FindArgEnd(InputWords: TStringList; StartIndex: Integer): Integer;
+var
+  ThisIndex, EndIndex: Integer;
+begin
+  EndIndex := StartIndex + 1;
+  result := EndIndex;
+end;
+
+function GroupCommandWithArg(InputWords: TStringList): TStringList;
+var
+  NewWords: TStringList;
+  ThisWord, NextWord: String;
+  WordIndex, ArgEndIndex, CopyIndex: Integer;
+  Command: String;
+begin
+  NewWords := TStringList.Create;
+  WordIndex := 0;
+  while WordIndex < InputWords.Count do
+  begin
+    ThisWord := InputWords[WordIndex];
+    if ThisWord.StartsWith('\') then
+    begin
+      Command := ThisWord;
+      WriteLn('command found: ' + Command);
+
+      if WordIndex < InputWords.Count - 1 then
+      begin
+        NextWord := InputWords[WordIndex + 1];
+        WriteLn('test next word: ' + NextWord);
+        if NextWord.StartsWith('"') and NextWord.EndsWith('"') then
+        begin
+          WriteLn('found quoted argument');
+          Command := Command + ' ' + NextWord;
+          WriteLn('composite command found: ' + Command);
+          WordIndex := WordIndex + 2;
+        end
+        else if NextWord = '{' then
+        begin
+          while (WordIndex < InputWords.Count - 1) and 
+            (InputWords[WordIndex] <> '}') do
+          begin
+            Inc(WordIndex);
+            Command := Command + ' ' + InputWords[WordIndex];
+          end;
+          WriteLn('composite command found: ' + Command);
+        end;
+      end;
+      NewWords.Add(Command);
+    end
+    else
+    begin
+      NewWords.Add(ThisWord);
+    end;
+    Inc(WordIndex);
+  end;
+
+  InputWords.Assign(NewWords);
+  FreeAndNil(NewWords);
+  result := InputWords;
+end;
+
+
 type
   TInputMeasure = TStringList;
 
@@ -65,6 +139,8 @@ begin
       CurrentStr := InputTokens[ThisTokenIndex];
       ThisInputMeasure.Add(CurrentStr);
     end;
+
+    ThisInputMeasure := GroupCommandWithArg(ThisInputMeasure);
    
     Add(ThisInputMeasure);
     Inc(PositionCount);
