@@ -8,67 +8,46 @@ program parseMusic(input, output, stderr);
 uses SysUtils, Classes, Generics.Collections;
 
 type
-  TPitch = class
-  private 
-    var
-      RawStr : String;
-  public 
-    constructor Create(InputStr: String);
-    function Show: String;
+  TIndexList = class(specialize TList<Integer>)
+  public
+    constructor CreateFromBarlines(Tokens: TStringArray);
   end;
 
-  TPitchList = specialize TObjectList<TPitch>;
-
-  TMeasureList = specialize TObjectList<TPitchList>;
-
-constructor TPitch.Create(InputStr: String);
-begin
-  inherited Create;
-  RawStr := InputStr;
-end;
-
-function TPitch.Show: String;
-begin
-  result := RawStr;
-end;
-
-type
-  TIndexList = specialize TList<Integer>;
-
-function BarStartPositions(Tokens: Array of String): TIndexList;
+constructor TIndexList.CreateFromBarlines(Tokens: TStringArray);
 var
   Index: Integer;
   ThisWord: String;
-  StartPositions: TIndexList;
 begin
-  StartPositions := TIndexList.Create;
+  inherited Create;
   Index := 0;
   for ThisWord in Tokens do
   begin
     if ThisWord = '|' then
     begin
-      StartPositions.Add(Index);
+      Add(Index);
     end;
     Inc(Index);
   end;
-  result := StartPositions;
 end;
 
 type
   TInputMeasure = TStringList;
-  TInputSection = specialize TObjectList<TStringList>;
 
-function GroupByMeasure(InputTokens: Array of String): TInputSection;
+  TInputSection = class(specialize TObjectList<TStringList>)
+  public
+    constructor CreateByMeasure(InputTokens: TStringArray);
+  end;
+
+constructor TInputSection.CreateByMeasure(InputTokens: TStringArray);
 var
-  Section: TInputSection;
   ThisInputMeasure: TInputMeasure;
   StartPositions: TIndexList;
   PositionCount, ThisIndex, ThisStart, ThisStop, ThisTokenIndex: Integer;
   CurrentStr: String;
 begin
-  Section := TInputSection.Create;
+  inherited Create;
 
-  StartPositions := BarStartPositions(InputTokens);
+  StartPositions := TIndexList.CreateFromBarlines(InputTokens);
 
   PositionCount := 0;
   for ThisIndex in StartPositions do
@@ -87,30 +66,116 @@ begin
       ThisInputMeasure.Add(CurrentStr);
     end;
    
-    Section.Add(ThisInputMeasure);
-
+    Add(ThisInputMeasure);
     Inc(PositionCount);
   end;
 
-  result := Section;
   FreeAndNil(StartPositions);
 end;
 
+
+type
+  TPitch = class
+  private 
+    var
+      RawStr : String;
+  public 
+    constructor Create(InputStr: String);
+    function ToString: String; override;
+  end;
+
+  TPitchList = class(specialize TObjectList<TPitch>)
+  public
+    constructor CreateFromInputMeasure(InputMeasure: TInputMeasure);
+  end;
+
+  TMeasureList = class(specialize TObjectList<TPitchList>)
+  public
+    constructor CreateFromInputSection(InputSection: TInputSection);
+    function ToStringList(OutputLines: TStringList): TStringList;
+    function ToString: String; override;
+  end;
+
+constructor TPitch.Create(InputStr: String);
+begin
+  inherited Create;
+  RawStr := InputStr;
+end;
+
+function TPitch.ToString: String;
+begin
+  result := RawStr;
+end;
+
+constructor TPitchList.CreateFromInputMeasure(InputMeasure: TInputMeasure);
 var
-  InputLines, OutputLines: TStringList;
-  Words: Array of String;
   ThisWord: String;
-  Section: TInputSection;
-  ThisInputMeasure: TInputMeasure;
-  
-  ThisPitch: TPitch;
+  NewPitch: TPitch;
+begin
+  inherited Create;
+  for ThisWord in InputMeasure do
+  begin
+    NewPitch := TPitch.Create(ThisWord);
+    Add(NewPitch);
+  end;
+end;
+
+constructor TMeasureList.CreateFromInputSection(InputSection: TInputSection);
+var
+  ThisMeasure: TInputMeasure;
+  NewPitchList: TPitchList;
+begin
+  inherited Create;
+  for ThisMeasure in InputSection do
+  begin
+    NewPitchList := TPitchList.CreateFromInputMeasure(ThisMeasure);
+    Add(NewPitchList);
+  end;
+end;
+
+function TMeasureList.ToStringList(OutputLines: TStringList): TStringList;
+var
   ThisPitchList: TPitchList;
+  ThisPitch: TPitch;
+begin
+  OutputLines.Clear;
+  for ThisPitchList in Self do
+  begin
+    for ThisPitch in ThisPitchList do
+    begin
+      OutputLines.Add(ThisPitch.ToString);
+    end;
+  end;
+  result := OutputLines;
+end;
+
+function TMeasureList.ToString: String;
+var
+  OutputStr: String;
+  OutputLines: TStringList;
+begin
+  OutputLines := TStringList.Create;
+  OutputLines := Self.ToStringList(OutputLines);
+  OutputStr := OutputLines.Text;
+  FreeAndNil(OutputLines);
+  result := OutputStr;
+end;
+
+function SplitAtSpaces(InputStr: String): TStringArray;
+begin
+  result := InputStr.Split([' ', LineEnding], 
+              TStringSplitOptions.ExcludeEmpty);
+end;
+
+{ MAIN }
+var
+  InputLines: TStringList;
+  Words: TStringArray;
+  Section: TInputSection;
   MeasureList: TMeasureList;
 begin
   { setup }
   InputLines := TStringList.Create;
-  OutputLines := TStringList.Create;
-  MeasureList := TMeasureList.Create;
 
   try
     { input }
@@ -123,39 +188,18 @@ begin
     InputLines.LoadFromFile(ParamStr(1));
 
     { parse }
-    Words := InputLines.Text.Split([' ', LineEnding], 
-              TStringSplitOptions.ExcludeEmpty);
-
-    Section := GroupByMeasure(Words);
-
-    for ThisInputMeasure in Section do
-    begin
-      ThisPitchList := TPitchList.Create;
-      for ThisWord in ThisInputMeasure do
-      begin
-        ThisPitch := TPitch.Create(ThisWord);
-        ThisPitchList.Add(ThisPitch);
-      end;
-      MeasureList.Add(ThisPitchList);
-    end;
+    Words := SplitAtSpaces(InputLines.Text);
+    Section := TInputSection.CreateByMeasure(Words);
+    MeasureList := TMeasureList.CreateFromInputSection(Section);
 
     { output }
-    for ThisPitchList in MeasureList do
-    begin
-      for ThisPitch in ThisPitchList do
-      begin
-        OutputLines.Add(ThisPitch.Show);
-      end;
-    end;
-
-    WriteLn(OutputLines.Text);
+    WriteLn(MeasureList.ToString);
 
   finally
     { cleanup }
     FreeAndNil(Section);
     FreeAndNil(MeasureList);
     FreeAndNil(InputLines);
-    FreeAndNil(OutputLines);
   end;
 end.
 
