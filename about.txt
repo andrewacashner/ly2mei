@@ -38,6 +38,12 @@ seventeenth-century music.
 
   @row( @cell(2022/05/03)
         @cell(Cleaned up, optimized, completed documentation) )
+  
+  @row( @cell(2022/06/05)
+        @cell(Fixed problem with score-building function) )
+
+  @row( @cell(2022/09/29)
+        @cell(Project on pause with a working prototype for simple use case) )
 )
 
 

@@ -39,6 +39,8 @@
   trace the path to each bottom node, copy a given measure's contents, and
   then build the path to that node for each separate measure and each separate
   voice or layer.
+
+  In comments, CBL is left curly brace and CBR is right curly brace.
 }
 unit ScoreTree;
 
