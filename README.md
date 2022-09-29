@@ -38,16 +38,6 @@ by PasDoc.
 - View HTML documentation: `make view`
 - View PDF documentation: `make view-pdf`
 
-# code2pdf
-
-````
-#! /bin/sh
-set -e
-INFILE="$1"
-pdflatex -jobname="$INFILE" \"\\def\\infile\{"$INFILE"\}\\input\{prettyprintframe\}\"
-rm "$INFILE".log "$INFILE".aux
-````
-
 # License
 
 Copyright © 2021 Andrew A. Cashner. All rights reserved.

@@ -425,14 +425,14 @@ A staff, in turn, includes @code(\new) expressions to define a @code(Voice),
 
 So we will see this structure: 
 @longcode(#
-  \score ❴ 
+  \score CBL
     << 
       \new ChoirStaff 
       << 
         \new Staff = "s-Soprano" 
           << 
-            \new Voice = "Soprano" ❴ c'2 d'2 ... ❵  
-            \new Lyrics \lyricsto "Soprano" ❴ do re ... ❵ 
+            \new Voice = "Soprano" CBL c'2 d'2 ... CBR  
+            \new Lyrics \lyricsto "Soprano" CBL do re ... CBR 
           >>
          \new Staff = "s-Alto" 
           << ... >> 
@@ -440,7 +440,7 @@ So we will see this structure:
       >>
       ...
     >> 
-  ❵
+  CBR
 #)
 
 We may define a @code(\new) command, then, as follows:
@@ -452,17 +452,17 @@ We may define a @code(\new) command, then, as follows:
     @item(Optionally, the type label may be followed by an ID label, denoted by an equals sign and an ID string in double quotation marks, e.g., @code('\new Voice = "Soprano"').)
     @item(A @code(Lyrics) item must (in our system) include a command that links the lyrics to a particular @code(Voice): @code('\lyricsto "ID"') where ID matches the ID label of a voice.)
     @item(@code(StaffGroup), @code(ChoirStaff), and @code(Staff) elements are followed by an expression in double angle brackets (@code(<< ... >>)), which will include more @code(\new) expressions.)
-    @item(@code(Voice), @code(Lyrics), and @code(FiguredBass) items are followed by an expression in curly braces (@code(❴ ... ❵)). In our system, these arguments may not include further @code(\new) expressions.)
-    @item(A @code(Voice) item's argument must be a music expression (the default mode); a @code(Lyrics) item's argument must be in lyrics mode (@code(\lyricmode ❴ ... ❵)); a @code(FiguredBass) item's argument must be in figures mode (@code(\figuremode)).)
+    @item(@code(Voice), @code(Lyrics), and @code(FiguredBass) items are followed by an expression in curly braces (@code(CBL ... CBR)). In our system, these arguments may not include further @code(\new) expressions.)
+    @item(A @code(Voice) item's argument must be a music expression (the default mode); a @code(Lyrics) item's argument must be in lyrics mode (@code(\lyricmode CBL ... CBR)); a @code(FiguredBass) item's argument must be in figures mode (@code(\figuremode)).)
   )
 
 Summary: 
 @longcode(#
-\score ❴ << [(one or more:) \new ... ] >> ❵
+\score CBL << [(one or more:) \new ... ] >> CBR
 
 \new [Label] [= "ID"] [(if Label = Lyrics:) \lyricsto "VoiceID"] 
   | (if ChoirStaff, StaffGroup, or Staff:) [ << [(one or more:) \new] >> ]
-  | (if Voice, Lyrics, or FiguredBass:)    [ ❴ [contents in appropriate mode] ❵ ]
+  | (if Voice, Lyrics, or FiguredBass:)    [ CBL [contents in appropriate mode] CBR ]
 #)
 
 To parse the score: look for the command, find the matched brace argument,
@@ -485,10 +485,10 @@ link ID (for lyrics, connecting to another item's ID; blank if none is
   { START HERE TODO }
   { pattern matching approach 
 possible valid inputs:
-1. \new Lyrics = "[ID]" \lyricsto "[LinkID]" ❴ [Contents] ❵ 
-2. \new [LABEL] = "[ID]" ❴ [Contents] ❵
+1. \new Lyrics = "[ID]" \lyricsto "[LinkID]" CBL [Contents] CBR 
+2. \new [LABEL] = "[ID]" CBL [Contents] CBR
 3. \new [LABEL] = "[ID]" << [Contents] >>
-4. \new [LABEL] ❴ [Contents] ❵
+4. \new [LABEL] CBL [Contents] CBR
 5. \new [LABEL] << [Contents] >>
 
 subtests:
@@ -496,7 +496,7 @@ IsNewCmd x: x = '\new'
 IsEquals x: x = '='
 IsQuoted x: x.StartsWith('"') and x.EndsWith('"')
 HasID Input: IsNewCmd(Input[0]) && IsEquals(Input[2]) && IsQuoted(Input[3])
-HasBraceArg Input N: FindBalancedDelimiter(Str, '❴', '❵') <> ''
+HasBraceArg Input N: FindBalancedDelimiter(Str, 'CBL', 'CBR') <> ''
 HasBracketArg Str: FindBalancedDelimiter(Str, '<<', '>>') <> ''
 
 tests: 
@@ -1421,9 +1421,6 @@ begin
 
   if Assigned(LyTree) then
   begin
-    { TODO still testing LyTree
-    MeiScore := LyTree.ToXMLAsIs;
-    }
     MeiScore    := CreateEmptyMeiScore;
     MeiScoreDef := LyTree.ToMeiScoreDef;
     MeiSection  := LyTree.ToMeiSection;

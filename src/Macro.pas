@@ -6,6 +6,8 @@
   Treat Lilypond variable definitions as simple text macros. Find them, make a
   dictionary of them, and then expand them in the text, including nested
   macros. 
+
+  In comments, CBL is left curly brace and CBR is right curly brace.
 }
 unit Macro;
 
@@ -19,7 +21,7 @@ type
   TIndexList = class(specialize TList<Integer>)
   public
     { Macro definitions must start at the beginning of the line, and be in the
-    format @code(label = ❴ value ❵) or @code(label = \command ❴ value ❵). }
+      format @code(label = CBL value CBR) or @code(label = \command CBL value CBR). }
     constructor Create(InputLines: TStringListPlus);
   end;
 
@@ -40,8 +42,8 @@ function IncludeFiles(InputLines: TStringListPlus): TStringListPlus;
 { Find, parse, and save macro definitions in a stringlist. Delete
   the definition expressions and expand the macro calls.
 
-  A macro must have the form @code(label = ❴ arg ❵) or 
-  @code(label = \command ❴ arg ❵). We don't accept @code(label = "string") or
+  A macro must have the form @code(label = CBL arg CBR) or 
+  @code(label = \command CBL arg CBR). We don't accept @code(label = "string") or
   other formats. The label must be at the beginning of a line. 
 
   (TODO: The program actually does accept @code(label = "string"), but was

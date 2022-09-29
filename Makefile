@@ -66,7 +66,7 @@ $(doc_dir)/%-doc.pdf : $(build_dir)/%.pdf
 	cp -u $< $@
 
 $(build_dir)/%.pdf : $(build_dir)/%.tex
-	latexmk -outdir=build -pdf $(basename $<)
+	latexmk -pdf -outdir=build $(basename $<)
 
 $(full_pdf) : $(doc_pdf) $(src_pdf)
 	pdfunite $(doc_pdf) $(src_pdf) $@

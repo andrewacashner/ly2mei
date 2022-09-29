@@ -1406,7 +1406,7 @@ end;
 voice.  }
 constructor TMeasureList.Create(LyInput: String);
 var
-  Key: TKeyKind;
+  key: TKeyKind;
   LyWords: TStringArray;
   SearchStr, ThisWord: String;
   WordIndex, ArgIndex: Integer;
@@ -1420,7 +1420,7 @@ begin
   Key := FindLyKey(SearchStr);
 
   { Find measures and parse the notes in them }
-  { a measure is from '|' to next '|' or '❵' }
+  { a measure is from '|' to next '|' or CBR }
   LyWords := StringToWordArray(LyInput);
   WordIndex := 0;
   while WordIndex < Length(LyWords) do
