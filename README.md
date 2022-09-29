@@ -116,6 +116,13 @@ by PasDoc.
 
 # License
 
-Copyright © 2021 Andrew A. Cashner. All rights reserved.
+Copyright © 2022 Andrew A. Cashner.
 
+This work is in the public domain.
+You may do anything you like with it.
+I make no promises or warranties about what the program will or won't do.
+Use at your own risk.
+
+I would love to hear from you if you are using the program or its code (see
+e-mail above).
 
