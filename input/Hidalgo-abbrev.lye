@@ -4,7 +4,7 @@
 % ABBREVIATED FOR TESTING
 % Edited by Andrew A. Cashner, 2019
 
-\version "2.22"
+\version "2.2"
 \include "villancico.ly"
 
 % {{{1 header

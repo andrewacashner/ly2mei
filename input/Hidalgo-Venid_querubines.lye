@@ -7,7 +7,7 @@
 % 2019-09-18    Begun in Lilypond
 % }}}1
 
-\version "2.22"
+\version "2.2"
 \include "villancico.ly"
 
 % {{{1 header
