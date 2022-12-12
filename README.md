@@ -118,10 +118,7 @@ by PasDoc.
 
 Copyright © 2022 Andrew A. Cashner.
 
-This work is in the public domain.
-You may do anything you like with it.
-I make no promises or warranties about what the program will or won't do.
-Use at your own risk.
+This work is made available under the MIT license, see the `LICENSE` file.
 
 I would love to hear from you if you are using the program or its code (see
 e-mail above).
